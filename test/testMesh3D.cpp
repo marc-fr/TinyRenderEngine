@@ -665,7 +665,7 @@ int main(int argc, char **argv)
     // event actions + updates --------
 
     myWindow.m_controls.newFrame();
-    myWindow.m_timing.newFrame();
+    myWindow.m_timing.newFrame(0, myWindow.m_controls.m_pause);
 
     //-> SDL events
     while(SDL_PollEvent(&event) == 1)
@@ -907,8 +907,6 @@ int main(int argc, char **argv)
     myWindow.m_timing.endFrame_beforeGPUPresent();
 
     SDL_GL_SwapWindow( myWindow.m_window );
-
-    myWindow.m_timing.endFrame(0, myWindow.m_controls.m_pause);
   }
 
   shaderMainMaterial.clearShader();

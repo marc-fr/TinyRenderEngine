@@ -239,7 +239,7 @@ static int app_init()
   myWindow.m_view3D.setScreenBoundsMotion(false);
   myWindow.m_view3D.setKeyBinding(true);
 
-  myWindow.m_timing.newFrame();
+  myWindow.m_timing.initialize();
 
   TRE_LOG("app_init: ok.");
   return 0;
@@ -255,11 +255,9 @@ static void app_update()
 
   // event actions + updates -------
 
-  myWindow.m_timing.endFrame(0, myWindow.m_controls.m_pause);
-
   {
     myWindow.m_controls.newFrame();
-    myWindow.m_timing.newFrame();
+    myWindow.m_timing.newFrame(0, myWindow.m_controls.m_pause);
 
     while(SDL_PollEvent(&event) == 1)
     {

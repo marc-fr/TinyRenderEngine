@@ -113,10 +113,9 @@ public:
 
     uint ndata = 0;
 
-    void reinit() { worktime_average = 0.f; scenetime = 0.f; ndata = 0; }
-    void newFrame();
-    void endFrame_beforeGPUPresent();
-    void endFrame(const uint waitForFPS /* = 0 means no wait */, const bool isSimPaused);
+    void initialize();
+    void newFrame(const uint waitForFPS /* = 0 means no wait */, const bool isSimPaused);
+    void endFrame_beforeGPUPresent(); // optionnal (needed to distinguish the work-time and the frame-time)
   };
 
   s_timer m_timing;

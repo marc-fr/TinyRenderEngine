@@ -416,6 +416,8 @@ int main(int argc, char **argv)
 
   SDL_Event event;
 
+  myWindow.m_timing.initialize();
+
   myWindow.m_view3D.m_matView[3] = glm::vec4(0.f, -3.f, -9.8f, 1.f);
   myWindow.m_view3D.setScreenBoundsMotion(true);
   myWindow.m_view3D.setKeyBinding(true);
@@ -436,7 +438,7 @@ int main(int argc, char **argv)
       TRE_PROFILEDSCOPE("events", ev)
 
       myWindow.m_controls.newFrame();
-      myWindow.m_timing.newFrame();
+      myWindow.m_timing.newFrame(0, myWindow.m_controls.m_pause);
 
       while(SDL_PollEvent(&event) == 1)
       {
@@ -957,8 +959,6 @@ int main(int argc, char **argv)
     myWindow.m_timing.endFrame_beforeGPUPresent();
 
     SDL_GL_SwapWindow( myWindow.m_window );
-
-    myWindow.m_timing.endFrame(0, myWindow.m_controls.m_pause);
   }
 
   TRE_LOG("Main loop exited");

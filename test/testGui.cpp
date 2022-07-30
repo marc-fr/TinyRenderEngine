@@ -611,11 +611,13 @@ int main(int argc, char **argv)
 
   SDL_Event event;
 
+  myWindow.m_timing.initialize();
+
   // - MAIN LOOP --->
 
   while(!myWindow.m_controls.m_quit)
   {
-    myWindow.m_timing.newFrame();
+    myWindow.m_timing.newFrame(0, myWindow.m_controls.m_pause);
 
     // event actions + updates --------
 
@@ -682,8 +684,6 @@ int main(int argc, char **argv)
     tre::IsOpenGLok("rendering");
 
     SDL_GL_SwapWindow( myWindow.m_window );
-
-    myWindow.m_timing.endFrame(0, myWindow.m_controls.m_pause);
   }
 
   TRE_LOG("Main loop exited");

@@ -321,23 +321,18 @@ bool windowHelper::s_controls::treatSDLEvent(const SDL_Event & event)
 
 // Timings ====================================================================
 
-void windowHelper::s_timer::newFrame()
+void windowHelper::s_timer::initialize()
 {
+  worktime_average = 0.f;
+  scenetime = 0.f;
+  ndata = 0;
+
   oldtime = SDL_GetTicks();
 }
 
 // ----------------------------------------------------------------------------
 
-void  windowHelper::s_timer::endFrame_beforeGPUPresent()
-{
-  const Uint32 newtime = SDL_GetTicks();
-  worktime = float(newtime - oldtime) * 1.e-3f;
-  worktime_average = 0.9f * worktime_average + 0.1f * worktime;
-}
-
-// ----------------------------------------------------------------------------
-
-void windowHelper::s_timer::endFrame(const uint waitForFPS /* = 0 means no wait */, const bool isSimPaused)
+void windowHelper::s_timer::newFrame(const uint waitForFPS /* = 0 means no wait */, const bool isSimPaused)
 {
   const Uint32 newtime = SDL_GetTicks();
   if (waitForFPS > 0)
@@ -358,8 +353,17 @@ void windowHelper::s_timer::endFrame(const uint waitForFPS /* = 0 means no wait 
     frametime = float(newtime - oldtime) * 1.e-3f;
   }
   frametime_average = 0.9f * frametime_average + 0.1f * frametime;
-  if (!isSimPaused)
-    scenetime += frametime;
+  if (!isSimPaused) scenetime += frametime;
+  oldtime = newtime;
+}
+
+// ----------------------------------------------------------------------------
+
+void  windowHelper::s_timer::endFrame_beforeGPUPresent()
+{
+  const Uint32 newtime = SDL_GetTicks();
+  worktime = float(newtime - oldtime) * 1.e-3f;
+  worktime_average = 0.9f * worktime_average + 0.1f * worktime;
 }
 
 // Camera =====================================================================

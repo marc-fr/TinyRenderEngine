@@ -508,6 +508,8 @@ static int app_init()
     baseUI.loadIntoGPU();
   }
 
+  windowCtx.m_timing.initialize();
+
   return 0;
 }
 
@@ -517,7 +519,7 @@ static void app_update()
 {
 
   windowCtx.m_controls.newFrame();
-  windowCtx.m_timing.newFrame();
+  windowCtx.m_timing.newFrame(0, false);
 
   // Event
   SDL_Event rawEvent;
@@ -553,8 +555,6 @@ static void app_update()
   }
 
   SDL_GL_SwapWindow(windowCtx.m_window); // let the v-sync do the job ...
-
-  windowCtx.m_timing.endFrame(0, false);
 }
 
 // =============================================================================
