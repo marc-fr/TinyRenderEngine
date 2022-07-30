@@ -305,7 +305,7 @@ void shaderGenerator::createShaderFunction_Diffuse(const int flags, std::string 
     {
       if (flags & PRGM_INSTANCED)
       {
-        gatherColors += "  vec2 atlas = pixelAtlasBlend.xy;\n";
+        gatherColors += "  vec2 atlas = floor(pixelAtlasBlend.xy);\n";
         gatherColors += "  vec2 blend = pixelAtlasBlend.zw;\n";
       }
       else if (flags & PRGM_BLEND)
@@ -320,11 +320,11 @@ void shaderGenerator::createShaderFunction_Diffuse(const int flags, std::string 
       if ((flags & PRGM_BLEND) && (flags | PRGM_ATLAS))
       {
         gatherColors += "  vec2 offsetUV;\n"
-                        "  offsetUV.y = int(atlas.x * AtlasInvDim.x);\n"
-                        "  offsetUV.x = int(atlas.x) % int(1.f / AtlasInvDim.x);\n";
+                        "  offsetUV.y = floor(atlas.x * AtlasInvDim.x);\n"
+                        "  offsetUV.x = floor(atlas.x - offsetUV.y / AtlasInvDim.x + 0.01f);\n";
         gatherColors += "  vec2 offsetUVB;\n"
-                        "  offsetUVB.y = int(atlas.y * AtlasInvDim.x);\n"
-                        "  offsetUVB.x = int(atlas.y) % int(1.f / AtlasInvDim.x);\n";
+                        "  offsetUVB.y = floor(atlas.y * AtlasInvDim.x);\n"
+                        "  offsetUVB.x = floor(atlas.y - offsetUVB.y / AtlasInvDim.x + 0.01f);\n";
         returnValue += "( blend.x * texture(TexDiffuse, (offsetUV  + pixelUV) * AtlasInvDim) + "
                         " blend.y * texture(TexDiffuse, (offsetUVB + pixelUV) * AtlasInvDim) )";
       }
@@ -335,8 +335,8 @@ void shaderGenerator::createShaderFunction_Diffuse(const int flags, std::string 
       else if (flags & PRGM_ATLAS)
       {
         gatherColors += "  vec2 offsetUV;\n"
-                        "  offsetUV.y = int((atlas.x + 0.1f) * AtlasInvDim.x);\n"
-                        "  offsetUV.x = int(atlas.x + 0.1f) % int(1.f / AtlasInvDim.x + 0.1f);\n";
+                        "  offsetUV.y = floor(atlas.x * AtlasInvDim.x);\n"
+                        "  offsetUV.x = floor(atlas.x - offsetUV.y / AtlasInvDim.x + 0.01f);\n";
         returnValue += "texture(TexDiffuse, (offsetUV  + pixelUV) * AtlasInvDim)";
       }
     }

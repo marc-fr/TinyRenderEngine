@@ -30,6 +30,7 @@ set(SRC_LIST_LIB
   src/shadergenerator.cpp
   src/textgenerator.cpp
   src/texture.cpp
+  src/texture_compress.cpp
   src/textureSampler.cpp
   src/ui.cpp
   src/ui_layout.cpp

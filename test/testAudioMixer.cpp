@@ -193,10 +193,14 @@ static int app_init()
 
   // -> Load other resources
 
-  if (!font.loadNewFontMapFromBMPandFNT(TESTIMPORTPATH "resources/font_arial_88"))
   {
-    TRE_LOG("Fail to load the font. Cannot have the GUI.");
-    withGUI = false;
+    SDL_Surface *surf;
+    tre::font::s_fontMap map;
+    if (!tre::font::loadFromBMPandFNT(TESTIMPORTPATH "resources/font_arial_88", surf, map) || !font.load({ surf }, { map}, true))
+    {
+      TRE_LOG("Fail to load the font. Cannot have the GUI.");
+      withGUI = false;
+    }
   }
 
   // - Init Audio
@@ -362,7 +366,7 @@ static int app_init()
         {
           SDL_Surface *surf = SDL_CreateRGBSurface(0, 128, 32, 32, 0, 0, 0, 0);
           widgetWaveform::genWaveForm(s.m_audio[0], surf, 0, 32);
-          listTextures[iRaw].loadNewTextureFromSDLSurface(surf, "waveform");
+          listTextures[iRaw].load(surf, 0, true);
           wWaveform->set_texId(&listTextures[iRaw]);
         }
         wWaveform->wcb_animate = [&s](tre::ui::widget *w, float )
@@ -464,7 +468,7 @@ static int app_init()
         {
           SDL_Surface *surf = SDL_CreateRGBSurface(0, 128, 32, 32, 0, 0, 0, 0);
           widgetWaveform::genWaveForm(*s.audioData(), surf, 0, 32);
-          listTextures[iRaw].loadNewTextureFromSDLSurface(surf, "waveform");
+          listTextures[iRaw].load(surf, 0, true);
           wWaveform->set_texId(&listTextures[iRaw]);
         }
         wWaveform->wcb_animate = [&s](tre::ui::widget *w, float )

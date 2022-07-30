@@ -112,6 +112,9 @@ struct s_meshTriangulation
 
 int main(int argc, char **argv)
 {
+  (void)argc;
+  (void)argv;
+
   tre::windowHelper myWindow;
 
   if (!myWindow.SDLInit(SDL_INIT_VIDEO, "test Mesh 2D", SDL_WINDOW_RESIZABLE))
@@ -150,12 +153,13 @@ int main(int argc, char **argv)
   // - load UI
 
   tre::font font;
-#ifdef TRE_WITH_FREETYPE
-  std::vector<unsigned> texSizes = { 64, 20, 12 };
-  font.loadNewFontMapFromTTF(TESTIMPORTPATH "resources/DejaVuSans.ttf", texSizes);
-#else
-  font.loadNewFontMapFromBMPandFNT(TESTIMPORTPATH "resources/font_arial_88");
-#endif
+  {
+    SDL_Surface *surf;
+    tre::font::s_fontMap map;
+    tre::font::loadFromBMPandFNT(TESTIMPORTPATH "resources/font_arial_88", surf, map);
+    font.load({ surf }, { map}, true);
+  }
+
 
   tre::baseUI2D bUI_main;
   bUI_main.set_defaultFont(&font);

@@ -215,6 +215,8 @@ bool renderTarget::resize(const int pwidth, const int pheigth)
           (hasColor() ? " [Color-0" : " [No-Color" ) << (isHDR() ? " HDR" : "" ) << ((m_flags & RT_COLOR_SAMPLABLE) ? " Sampl." : "" ) << "]" <<
           (hasDepth() ? " [Depth" : " [No-Depth" ) << ((m_flags & RT_DEPTH_SAMPLABLE) ? " Sampl." : "" ) << "])");
 
+  myframebufferstatus &= IsOpenGLok("renderTarget::resize");
+
   return myframebufferstatus;
 }
 

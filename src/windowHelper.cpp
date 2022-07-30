@@ -253,13 +253,15 @@ bool windowHelper::s_controls::treatSDLEvent(const SDL_Event & event)
   switch(event.type)
   {
   case SDL_KEYDOWN:
-    if      (event.key.keysym.sym == SDLK_ESCAPE) m_quit = true;
-    else if (event.key.keysym.sym == SDLK_LSHIFT ||
+    if       (event.key.keysym.sym == SDLK_LSHIFT ||
              event.key.keysym.sym == SDLK_RSHIFT  ) m_keySHIFT = true;
     else if (event.key.keysym.sym == SDLK_LCTRL ||
              event.key.keysym.sym == SDLK_RCTRL  ) m_keyCTRL = true;
     else if (event.key.keysym.sym == SDLK_LALT ||
              event.key.keysym.sym == SDLK_RALT  ) m_keyALT = true;
+#ifndef TRE_EMSCRIPTEN
+    else if (event.key.keysym.sym == SDLK_ESCAPE) m_quit = true;
+#endif
     else if (event.key.keysym.sym == SDLK_UP   ||
              event.key.keysym.scancode == SDL_SCANCODE_W /*physical location*/) m_keyUP = true;
     else if (event.key.keysym.sym == SDLK_DOWN ||

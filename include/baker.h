@@ -35,10 +35,9 @@ public:
   bool writeBlock(const model *m); ///< Shortcut for getBlockWriteAndAdvance and bake a model
   bool readBlock(model *m); ///< Shortcut for getBlockReadAndAdvance and read a model from it
 
-  bool writeBlock(const texture *t); ///< Shortcut for getBlockWriteAndAdvance and bake a texture
+  bool writeBlock(SDL_Surface *surface, int flags, const bool freeSurface); ///< Shorcurt for getBlockWriteAndAdvance and bake a texture
   bool readBlock(texture *t); ///< Shortcut for getBlockReadAndAdvance and read a texture from it
 
-  bool writeBlock(const font *f); ///< Shortcut for getBlockWriteAndAdvance and bake a font
   bool readBlock(font *f); ///< Shortcut for getBlockReadAndAdvance and read a font from it
 
   void flushAndCloseFile(); ///< flush data and close of the files.

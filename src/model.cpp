@@ -209,14 +209,10 @@ bool modelRaw2D::read(std::istream &inbuffer)
 {
   if (!readBase(inbuffer)) return false;
 
-  std::size_t vertexCount;
-  inbuffer.read(reinterpret_cast<char*>(&vertexCount), sizeof(std::size_t));
-  resizeVertex(vertexCount);
-
-  // read vertex buffer
-  std::size_t bufferSize = 0;
-  inbuffer.read(reinterpret_cast<char*>(&bufferSize), sizeof(std::size_t));
-  TRE_ASSERT(m_VBuffer.size() == bufferSize);
+  uint header[2]; // { vertexCount, bufferSize }
+  inbuffer.read(reinterpret_cast<char*>(&header[0]), sizeof(header));
+  resizeVertex(header[0]);
+  TRE_ASSERT(header[1] == m_VBuffer.size());
   inbuffer.read(reinterpret_cast<char*>(m_VBuffer.data()), m_VBuffer.size() * sizeof(GLfloat));
 
   return true;
@@ -227,13 +223,11 @@ bool modelRaw2D::write(std::ostream &outbuffer) const
   bool result = true;
 
   result &= writeBase(outbuffer);
-  if (!result) return false;
 
-  outbuffer.write(reinterpret_cast<const char*>(&m_layout.m_vertexCount), sizeof(std::size_t));
-
-  // write vertex buffer
-  const std::size_t bufferSize = m_VBuffer.size();
-  outbuffer.write(reinterpret_cast<const char*>(&bufferSize), sizeof(std::size_t));
+  uint header[2]; // { vertexCount, bufferSize }
+  header[0] = m_layout.m_vertexCount; TRE_ASSERT(m_layout.m_vertexCount <= std::numeric_limits<uint>::max());
+  header[1] = m_VBuffer.size();
+  outbuffer.write(reinterpret_cast<const char*>(&header[0]), sizeof(header));
   outbuffer.write(reinterpret_cast<const char*>(m_VBuffer.data()), m_VBuffer.size() * sizeof(GLfloat));
 
   return result;
@@ -474,14 +468,10 @@ bool modelStaticIndexed3D::read(std::istream & inbuffer)
   read_IndexBuffer(inbuffer);
 
   // read vertex buffer
-
-  std::size_t vertexCount = 0;
-  inbuffer.read(reinterpret_cast<char*>(&vertexCount), sizeof(std::size_t));
-  resizeVertex(vertexCount);
-
-  std::size_t bufferSize = 0;
-  inbuffer.read(reinterpret_cast<char*>(&bufferSize), sizeof(std::size_t));
-  TRE_ASSERT(m_VBuffer.size() == bufferSize);
+  uint header[2]; // { vertexCount, bufferSize }
+  inbuffer.read(reinterpret_cast<char*>(&header[0]), sizeof(header));
+  resizeVertex(header[0]);
+  TRE_ASSERT(header[1] == m_VBuffer.size());
   inbuffer.read(reinterpret_cast<char*>(m_VBuffer.data()), m_VBuffer.size() * sizeof(GLfloat));
 
   return true;
@@ -498,10 +488,10 @@ bool modelStaticIndexed3D::write(std::ostream & outbuffer) const
   write_IndexBuffer(outbuffer);
 
   // write vertex buffer
-  outbuffer.write(reinterpret_cast<const char*>(&m_layout.m_vertexCount), sizeof(std::size_t));
-
-  const std::size_t bufferSize = m_VBuffer.size();
-  outbuffer.write(reinterpret_cast<const char*>(&bufferSize), sizeof(std::size_t));
+  uint header[2]; // { vertexCount, bufferSize }
+  header[0] = m_layout.m_vertexCount; TRE_ASSERT(m_layout.m_vertexCount <= std::numeric_limits<uint>::max());
+  header[1] = m_VBuffer.size();
+  outbuffer.write(reinterpret_cast<const char*>(&header[0]), sizeof(header));
   outbuffer.write(reinterpret_cast<const char*>(m_VBuffer.data()), m_VBuffer.size() * sizeof(GLfloat));
 
   return true;

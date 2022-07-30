@@ -91,7 +91,6 @@ bool baker::openBakedFile_forRead(const std::string &filename, uint &fileversion
           " (Version=" << header.m_version << ")" <<
           " (NBlocks=" << nblocks << ")");
 
-
   return true;
 }
 
@@ -102,6 +101,8 @@ std::ostream& baker::getBlockWriteAndAdvance()
   TRE_ASSERT(m_fileOutDescriptor != nullptr);
 
   m_blocksAdress.push_back(uint64_t(m_fileOutDescriptor->tellp()));
+
+  TRE_ASSERT(m_blocksAdress.back() != uint64_t(-1));
 
   m_fileOutDescriptor->write(k_blockHeader, sizeof(k_blockHeader));
 
@@ -138,6 +139,7 @@ void baker::flushAndCloseFile()
     memcpy(header.m_signature, k_signature, 4);
     header.m_version = m_version;
     header.m_blockTableAdress = uint64_t(m_fileOutDescriptor->tellp());
+    TRE_ASSERT(header.m_blockTableAdress != uint64_t(-1));
     // write table
     const uint nBlocks = uint(m_blocksAdress.size());
     m_fileOutDescriptor->write(reinterpret_cast<const char*>(& nBlocks), sizeof(uint));
@@ -150,6 +152,8 @@ void baker::flushAndCloseFile()
     m_fileOutDescriptor->seekp(0);
     m_fileOutDescriptor->write(reinterpret_cast<const char*>(& header), sizeof(s_header));
     // close
+    TRE_LOG("baker::flush blocks=" << m_blocksAdress.size() << " with total-size=" << int(float(header.m_footerAdress) / 1024.f / 1024.f * 10) / 10.f << " MB");
+    m_blocksAdress.clear();
     m_fileOutDescriptor->close();
     delete m_fileOutDescriptor;
     m_fileOutDescriptor = nullptr;
@@ -157,6 +161,7 @@ void baker::flushAndCloseFile()
 
   if (m_fileInDescriptor)
   {
+    // close
     m_blocksAdress.clear();
     m_fileInDescriptor->close();
     delete m_fileInDescriptor;
@@ -176,22 +181,14 @@ bool baker::readBlock(model *m)
   return m->read(getBlockReadAndAdvance());
 }
 
-bool baker::writeBlock(const texture *t)
+bool baker::writeBlock(SDL_Surface *surface, int flags, const bool freeSurface)
 {
-  t->write(getBlockWriteAndAdvance());
-  return true;
+  return tre::texture::write(getBlockWriteAndAdvance(), surface, flags, freeSurface);
 }
 
 bool baker::readBlock(texture *t)
 {
-  t->read(getBlockReadAndAdvance());
-  return true;
-}
-
-bool baker::writeBlock(const font *f)
-{
-  f->write(getBlockWriteAndAdvance());
-  return true;
+  return t->read(getBlockReadAndAdvance());
 }
 
 bool baker::readBlock(font *f)

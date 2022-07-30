@@ -52,13 +52,13 @@ int main(int argc, char **argv)
   // Resources: Textures
 
   tre::texture texAsphaltColor;
-  texAsphaltColor.loadNewTextureFromBMP(TESTIMPORTPATH "resources/Asphalt_004_COLOR.bmp", tre::texture::MMASK_FORCE_NO_ALPHA | tre::texture::MMASK_MIPMAP);
+  texAsphaltColor.load(tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/Asphalt_004_COLOR.bmp"), tre::texture::MMASK_FORCE_NO_ALPHA | tre::texture::MMASK_MIPMAP, true);
 
   tre::texture texAsphaltNormal;
-  texAsphaltNormal.loadNewTextureFromBMP(TESTIMPORTPATH "resources/Asphalt_004_NRM.bmp", tre::texture::MMASK_FORCE_NO_ALPHA | tre::texture::MMASK_MIPMAP);
+  texAsphaltNormal.load(tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/Asphalt_004_NRM.bmp"), tre::texture::MMASK_FORCE_NO_ALPHA | tre::texture::MMASK_MIPMAP, true);
 
   tre::texture texSkyboxColor;
-  texSkyboxColor.loadNewCubeTexFromBMP(TESTIMPORTPATH "resources/cubemap_inside_UVcoords", tre::texture::MMASK_MIPMAP);
+  texSkyboxColor.load(tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/cubemap_inside_UVcoords"), tre::texture::MMASK_MIPMAP, true);
 
   // Material (shader)
 
@@ -147,11 +147,17 @@ int main(int argc, char **argv)
 
   // U.I
 
-  tre::baseUI2D worldUI;
-  tre::ui::window *worldWin;
   tre::font worldFont;
   {
-    worldFont.loadNewFontMapFromBMPandFNT(TESTIMPORTPATH "resources/font_arial_88");
+    SDL_Surface *surf;
+    tre::font::s_fontMap map;
+    tre::font::loadFromBMPandFNT(TESTIMPORTPATH "resources/font_arial_88", surf, map);
+    worldFont.load({ surf }, { map}, true);
+  }
+
+  tre::baseUI2D worldUI;
+  tre::ui::window *worldWin;
+  {
     worldUI.set_defaultFont(&worldFont);
 
     worldUI.updateCameraInfo(myWindow.m_matProjection2D, myWindow.m_resolutioncurrent);

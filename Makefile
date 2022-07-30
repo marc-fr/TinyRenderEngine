@@ -31,10 +31,10 @@ LDFLAGS = -sUSE_SDL=2 -sFULL_ES3=1 -sINITIAL_MEMORY=128Mb -sWASM=0
 
 default : all
 
-all : $(OBJDIR) testBasic.html testAudioMixer.html
+all : $(OBJDIR) testBasic.html testAudioMixer.html testTextureCompression.html
 
 clean :
-	@rm -f $(OBJDIR)/*.o testBasic.* testAudioMixer.*
+	@rm -f $(OBJDIR)/*.o testBasic.* testAudioMixer.* testTextureCompression.*
 
 #-
 

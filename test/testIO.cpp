@@ -25,31 +25,45 @@ bool test_bakePicture()
 
   bool status = true;
 
-  { tre::texture t; status &= t.loadNewTextureWhite(); status &= container.writeBlock(&t); t.clear(); }
+#define _LoadAndBakeBMP(flags) status &= tre::texture::write(container.getBlockWriteAndAdvance(), tre::texture::loadTextureFromBMP(fileBMP), flags, true);
 
-#define _LoadAndBakeBMP(flags) { tre::texture t; status &= t.loadNewTextureFromBMP(fileBMP, flags); status &= container.writeBlock(&t); t.clear(); }
   _LoadAndBakeBMP(tre::texture::MMASK_MIPMAP);
   _LoadAndBakeBMP(tre::texture::MMASK_FORCE_NO_ALPHA);
   _LoadAndBakeBMP(tre::texture::MMASK_ALPHA_ONLY);
   _LoadAndBakeBMP(tre::texture::MMASK_COMPRESS);
   _LoadAndBakeBMP(tre::texture::MMASK_COMPRESS | tre::texture::MMASK_FORCE_NO_ALPHA);
   _LoadAndBakeBMP(tre::texture::MMASK_MIPMAP | tre::texture::MMASK_ANISOTROPIC);
+
 #undef _LoadAndBakeBMP
 
-  { tre::texture t; status &= t.loadNewCubeTexFromBMP(fileMAP, tre::texture::MMASK_MIPMAP); status &= container.writeBlock(&t); t.clear(); }
+  {
+    const std::array<SDL_Surface*, 6> cubeFcaes = { tre::texture::loadTextureFromBMP(fileMAP + ".xpos.bmp"), tre::texture::loadTextureFromBMP(fileMAP + ".xneg.bmp"),
+                                                    tre::texture::loadTextureFromBMP(fileMAP + ".ypos.bmp"), tre::texture::loadTextureFromBMP(fileMAP + ".yneg.bmp"),
+                                                    tre::texture::loadTextureFromBMP(fileMAP + ".zpos.bmp"), tre::texture::loadTextureFromBMP(fileMAP + ".zneg.bmp"), };
+    status &= tre::texture::writeCube(container.getBlockWriteAndAdvance(), cubeFcaes, tre::texture::MMASK_MIPMAP, true);
+  }
 
-  { tre::font f; status &= f.loadNewFontMapFromBMPandFNT(TESTIMPORTPATH "resources/font_arial_88"); status &= container.writeBlock(&f); f.clear(); }
-  { tre::font f; status &= f.loadNewFontMapLed(3); status &= container.writeBlock(&f); f.clear(); }
-  { tre::font f; status &= f.loadNewFontMapLed(7, 1); status &= container.writeBlock(&f); f.clear(); }
+  {
+    SDL_Surface *surf;
+    tre::font::s_fontMap map;
+    status &= tre::font::loadFromBMPandFNT(TESTIMPORTPATH "resources/font_arial_88", surf, map);
+    status &= tre::font::write(container.getBlockWriteAndAdvance(), { surf }, { map}, true);
+  }
 
 #ifdef TRE_WITH_SDL2_IMAGE
-  { tre::texture t; status &= t.loadNewTextureFromFile(fileBMP); status &= container.writeBlock(&t); t.clear(); }
-  { tre::texture t; status &= t.loadNewTextureFromFile(filePNG); status &= container.writeBlock(&t); t.clear(); }
+  { status &= tre::texture::write(container.getBlockWriteAndAdvance(), tre::texture::loadTextureFromFile(fileBMP), 0, true); }
+  { status &= tre::texture::write(container.getBlockWriteAndAdvance(), tre::texture::loadTextureFromFile(filePNG), 0, true); }
 #endif
 
 #ifdef TRE_WITH_FREETYPE
-  const std::vector<unsigned> fontMultiSize = {12, 16, 24, 32, 64, 128};
-  { tre::font f; status &= f.loadNewFontMapFromTTF(TESTIMPORTPATH "resources/DejaVuSans.ttf", fontMultiSize); status &= container.writeBlock(&f); f.clear(); }
+  {
+    std::vector<SDL_Surface*>          surfs  = { nullptr, nullptr, nullptr, nullptr, nullptr };
+    std::vector<tre::font::s_fontMap>  maps  =  { {},      {},      {},      {}     , {}      };
+    const std::vector<unsigned>        fSizes = { 12,      24,      32,      64     , 128     };
+    for (std::size_t i = 0; i < 5; ++i)
+      status &= tre::font::loadFromTTF(TESTIMPORTPATH "resources/DejaVuSans.ttf", fSizes[i], surfs[i], maps[i]);
+    status &= tre::font::write(container.getBlockWriteAndAdvance(), surfs, maps, true);
+  }
 #endif
 
   status &= tre::IsOpenGLok("test_bakePicture");
@@ -160,6 +174,9 @@ bool test_exportimportMesh()
 
 int main(int argc, char **argv)
 {
+  (void)argc;
+  (void)argv;
+
   tre::windowHelper context;
 
   if (!context.SDLInit(SDL_INIT_VIDEO, "no-window", SDL_WINDOW_HIDDEN))
@@ -197,8 +214,8 @@ int main(int argc, char **argv)
 
     ++Ntest;
     status = test_exportimportPicture();
-    if (status) { std::cout << "=== import textures: OK" << std::endl; ++Nok; }
-    else        { std::cout << "=== import textures: ERROR" << std::endl; }
+    if (status) { std::cout << "=== import baked-textures: OK" << std::endl; ++Nok; }
+    else        { std::cout << "=== import baked-textures: ERROR" << std::endl; }
   }
 
   {
@@ -209,8 +226,8 @@ int main(int argc, char **argv)
 
     ++Ntest;
     status = test_exportimportMesh();
-    if (status) { std::cout << "=== import meshes: OK" << std::endl; ++Nok; }
-    else        { std::cout << "=== import meshes: ERROR" << std::endl; }
+    if (status) { std::cout << "=== import baked-meshes: OK" << std::endl; ++Nok; }
+    else        { std::cout << "=== import baked-meshes: ERROR" << std::endl; }
   }
 
   // Finalize

@@ -195,14 +195,27 @@ static int app_init()
 
   // Textures
 
-  texture2D.loadNewTextureFromBMP(TESTIMPORTPATH "resources/quad.bmp", tre::texture::MMASK_ANISOTROPIC | tre::texture::MMASK_MIPMAP);
+  texture2D.load(tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/quad.bmp"), tre::texture::MMASK_ANISOTROPIC | tre::texture::MMASK_MIPMAP, true);
 
 #ifdef TEST_WITH_SKYBOX
-  textureSkyBox.loadNewCubeTexFromBMP(TESTIMPORTPATH "resources/cubemap_inside_UVcoords", tre::texture::MMASK_COMPRESS);
+  {
+    const std::array<SDL_Surface*, 6> cubeFcaes = { tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/cubemap_inside_UVcoords.xpos.bmp"),
+                                                    tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/cubemap_inside_UVcoords.xneg.bmp"),
+                                                    tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/cubemap_inside_UVcoords.ypos.bmp"),
+                                                    tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/cubemap_inside_UVcoords.yneg.bmp"),
+                                                    tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/cubemap_inside_UVcoords.zpos.bmp"),
+                                                    tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/cubemap_inside_UVcoords.zneg.bmp"), };
+    textureSkyBox.loadCube(cubeFcaes, tre::texture::MMASK_COMPRESS, true);
+  }
 #endif
 
 #ifdef TEST_WITH_FPS
-  font.loadNewFontMapFromBMPandFNT(TESTIMPORTPATH "resources/font_arial_88");
+  {
+    SDL_Surface *surf;
+    tre::font::s_fontMap map;
+    tre::font::loadFromBMPandFNT(TESTIMPORTPATH "resources/font_arial_88", surf, map);
+    font.load({surf}, {map}, true);
+  }
   texGenerator.createTexts(1, &meshFps);
   texGenerator.updateText_font(0, &font);
   texGenerator.updateText_fontsize(0, 0.05f);

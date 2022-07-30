@@ -145,7 +145,7 @@ void baseUI::loadIntoGPU()
   TRE_ASSERT(!m_model.isLoadedGPU());
 
   m_whiteTexture = new texture();
-  m_whiteTexture->loadNewTextureWhite("profiler-white");
+  m_whiteTexture->loadWhite();
 
   createData();
   updateData();

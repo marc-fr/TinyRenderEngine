@@ -64,7 +64,15 @@ int main(int argc, char **argv)
   }
 
   tre::texture worldSkyBoxTex;
-  worldSkyBoxTex.loadNewCubeTexFromBMP(TESTIMPORTPATH "resources/cubemap_inside_UVcoords", tre::texture::MMASK_MIPMAP | tre::texture::MMASK_COMPRESS);
+  {
+    const std::array<SDL_Surface*, 6> cubeFaces = { tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/cubemap_inside_UVcoords.xpos.bmp"),
+                                                    tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/cubemap_inside_UVcoords.xneg.bmp"),
+                                                    tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/cubemap_inside_UVcoords.ypos.bmp"),
+                                                    tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/cubemap_inside_UVcoords.yneg.bmp"),
+                                                    tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/cubemap_inside_UVcoords.zpos.bmp"),
+                                                    tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/cubemap_inside_UVcoords.zneg.bmp"), };
+    worldSkyBoxTex.loadCube(cubeFaces, tre::texture::MMASK_MIPMAP | tre::texture::MMASK_COMPRESS, true);
+  }
 
   tre::modelStaticIndexed3D worldMesh(tre::modelStaticIndexed3D::VB_NORMAL |
                                       tre::modelStaticIndexed3D::VB_TANGENT |
@@ -110,18 +118,34 @@ int main(int argc, char **argv)
   }
 
   tre::texture worldGroundColor;
-  worldGroundColor.loadNewTextureFromBMP(TESTIMPORTPATH "resources/Asphalt_004_COLOR.bmp", tre::texture::MMASK_MIPMAP | tre::texture::MMASK_ANISOTROPIC);
+  worldGroundColor.load(tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/Asphalt_004_COLOR.bmp"), tre::texture::MMASK_MIPMAP | tre::texture::MMASK_ANISOTROPIC, true);
 
   tre::texture worldGroundNormal;
-  worldGroundNormal.loadNewTextureFromBMP(TESTIMPORTPATH "resources/Asphalt_004_NRM.bmp", tre::texture::MMASK_MIPMAP);
+  worldGroundNormal.load(tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/Asphalt_004_NRM.bmp"), tre::texture::MMASK_MIPMAP, true);
 
   tre::texture worldGroundMetalRough;
-  worldGroundMetalRough.loadNewTxComb2FromBMP(TESTIMPORTPATH "resources/Asphalt_004_METALLIC.bmp",
-                                              TESTIMPORTPATH "resources/Asphalt_004_ROUGH.bmp",
-                                              tre::texture::MMASK_MIPMAP);
+  {
+    SDL_Surface *texM = tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/Asphalt_004_METALLIC.bmp");
+    SDL_Surface *texR = tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/Asphalt_004_ROUGH.bmp");
+    if (texM != nullptr && texR != nullptr)
+    {
+      SDL_Surface *texMR = tre::texture::combine(texM, texR);
+      worldGroundMetalRough.load(texMR, tre::texture::MMASK_RG_ONLY | tre::texture::MMASK_MIPMAP, true);
+    }
+    if (texM != nullptr) SDL_FreeSurface(texM);
+    if (texR != nullptr) SDL_FreeSurface(texR);
+  }
 
   tre::texture worldTex_UVcoords;
-  worldTex_UVcoords.loadNewCubeTexFromBMP(TESTIMPORTPATH "resources/cubemap_outside_UVcoords", tre::texture::MMASK_MIPMAP);
+  {
+    const std::array<SDL_Surface*, 6> cubeFaces = { tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/cubemap_outside_UVcoords.xpos.bmp"),
+                                                    tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/cubemap_outside_UVcoords.xneg.bmp"),
+                                                    tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/cubemap_outside_UVcoords.ypos.bmp"),
+                                                    tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/cubemap_outside_UVcoords.yneg.bmp"),
+                                                    tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/cubemap_outside_UVcoords.zpos.bmp"),
+                                                    tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/cubemap_outside_UVcoords.zneg.bmp"), };
+    worldTex_UVcoords.loadCube(cubeFaces, tre::texture::MMASK_MIPMAP, true);
+  }
 
   tre::modelInstancedBillboard worldParticlesBB(tre::modelInstanced::VI_COLOR | tre::modelInstanced::VI_ROTATION);
   worldParticlesBB.createBillboard();
@@ -132,7 +156,7 @@ int main(int argc, char **argv)
   worldParticlesMesh.loadIntoGPU();
 
   tre::texture  worldParticlesTex;
-  worldParticlesTex.loadNewTextureFromBMP(TESTIMPORTPATH "resources/quad.bmp");
+  worldParticlesTex.load(tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/quad.bmp"), 0, true);
 
   struct s_particleStream
   {
@@ -167,12 +191,17 @@ int main(int argc, char **argv)
   s_particleStream worldParticlesMeshStream(true, true);
   worldParticlesMeshStream.resize(512);
 
-  tre::textgenerator worldHUDText;
-  tre::modelRaw2D    worldHUDModel;
   tre::font          worldHUDFont;
   {
-    worldHUDFont.loadNewFontMapFromBMPandFNT(TESTIMPORTPATH "resources/font_arial_88");
+    SDL_Surface *surf;
+    tre::font::s_fontMap map;
+    tre::font::loadFromBMPandFNT(TESTIMPORTPATH "resources/font_arial_88", surf, map);
+    worldHUDFont.load({ surf }, { map}, true);
+  }
 
+  tre::textgenerator worldHUDText;
+  tre::modelRaw2D    worldHUDModel;
+  {
     const unsigned itext = worldHUDText.createTexts(5, &worldHUDModel); // it will use "worldHUDModel" to hold geom data.
     TRE_ASSERT(itext == 0);
 

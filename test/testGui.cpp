@@ -526,6 +526,9 @@ void s_uiManager::clear()
 
 int main(int argc, char **argv)
 {
+  (void)argc;
+  (void)argv;
+
   tre::windowHelper myWindow;
 
   if (!myWindow.SDLInit(SDL_INIT_VIDEO, "test GUI", SDL_WINDOW_RESIZABLE))
@@ -567,15 +570,20 @@ int main(int argc, char **argv)
   const glm::vec4 ucolorCube(0.4f,0.4f,0.8f,1.f);
 
   tre::font texFont;
-#ifdef TRE_WITH_FREETYPE
-  std::vector<unsigned> texSizes = { 64, 12 };
-  texFont.loadNewFontMapFromTTF(TESTIMPORTPATH "resources/DejaVuSans.ttf", texSizes);
-#else
-  texFont.loadNewFontMapFromBMPandFNT(TESTIMPORTPATH "resources/font_arial_88");
-#endif
+  {
+    std::vector<SDL_Surface*>          surfs  = { nullptr, nullptr, nullptr };
+    std::vector<tre::font::s_fontMap>  maps  =  { {},      {},      {},     };
+    const std::vector<unsigned>        fSizes = { 12,      24,      32,     };
+    for (std::size_t i = 0; i < 3; ++i)
+    {
+      if (!tre::font::loadFromTTF(TESTIMPORTPATH "resources/DejaVuSans.ttf", fSizes[i], surfs[i], maps[i]))
+        tre::font::loadProceduralLed(fSizes[i], 0, surfs[i], maps[i]);
+    }
+    texFont.load(surfs, maps, true);
+  }
 
   tre::texture texTest;
-  texTest.loadNewTextureFromBMP(TESTIMPORTPATH "resources/quad.bmp", tre::texture::MMASK_MIPMAP);
+  texTest.load(tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/quad.bmp"), tre::texture::MMASK_MIPMAP, true);
 
   // - create UI
 

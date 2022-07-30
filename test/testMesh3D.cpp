@@ -570,12 +570,17 @@ int main(int argc, char **argv)
   // - load UI
 
   tre::font font;
-#ifdef TRE_WITH_FREETYPE
-  std::vector<unsigned> texSizes = { 64, 20, 12 };
-  font.loadNewFontMapFromTTF(TESTIMPORTPATH "resources/DejaVuSans.ttf", texSizes);
-#else
-  font.loadNewFontMapFromBMPandFNT(TESTIMPORTPATH "resources/font_arial_88");
-#endif
+  {
+    std::vector<SDL_Surface*>          surfs  = { nullptr, nullptr, nullptr };
+    std::vector<tre::font::s_fontMap>  maps  =  { {},      {},      {},     };
+    const std::vector<unsigned>        fSizes = { 12,      24,      32,     };
+    for (std::size_t i = 0; i < 3; ++i)
+    {
+      if (!tre::font::loadFromTTF(TESTIMPORTPATH "resources/DejaVuSans.ttf", fSizes[i], surfs[i], maps[i]))
+        tre::font::loadProceduralLed(fSizes[i], 0, surfs[i], maps[i]);
+    }
+    font.load(surfs, maps, true);
+  }
 
   tre::baseUI2D bUI_main;
   bUI_main.set_defaultFont(&font);
@@ -715,7 +720,7 @@ int main(int argc, char **argv)
       hasMeshThreadRunning |= (meshContextCurr.m_ongoing && !meshContextCurr.m_completed);
 
     s_taskMeshProcessingContext &meshContextSelected = meshPartContext[meshPartSelected];
-    if (!meshContextSelected.m_completed && 
+    if (!meshContextSelected.m_completed &&
         !meshContextSelected.m_ongoing &&
         !hasMeshThreadRunning /*multiple mesh op cannot run simultaneously, because they share the same meshes (createPart may relocate data ...)*/)
     {

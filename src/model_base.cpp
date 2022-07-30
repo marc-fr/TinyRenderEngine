@@ -11,28 +11,31 @@ namespace tre {
 
 bool s_partInfo::read(std::istream &inbuffer)
 {
-  uint namesize;
-  inbuffer.read(reinterpret_cast<char*>(&namesize), sizeof(uint));
-  if (namesize>0)
+  uint header[4]; // {namesize, sizeof(uint), m_size, m_offset}
+  inbuffer.read(reinterpret_cast<char*>(&header[0]), sizeof(header));
+  TRE_ASSERT(header[1] == sizeof(uint));
+  m_size = header[2];
+  m_offset = header[3];
+  if (header[0] > 0)
   {
-    char * tmpname = new char[namesize];
-    inbuffer.read(tmpname, sizeof(char) * namesize);
+    char *tmpname = new char[header[0]];
+    inbuffer.read(tmpname, sizeof(char) * header[0]);
     m_name = std::string(tmpname);
     delete[] tmpname;
   }
-  inbuffer.read(reinterpret_cast<char*>(&m_size), sizeof(int));
-  inbuffer.read(reinterpret_cast<char*>(&m_offset), sizeof(long long));
   m_bbox.read(inbuffer);
   return true;
 }
 
 bool s_partInfo::write(std::ostream &outbuffer) const
 {
-  const uint namesize = m_name.size();
-  outbuffer.write(reinterpret_cast<const char*>(&namesize) , sizeof(uint) );
-  if (namesize>0) outbuffer.write(m_name.c_str(), sizeof(char) * namesize);
-  outbuffer.write(reinterpret_cast<const char*>(&m_size), sizeof(int));
-  outbuffer.write(reinterpret_cast<const char*>(&m_offset), sizeof(long long));
+  uint header[4]; // {namesize, sizeof(uint), m_size, m_offset}
+  header[0] = uint(m_name.size());
+  header[1] = sizeof(uint);
+  header[2] = uint(m_size); TRE_ASSERT(m_size <= std::numeric_limits<uint>::max());
+  header[3] = uint(m_offset); TRE_ASSERT(m_offset <= std::numeric_limits<uint>::max());
+  outbuffer.write(reinterpret_cast<const char*>(&header[0]), sizeof(header));
+  if (!m_name.empty()) outbuffer.write(m_name.c_str(), sizeof(char) * m_name.size());
   m_bbox.write(outbuffer);
   return true;
 }
@@ -549,10 +552,11 @@ bool model::readBase(std::istream &inbuffer)
 {
   bool result = true;
 
-  std::size_t partInfoSize;
-  inbuffer.read(reinterpret_cast<char*>(&partInfoSize), sizeof(std::size_t));
+  uint partInfoSize = 0;
+  inbuffer.read(reinterpret_cast<char*>(&partInfoSize), sizeof(uint));
 
   m_partInfo.resize(partInfoSize);
+
   for (s_partInfo & part : m_partInfo)
     result &= part.read(inbuffer);
 
@@ -563,8 +567,8 @@ bool model::writeBase(std::ostream &outbuffer) const
 {
   bool result = true;
 
-  const std::size_t partInfoSize = m_partInfo.size();
-  outbuffer.write(reinterpret_cast<const char*>(&partInfoSize), sizeof(std::size_t));
+  const uint partInfoSize = m_partInfo.size();
+  outbuffer.write(reinterpret_cast<const char*>(&partInfoSize), sizeof(uint));
 
   for (const s_partInfo & part : m_partInfo)
     result &= part.write(outbuffer);
@@ -1102,24 +1106,20 @@ void modelIndexed::resizeIndex(std::size_t count)
 
 bool modelIndexed::read_IndexBuffer(std::istream & inbuffer)
 {
-  std::size_t indexCount = 0;
-  inbuffer.read(reinterpret_cast<char*>(&indexCount), sizeof(std::size_t));
-  resizeIndex(indexCount);
-
-  std::size_t bufferSize = 0;
-  inbuffer.read(reinterpret_cast<char*>(&bufferSize), sizeof(std::size_t));
-  m_IBuffer.resize(bufferSize);
+  uint header[2]; // {indexcount, buffersize}
+  inbuffer.read(reinterpret_cast<char*>(&header[0]), sizeof(header));
+  resizeIndex(header[0]);
+  TRE_ASSERT(m_IBuffer.size() == header[1]);
   inbuffer.read(reinterpret_cast<char*>(m_IBuffer.data()), m_IBuffer.size() * sizeof(GLuint));
-
   return true;
 }
 
 bool modelIndexed::write_IndexBuffer(std::ostream & outbuffer) const
 {
-  outbuffer.write(reinterpret_cast<const char*>(&m_layout.m_indexCount), sizeof(std::size_t));
-
-  const std::size_t bufferSize = m_IBuffer.size();
-  outbuffer.write(reinterpret_cast<const char*>(&bufferSize), sizeof(std::size_t));
+  uint header[2]; // {indexcount, buffersize}
+  header[0] = m_layout.m_indexCount; TRE_ASSERT(m_layout.m_indexCount <= std::numeric_limits<uint>::max());
+  header[1] = m_IBuffer.size();
+  outbuffer.write(reinterpret_cast<const char*>(&header[0]), sizeof(header));
   outbuffer.write(reinterpret_cast<const char*>(m_IBuffer.data()), m_IBuffer.size() * sizeof(GLuint));
   return true;
 }

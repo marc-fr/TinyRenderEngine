@@ -361,7 +361,7 @@ bool profiler::loadIntoGPU(font *fontToUse)
   m_model.loadIntoGPU();
 
   m_whiteTexture = new texture();
-  m_whiteTexture->loadNewTextureWhite("profiler-white");
+  m_whiteTexture->loadWhite();
 
   return true;
 }
