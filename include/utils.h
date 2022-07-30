@@ -17,8 +17,8 @@
 
 #else
 
-#define TRE_LOG(msg)
-#define TRE_FATAL(msg)
+#define TRE_LOG(msg) {}
+#define TRE_FATAL(msg) { abort(); }
 
 #endif
 
