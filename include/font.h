@@ -38,22 +38,14 @@ public:
     s_charInfo() : flag(0) {}
   };
 
-  struct s_charKerning
-  {
-    char charLeft, charRight;
-    uint ggTODO; // TODO
-  };
-
   struct s_fontMap
   {
-    uint                        m_fsize = 0; ///< size of the font (in pixels)
-    float                       m_hline;     ///< height of a line (in UV-space)
-    std::array<s_charInfo, 128> m_charMap;   ///< char info (in UV-space)
+    uint                        m_fsize = 0;   ///< size of the font (in pixels)
+    float                       m_hline = 0.f; ///< height of a line (in UV-space)
+    std::array<s_charInfo, 256> m_charMap;     ///< char info (in UV-space). [0-127] encodes the ASCII characters. [128-255] encodes the Latin-1 extension characters.
 
     void read(std::istream & inbuffer);
     void write(std::ostream & outbuffer) const;
-
-    const s_charInfo &get_charMap(char c) const { TRE_ASSERT(c < m_charMap.size()); return m_charMap[c]; }
   };
 
   /// @name I/O

@@ -135,7 +135,6 @@ void baseUI::clear()
   }
   windowsList.clear();
   m_model.clearParts();
-  m_textgen.clearTexts();
 }
 
 // baseUI methods : GPU interface =============================================
@@ -193,7 +192,6 @@ void baseUI::clearShader()
 void baseUI::createData()
 {
   m_model.clearParts();
-  m_textgen.clearTexts();
 
   for (ui::window * curwin : windowsList)
   {
@@ -261,10 +259,8 @@ void baseUI2D::draw() const
 
     if (curwin->m_adrText.pcount != 0)
     {
-      const uint textId = curwin->m_adrText.part;
-
-      glBindTexture(GL_TEXTURE_2D,m_textgen.get_font(textId)->get_texture().m_handle); // We assume that texts are using the same font.
-      m_model.drawcall(m_textgen.get_partId(textId), curwin->m_adrText.pcount); // We assume that m_textgen created the part in the model continuously
+      glBindTexture(GL_TEXTURE_2D,m_defaultFont->get_texture().m_handle); // We assume that texts are using the same font.
+      m_model.drawcall(curwin->m_adrText.part, curwin->m_adrText.pcount); // We assume that m_textgen created the part in the model continuously
 
       isFirstDraw = false;
     }
@@ -486,10 +482,8 @@ void baseUI3D::draw() const
 
     if (curwin->m_adrText.pcount != 0)
     {
-      const uint textId = curwin->m_adrText.part;
-
-      glBindTexture(GL_TEXTURE_2D,m_textgen.get_font(textId)->get_texture().m_handle); // We assume that texts are using the same font.
-      m_model.drawcall(m_textgen.get_partId(textId), curwin->m_adrText.pcount); // We assume that m_textgen created the part in the model continuously
+      glBindTexture(GL_TEXTURE_2D,m_defaultFont->get_texture().m_handle); // We assume that texts are using the same font.
+      m_model.drawcall(curwin->m_adrText.part, curwin->m_adrText.pcount); // We assume that m_textgen created the part in the model continuously
 
       isFirstDraw = false;
     }

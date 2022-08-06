@@ -23,7 +23,7 @@ void widgetTextTitle::compute_data()
   wwithbackground = false;
   widgetText::compute_data();
   // process
-  auto & objsolid = get_parentUI()->getDrawObject_Box();
+  auto & objsolid = get_parentUI()->getDrawModel();
   const uint vertexOffsetLocal = m_adSolid.offset; // + widgetText::get_vcountSolid();
 
   const float sepY = 0.35f * wzone.y + 0.65f * wzone.w;
@@ -206,8 +206,7 @@ void window::clear()
 void window::compute_adressPlage()
 {
   // compute count and adress-plage
-  auto & model   = get_parentUI()->getDrawObject_Box();
-  auto & textgen = get_parentUI()->getDrawObject_Text();
+  auto & model   = get_parentUI()->getDrawModel();
 
   // -> for solid
   {
@@ -296,7 +295,8 @@ void window::compute_adressPlage()
       if (cell.m_widget == nullptr) continue;
       const uint txtLocalCount = cell.m_widget->get_countText();
       if (txtLocalCount == 0) continue;
-      cell.m_widget->m_adrText.part   = textgen.createTexts(txtLocalCount, &model);
+      TRE_ASSERT(txtLocalCount == 1);
+      cell.m_widget->m_adrText.part   = model.createPart(0);
       cell.m_widget->m_adrText.offset = 0;
       if (txtCount == 0) m_adrText.part = cell.m_widget->m_adrText.part;
       TRE_ASSERT(cell.m_widget->m_adrText.part == m_adrText.part + txtCount); // the adress-plage must be contiguous
@@ -305,7 +305,8 @@ void window::compute_adressPlage()
     if (wTopBar != nullptr && wTopBar->get_countText() != 0)
     {
       const uint txtLocalCount = wTopBar->get_countText();
-      wTopBar->m_adrText.part   = textgen.createTexts(txtLocalCount, &model);
+      TRE_ASSERT(txtLocalCount == 1);
+      wTopBar->m_adrText.part   = model.createPart(0);
       wTopBar->m_adrText.offset = 0;
       if (txtCount == 0) m_adrText.part = wTopBar->m_adrText.part;
       TRE_ASSERT(wTopBar->m_adrText.part == m_adrText.part + txtCount); // the adress-plage must be contiguous
@@ -314,7 +315,8 @@ void window::compute_adressPlage()
     if (wCloseButton != nullptr && wCloseButton->get_countText() != 0)
     {
       const uint txtLocalCount = wCloseButton->get_countText();
-      wCloseButton->m_adrText.part   = textgen.createTexts(txtLocalCount, &model);
+      TRE_ASSERT(txtLocalCount == 1);
+      wCloseButton->m_adrText.part   = model.createPart(0);
       wCloseButton->m_adrText.offset = 0;
       if (txtCount == 0) m_adrText.part = wCloseButton->m_adrText.part;
       TRE_ASSERT(wCloseButton->m_adrText.part == m_adrText.part + txtCount); // the adress-plage must be contiguous
@@ -440,7 +442,7 @@ void window::compute_data()
 
   const glm::vec4 colorBase = wcolortheme.resolveColor(wcolor, resolve_colorModifier()) * wcolormask;
 
-  auto & objsolid = get_parentUI()->getDrawObject_Box();
+  auto & objsolid = get_parentUI()->getDrawModel();
 
   objsolid.fillDataRectangle(m_adSolid.part, 0, wzone, colorBase, glm::vec4(0.f));
 

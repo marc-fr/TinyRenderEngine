@@ -43,7 +43,7 @@ public:
 
   void compute_data() override
   {
-    auto & objsolid = get_parentUI()->getDrawObject_Box();
+    auto & objsolid = get_parentUI()->getDrawModel();
 
     objsolid.fillDataRectangle(m_adSolid.part, m_adSolid.offset + 0, wzone, glm::vec4(0.f), glm::vec4(0.f));
 
@@ -88,7 +88,7 @@ public:
   {
     tre::ui::widgetPicture::compute_data();
 
-    auto & objsolid = get_parentUI()->getDrawObject_Box();
+    auto & objsolid = get_parentUI()->getDrawModel();
     const uint adPart = m_adrLine.part;
     const uint adOffset = m_adrLine.offset + tre::ui::widgetPicture::get_vcountLine();
 

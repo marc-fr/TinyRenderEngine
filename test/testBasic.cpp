@@ -53,7 +53,6 @@ static tre::modelStaticIndexed3D meshSkyBox;
 #ifdef TEST_WITH_FPS
 static tre::shader        shaderFps;
 static tre::font          font;
-static tre::textgenerator texGenerator;
 static tre::modelRaw2D    meshFps;
 #endif
 
@@ -216,9 +215,7 @@ static int app_init()
     tre::font::loadFromBMPandFNT(TESTIMPORTPATH "resources/font_arial_88", surf, map);
     font.load({surf}, {map}, true);
   }
-  texGenerator.createTexts(1, &meshFps);
-  texGenerator.updateText_font(0, &font);
-  texGenerator.updateText_fontsize(0, 0.05f);
+  meshFps.createPart(128);
 #endif
 
   tre::IsOpenGLok("app_init: load textures");
@@ -440,9 +437,10 @@ static void app_update()
                int(1.f/myWindow.m_timing.frametime),
                int(myWindow.m_timing.worktime * 1000),
                int((myWindow.m_timing.frametime - myWindow.m_timing.worktime) * 1000));
-      texGenerator.updateText_txt(0, txtFPS);
-      texGenerator.updateText_color(0,glm::vec4(1.f,1.f,1.f,1.f));
-      texGenerator.computeModelData();
+      tre::textgenerator::s_textInfo tInfo;
+      tInfo.setupBasic(&font, 0.05f, txtFPS);
+      meshFps.resizePart(0, tre::textgenerator::geometry_VertexCount(tInfo.m_text));
+      tre::textgenerator::generate(tInfo, &meshFps, 0, 0, nullptr);
       meshFps.updateIntoGPU();
 
       glm::mat3 mViewModel_hud = glm::mat3(1.f);
@@ -501,7 +499,6 @@ static void app_quit()
 #ifdef TEST_WITH_FPS
   shaderFps.clearShader();
   font.clear();
-  texGenerator.clearTexts();
   meshFps.clearGPU();
 #endif
 

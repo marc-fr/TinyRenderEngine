@@ -80,25 +80,20 @@ uint widgetText::get_countText() const { return 1; }
 const texture* widgetText::get_textureSlot() const { return nullptr; }
 glm::vec2 widgetText::get_zoneSizeDefault() const
 {
-  auto & objtext  = get_parentUI()->getDrawObject_Text();
-
   const float fsize = wfontsizeModifier * get_parentWindow()->resolve_sizeH(get_parentWindow()->get_fontSize());
 
-  // check if "m_adrText.part" is valid. Else use a dummy adress.
-  objtext.updateText_font(m_adrText.part, get_parentUI()->get_defaultFont());
-  objtext.updateText_fontsize(m_adrText.part, fsize);
-  objtext.updateText_txt(m_adrText.part, wtext);
-  if (get_parentUI()->get_dimension() == 2)
-    objtext.updateText_pixelSize(m_adrText.part, get_parentWindow()->resolve_sizeWH(s_size::ONE_PIXEL));
+  textgenerator::s_textInfo tInfo;
+  textgenerator::s_textInfoOut tOut;
+  tInfo.setupBasic(get_parentUI()->get_defaultFont(), fsize, wtext);
+  tInfo.m_pixelSize = get_parentWindow()->resolve_sizeWH(s_size::ONE_PIXEL);
 
-  objtext.computeModelData(m_adrText.part); // tmp scafolding
+  textgenerator::generate(tInfo, nullptr, 0, 0, &tOut);
 
-  return objtext.get_maxboxsize(m_adrText.part);
+  return tOut.m_maxboxsize;
 }
 void widgetText::compute_data()
 {
-  auto & objsolid = get_parentUI()->getDrawObject_Box();
-  auto & objtext  = get_parentUI()->getDrawObject_Text();
+  auto & objsolid = get_parentUI()->getDrawModel();
 
   const glm::vec4 colorFront = resolve_color();
   const glm::vec4 colorParent = get_parent()->resolve_color();
@@ -128,15 +123,15 @@ void widgetText::compute_data()
 
   const float fsize = wfontsizeModifier * get_parentWindow()->resolve_sizeH(get_parentWindow()->get_fontSize());
 
-  objtext.updateText_box(m_adrText.part,wzone.x,wzone.y,wzone.z,wzone.w);
+  objsolid.resizePart(m_adrText.part, textgenerator::geometry_VertexCount(wtext));
 
-  objtext.updateText_font(m_adrText.part, get_parentUI()->get_defaultFont());
-  objtext.updateText_fontsize(m_adrText.part, fsize);
-  objtext.updateText_txt(m_adrText.part, wtext);
-  if (get_parentUI()->get_dimension() == 2)
-    objtext.updateText_pixelSize(m_adrText.part, get_parentWindow()->resolve_sizeWH(s_size::ONE_PIXEL));
+  textgenerator::s_textInfo tInfo;
+  tInfo.setupBasic(get_parentUI()->get_defaultFont(), fsize, wtext);
+  tInfo.m_zone = glm::vec4(wzone.x,wzone.y,wzone.z,wzone.w);
+  tInfo.m_color = colorFront;
+  tInfo.m_pixelSize = get_parentWindow()->resolve_sizeWH(s_size::ONE_PIXEL);
 
-  objtext.updateText_color(m_adrText.part,colorFront);
+  textgenerator::generate(tInfo, &objsolid, m_adrText.part, m_adrText.offset, nullptr);
 }
 void widgetText::acceptEvent(s_eventIntern &event)
 {
@@ -147,13 +142,11 @@ void widgetText::acceptEvent(s_eventIntern &event)
 // widgetTextEdit =============================================================
 
 uint widgetTextEdit::get_vcountSolid() const { return widgetText::get_vcountSolid() + 6; }
-uint widgetTextEdit::get_countText() const { return 2; }
 void widgetTextEdit::compute_data()
 {
   widgetText::compute_data();
 
-  auto & objsolid = get_parentUI()->getDrawObject_Box();
-  auto & objtext  = get_parentUI()->getDrawObject_Text();
+  auto & objsolid = get_parentUI()->getDrawModel();
 
   // dummy text to compute the cursor position
 
@@ -174,16 +167,12 @@ void widgetTextEdit::compute_data()
     }
   }
 
-  objtext.updateText_font(m_adrText.part + 1, get_parentUI()->get_defaultFont());
-  objtext.updateText_fontsize(m_adrText.part + 1, fsize);
-  objtext.updateText_txt(m_adrText.part + 1, txtDummy);
-  if (get_parentUI()->get_dimension() == 2)
-    objtext.updateText_pixelSize(m_adrText.part + 1, pxsize);
-  objtext.updateText_color(m_adrText.part + 1, glm::vec4(0.f));
-
-  objtext.computeModelData(m_adrText.part + 1); // tmp scafolding
-
-  const glm::vec2 textDim = objtext.get_maxboxsize(m_adrText.part + 1);
+  textgenerator::s_textInfo tInfo;
+  textgenerator::s_textInfoOut tOut;
+  tInfo.setupBasic(get_parentUI()->get_defaultFont(), fsize, txtDummy);
+  tInfo.m_pixelSize = pxsize;
+  textgenerator::generate(tInfo, nullptr, 0, 0, &tOut);
+  const glm::vec2 textDim = tOut.m_maxboxsize;
 
   // draw cursor
 
@@ -347,7 +336,7 @@ glm::vec2 widgetPicture::get_zoneSizeDefault() const
 }
 void widgetPicture::compute_data()
 {
-  auto & objsolid = get_parentUI()->getDrawObject_Box();
+  auto & objsolid = get_parentUI()->getDrawModel();
 
   const glm::vec4 uvSwap = glm::vec4(wtexUV.x, wtexUV.w, wtexUV.z, wtexUV.y);
 
@@ -373,7 +362,7 @@ glm::vec2 widgetBar::get_zoneSizeDefault() const
 }
 void widgetBar::compute_data()
 {
-  auto & objsolid = get_parentUI()->getDrawObject_Box();
+  auto & objsolid = get_parentUI()->getDrawModel();
 
   const glm::vec4 colorFront = resolve_color();
   const glm::vec4 colorParent = get_parent()->resolve_color();
@@ -415,25 +404,29 @@ void widgetBar::compute_data()
   }
   if (wwithtext)
   {
-    auto & objtext = get_parentUI()->getDrawObject_Text();
-
     char curtxt[16];
     std::snprintf(curtxt, 15, "%.3f", wvalue);
     curtxt[15] = 0;
 
-    objtext.updateText_box(m_adrText.part,wzone.x,wzone.y,wzone.z,wzone.w);
-    objtext.updateText_fontsize(m_adrText.part, wzone.w-wzone.y);
-    objtext.updateText_font(m_adrText.part, get_parentUI()->get_defaultFont());
-    objtext.updateText_txt(m_adrText.part, curtxt);
+    textgenerator::s_textInfo tInfo;
+    textgenerator::s_textInfoOut tOut;
+    tInfo.setupBasic(get_parentUI()->get_defaultFont(), wzone.w-wzone.y, curtxt);
+    tInfo.m_pixelSize = get_parentWindow()->resolve_sizeWH(s_size::ONE_PIXEL);
+    tInfo.m_zone = wzone;
+    textgenerator::generate(tInfo, nullptr, 0, 0, &tOut);
 
-    const glm::vec2 txtSize = objtext.get_maxboxsize(m_adrText.part);
+    const glm::vec2 txtSize = tOut.m_maxboxsize;
     if (txtSize.x < wzone.z - wzone.x)
     {
       const float centerX = 0.5f * (wzone.z + wzone.x);
-      objtext.updateText_box(m_adrText.part, centerX - 0.5f * txtSize.x,wzone.y, centerX + 0.6f * txtSize.x, wzone.w);
+      tInfo.m_zone = glm::vec4(centerX - 0.5f * txtSize.x,wzone.y, centerX + 0.6f * txtSize.x, wzone.w);
     }
 
-    objtext.updateText_color(m_adrText.part, colorInv);
+    tInfo.m_color = colorInv;
+
+    objsolid.resizePart(m_adrText.part, textgenerator::geometry_VertexCount(curtxt));
+
+    textgenerator::generate(tInfo, &objsolid, m_adrText.part, m_adrText.offset, nullptr);
   }
 }
 void widgetBar::acceptEvent(s_eventIntern &event)
@@ -477,7 +470,7 @@ void widgetBarZero::compute_data()
 {
   widgetBar::compute_data();
 
-  auto & objsolid = get_parentUI()->getDrawObject_Box();
+  auto & objsolid = get_parentUI()->getDrawModel();
 
   const glm::vec4 colorFront = resolve_color();
   const glm::vec4 colorZero = inverseColor(colorFront, COLORTHEME_SATURATION);
@@ -507,7 +500,7 @@ glm::vec2 widgetBoxCheck::get_zoneSizeDefault() const
 }
 void widgetBoxCheck::compute_data()
 {
-  auto & objsolid = get_parentUI()->getDrawObject_Box();
+  auto & objsolid = get_parentUI()->getDrawModel();
 
   const glm::vec2 center( 0.5f*(wzone.x+wzone.z),
                           0.5f*(wzone.y+wzone.w));
@@ -585,24 +578,20 @@ glm::vec2 widgetLineChoice::get_zoneSizeDefault() const
   }
 
   // check if "m_adrText.part" is valid. Else use a dummy adress.
-  auto & objtext  = get_parentUI()->getDrawObject_Text();
 
-  objtext.updateText_font(m_adrText.part, get_parentUI()->get_defaultFont());
-  objtext.updateText_fontsize(m_adrText.part, fsize);
-  objtext.updateText_txt(m_adrText.part, wvalues[textMaxId]);
-  if (get_parentUI()->get_dimension() == 2)
-    objtext.updateText_pixelSize(m_adrText.part, get_parentWindow()->resolve_sizeWH(s_size::ONE_PIXEL));
+  textgenerator::s_textInfo tInfo;
+  textgenerator::s_textInfoOut tOut;
+  tInfo.setupBasic(get_parentUI()->get_defaultFont(), fsize, wvalues[textMaxId]);
+  tInfo.m_pixelSize = get_parentWindow()->resolve_sizeWH(s_size::ONE_PIXEL);
+  textgenerator::generate(tInfo, nullptr, 0, 0, &tOut);
 
-  const glm::vec2 textSize = objtext.get_maxboxsize(m_adrText.part);
-
-  objtext.updateText_txt(m_adrText.part, wvalues[wselectedIndex]);
+  const glm::vec2 textSize = tOut.m_maxboxsize;
 
   return glm::vec2(textSize.x + fsize * 3.f, fsize);
 }
 void widgetLineChoice::compute_data()
 {
-  auto & objsolid = get_parentUI()->getDrawObject_Box();
-  auto & objtext  = get_parentUI()->getDrawObject_Text();
+  auto & objsolid = get_parentUI()->getDrawModel();
 
   const glm::vec4 colorFront = resolve_color();
 
@@ -635,18 +624,23 @@ void widgetLineChoice::compute_data()
 
   const float fsize = get_parentWindow()->resolve_sizeH(get_parentWindow()->get_fontSize());
 
-  objtext.updateText_font(m_adrText.part, get_parentUI()->get_defaultFont());
-  objtext.updateText_fontsize(m_adrText.part, fsize);
-  objtext.updateText_txt(m_adrText.part, wvalues[wselectedIndex]);
-  if (get_parentUI()->get_dimension() == 2)
-    objtext.updateText_pixelSize(m_adrText.part, get_parentWindow()->resolve_sizeWH(s_size::ONE_PIXEL));
+  textgenerator::s_textInfo tInfo;
+  textgenerator::s_textInfoOut tOut;
+
+  tInfo.setupBasic(get_parentUI()->get_defaultFont(), fsize, wvalues[wselectedIndex]);
+  tInfo.m_pixelSize = get_parentWindow()->resolve_sizeWH(s_size::ONE_PIXEL);
+
+  textgenerator::generate(tInfo, nullptr, 0, 0, &tOut);
 
   const float xCenter = 0.5f * (wzone.x + wzone.z);
-  const glm::vec2 textSize = objtext.get_maxboxsize(m_adrText.part);
+  const glm::vec2 textSize = tOut.m_maxboxsize;
+  tInfo.m_zone = glm::vec4(xCenter - 0.5f * textSize.x, wzone.y, xCenter + 0.6f * textSize.x, wzone.w);
 
-  objtext.updateText_box(m_adrText.part,xCenter - 0.5f * textSize.x, wzone.y, xCenter + 0.6f * textSize.x, wzone.w);
+  tInfo.m_color = colorFront;
 
-  objtext.updateText_color(m_adrText.part,colorFront);
+  objsolid.resizePart(m_adrText.part, textgenerator::geometry_VertexCount(tInfo.m_text));
+
+  textgenerator::generate(tInfo, &objsolid, m_adrText.part, m_adrText.offset, nullptr);
 }
 void widgetLineChoice::acceptEvent(s_eventIntern &event)
 {

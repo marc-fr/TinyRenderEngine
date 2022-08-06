@@ -38,7 +38,15 @@ public:
   }
   unsigned get_pickedFontSizePixel() const
   {
-    return get_parentUI()->getDrawObject_Text().get_pickedFontSizePixel(m_adrText.part);
+    tre::textgenerator::s_textInfo tInfo;
+    tInfo.setupBasic(get_parentUI()->get_defaultFont(), get_parentWindow()->resolve_sizeH(get_parentWindow()->get_fontSize()), ".");
+    tInfo.m_pixelSize = get_parentWindow()->resolve_sizeWH(tre::ui::s_size::ONE_PIXEL);
+
+    tre::textgenerator::s_textInfoOut tOut;
+
+    tre::textgenerator::generate(tInfo, nullptr, 0, 0, &tOut);
+
+    return tOut.m_choosenFontSizePixel;
   }
 };
 
@@ -63,7 +71,7 @@ public:
   }
   virtual void compute_data() override
   {
-    auto & objsolid = get_parentUI()->getDrawObject_Box();
+    auto & objsolid = get_parentUI()->getDrawModel();
 
     objsolid.fillDataRectangle(m_adSolid.part, m_adSolid.offset, wzone, wcolor, glm::vec4(0.f));
   }
@@ -577,7 +585,7 @@ int main(int argc, char **argv)
     for (std::size_t i = 0; i < 3; ++i)
     {
       if (!tre::font::loadFromTTF(TESTIMPORTPATH "resources/DejaVuSans.ttf", fSizes[i], surfs[i], maps[i]))
-        tre::font::loadProceduralLed(fSizes[i], 0, surfs[i], maps[i]);
+        tre::font::loadProceduralLed(i * 2 + 1, 0, surfs[i], maps[i]);
     }
     texFont.load(surfs, maps, true);
   }

@@ -268,7 +268,6 @@ public:
   virtual ~widgetTextEdit() {}
 
   virtual uint get_vcountSolid() const override;
-  virtual uint get_countText() const override;
   virtual void compute_data() override;
   virtual void acceptEvent(s_eventIntern &event) override;
   virtual void animate(float dt) override;
@@ -529,8 +528,7 @@ public:
   void updateIntoGPU(); ///< Update data into GPU ("loadIntoGPU" must be called before using this method)
   void clearGPU(); ///< Clean GPU data and handlers
 
-  modelRaw2D    & getDrawObject_Box () { return m_model;  }
-  textgenerator & getDrawObject_Text() { return m_textgen; }
+  modelRaw2D    & getDrawModel () { return m_model;  }
 
   virtual bool loadShader(shader *shaderToUse = nullptr) = 0;
   void clearShader();
@@ -540,7 +538,6 @@ protected:
   void updateData(); ///< Update RAM data, that will be synchronized on the GPU
 
   modelRaw2D    m_model; ///< main mesh-model: part0: solid-boxes, part1: solid-lines, part2: pictures, part[3-...]: pictures(texts)
-  textgenerator m_textgen; /// text generator
 
   texture      *m_whiteTexture = nullptr;
 

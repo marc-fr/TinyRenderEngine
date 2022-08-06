@@ -15,11 +15,7 @@ void font::s_fontMap::read(std::istream &inbuffer)
 {
   inbuffer.read(reinterpret_cast<char*>(&m_fsize), sizeof(uint));
   inbuffer.read(reinterpret_cast<char*>(&m_hline), sizeof(float));
-
-  for (uint ichar = 0; ichar < m_charMap.size(); ++ichar)
-  {
-    inbuffer.read(reinterpret_cast<char*>(&m_charMap[ichar]), sizeof(s_charInfo));
-  }
+  inbuffer.read(reinterpret_cast<char*>(&m_charMap[0]), sizeof(s_charInfo) * m_charMap.size());
 }
 
 // ----------------------------------------------------------------------------
@@ -28,11 +24,7 @@ void font::s_fontMap::write(std::ostream &outbuffer) const
 {
   outbuffer.write(reinterpret_cast<const char*>(&m_fsize) , sizeof(uint));
   outbuffer.write(reinterpret_cast<const char*>(&m_hline) , sizeof(float));
-
-  for (uint ichar = 0; ichar < m_charMap.size(); ++ichar)
-  {
-    outbuffer.write(reinterpret_cast<const char*>(&m_charMap[ichar]) , sizeof(s_charInfo));
-  }
+  outbuffer.write(reinterpret_cast<const char*>(&m_charMap[0]) , sizeof(s_charInfo) * m_charMap.size());
 }
 
 // ============================================================================
@@ -69,7 +61,7 @@ bool font::loadFromTTF(const std::string &filename, const uint fontSizePixel, SD
   err = FT_Init_FreeType(&library);
   if (err != 0)
   {
-    TRE_LOG("font::laodFromTTF: failed to init the Free-Type library (" << FT_Error_String(err) << ")");
+    TRE_LOG("font::loadFromTTF: failed to init the Free-Type library (" << FT_Error_String(err) << ")");
     return false;
   }
 
@@ -77,7 +69,7 @@ bool font::loadFromTTF(const std::string &filename, const uint fontSizePixel, SD
   err = FT_New_Face(library, filename.c_str(), 0, &face);
   if (err != 0)
   {
-    TRE_LOG("font::laodFromTTF: failed to load the font " << filename << " (" << FT_Error_String(err) << ")");
+    TRE_LOG("font::loadFromTTF: failed to load the font " << filename << " (" << FT_Error_String(err) << ")");
     FT_Done_FreeType(library);
     return false;
   }
@@ -85,17 +77,17 @@ bool font::loadFromTTF(const std::string &filename, const uint fontSizePixel, SD
   err = FT_Set_Pixel_Sizes(face, 0, fontSizePixel);
   if (err != 0)
   {
-    TRE_LOG("font::laodFromTTF: failed to set the font-size of " << filename << " (" << FT_Error_String(err) << ")");
+    TRE_LOG("font::loadFromTTF: failed to set the font-size of " << filename << " (" << FT_Error_String(err) << ")");
     FT_Done_Face(face);
     FT_Done_FreeType(library);
     return false;
   }
 
-  const uint texSize = (6 + (fontSizePixel * 6) / 16) * 16;
+  const uint texSize = (2 + (fontSizePixel * 10) / 16) * 16;
   outSurface = SDL_CreateRGBSurface(0, texSize, texSize, 32, 0, 0, 0, 0);
   if (outSurface == nullptr)
   {
-    TRE_LOG("font::laodFromTTF: failed to create the SDL_Surface of size " << texSize);
+    TRE_LOG("font::loadFromTTF: failed to create the SDL_Surface of size " << texSize);
     FT_Done_Face(face);
     FT_Done_FreeType(library);
     return false;
@@ -114,10 +106,12 @@ bool font::loadFromTTF(const std::string &filename, const uint fontSizePixel, SD
     glm::uvec2 posGlyph = glm::uvec2(1);
     glm::uvec2 posMax = glm::uvec2(0);
 
-    for (uint ic = 32; ic < 126; ++ic)
+    uint unicode = 32;
+
+    while (unicode < 255)
     {
       // Generate bitmap
-      if (FT_Load_Char(face, ic, FT_LOAD_NO_BITMAP) == 0 &&
+      if (FT_Load_Char(face, unicode, FT_LOAD_NO_BITMAP) == 0 &&
           FT_Render_Glyph(face->glyph, FT_RENDER_MODE_NORMAL) == 0)
       {
         FT_GlyphSlot glyph = face->glyph;
@@ -130,6 +124,7 @@ bool font::loadFromTTF(const std::string &filename, const uint fontSizePixel, SD
         }
         if (posGlyph.y + sizeGlyph.y >= texSize)
         {
+          TRE_LOG("font::loadFromTTF: not enough space to contain all glyphs with font-size = " << fontSizePixel << " and texture = " << texSize << " * " << texSize);
           generationSuccess = false;
           break;
         }
@@ -145,7 +140,7 @@ bool font::loadFromTTF(const std::string &filename, const uint fontSizePixel, SD
           }
         }
         // load fontmap (keep pixel-unit for now)
-        s_charInfo &charInfo = outMap.m_charMap[ic];
+        s_charInfo &charInfo = outMap.m_charMap[unicode];
         charInfo.xadvance = glyph->advance.x / 64;
         charInfo.cax = float(posGlyph.x);
         charInfo.cay = float(posGlyph.y);
@@ -163,6 +158,9 @@ bool font::loadFromTTF(const std::string &filename, const uint fontSizePixel, SD
       //if (FT_Get_Kerning() == 0)
       //{
       //}
+      // Advance
+      ++unicode;
+      if (unicode == 127) unicode = 192;
     }
   }
 
@@ -343,7 +341,7 @@ bool font::loadProceduralLed(const uint ptSize, const uint ptMargin, SDL_Surface
 
 #ifdef TRE_DEBUG
   char textureName[32];
-  std::snprintf(textureName, 31, "Led-Font-%d-%d.bmp", ptSize, ptMargin);
+  std::snprintf(textureName, 31, "Led-Font-pt%d-margin%d.bmp", ptSize, ptMargin);
   textureName[31] = '\0';
    SDL_SaveBMP(outSurface, textureName);
 #endif

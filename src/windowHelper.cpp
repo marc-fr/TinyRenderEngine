@@ -335,22 +335,27 @@ void windowHelper::s_timer::initialize()
 void windowHelper::s_timer::newFrame(const uint waitForFPS /* = 0 means no wait */, const bool isSimPaused)
 {
   const Uint32 newtime = SDL_GetTicks();
+  const Uint32 dtms = newtime - oldtime;
   if (waitForFPS > 0)
   {
-    const Uint32 dtms = 1000 / waitForFPS;
-    if (newtime < oldtime + dtms)
+    const Uint32 targetdtms = 1000 / waitForFPS;
+    if (dtms < targetdtms)
     {
-      SDL_Delay(dtms + oldtime - newtime );
+      frametime = targetdtms * 1.e-3f;
+      SDL_Delay(targetdtms + dtms);
     }
     else
     {
-      TRE_LOG("The program is lagging !!! " << dtms << " ms was exceeded : " << newtime - oldtime << " ms");
+      frametime = dtms * 1.e-3f;
+      if (dtms > targetdtms + 15)
+      {
+        TRE_LOG("The program is lagging !!! target-dt=" << targetdtms << " ms, elapsed-dt=" << dtms << " ms");
+      }
     }
-    frametime = dtms * 1.e-3f;
   }
   else
   {
-    frametime = float(newtime - oldtime) * 1.e-3f;
+    frametime = dtms * 1.e-3f;
   }
   frametime_average = 0.9f * frametime_average + 0.1f * frametime;
   if (!isSimPaused) scenetime += frametime;

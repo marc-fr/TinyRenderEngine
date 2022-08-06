@@ -162,7 +162,6 @@ protected:
   void compute_data();
 
 private:
-  textgenerator m_textgenerator;
   font          *m_font = nullptr;
   texture       *m_whiteTexture = nullptr;
   modelRaw2D    m_model;
@@ -171,8 +170,7 @@ private:
 
   uint m_partTri;
   uint m_partLine;
-  uint m_textFirstId;
-  uint m_textCountId;
+  uint m_partText;
 
   // geometry data
   const float m_xTitle   = 0.f;

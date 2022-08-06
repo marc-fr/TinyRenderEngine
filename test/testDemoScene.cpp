@@ -199,24 +199,22 @@ int main(int argc, char **argv)
     worldHUDFont.load({ surf }, { map}, true);
   }
 
-  tre::textgenerator worldHUDText;
   tre::modelRaw2D    worldHUDModel;
   {
-    const unsigned itext = worldHUDText.createTexts(5, &worldHUDModel); // it will use "worldHUDModel" to hold geom data.
-    TRE_ASSERT(itext == 0);
+    static const char* txts[5] = { "FPS",
+                                   "right clic: lock/unlock camera",
+                                   "F5: show/hide shadow maps",
+                                   "F6: enable/disable blur",
+                                   "F7: enable/disable MSAA"
+                                 };
 
     for (uint it = 0; it < 5; ++it)
     {
-      worldHUDText.updateText_box(it, 0.f, -0.08f - 0.08f * it, 2.f, 0.f - 0.08f * it);
-      worldHUDText.updateText_fontsize(it, 0.06f);
-      worldHUDText.updateText_font(it, &worldHUDFont);
-      worldHUDText.updateText_color(it, glm::vec4(1.f,1.f,1.f,1.f));
+      tre::textgenerator::s_textInfo tInfo;
+      tInfo.setupBasic(&worldHUDFont, 0.06f, txts[it], glm::vec2(0.f, -0.08f - 0.08f * it));
+      worldHUDModel.createPart(tre::textgenerator::geometry_VertexCount(tInfo.m_text));
+      tre::textgenerator::generate(tInfo, &worldHUDModel, it, 0, nullptr);
     }
-    worldHUDText.updateText_txt(0, "FPS ...");
-    worldHUDText.updateText_txt(1, "right clic: lock/unlock camera");
-    worldHUDText.updateText_txt(2, "F5: show/hide shadow maps");
-    worldHUDText.updateText_txt(3, "F6: enable/disable blur");
-    worldHUDText.updateText_txt(4, "F7: enable/disable MSAA");
 
     worldHUDModel.loadIntoGPU();
   }
@@ -555,7 +553,10 @@ int main(int argc, char **argv)
             *colIt++ = glm::vec4(1.f, 1.f, 1.f, 0.5f - plifeR * plifeR * 0.3f);
             *rotIt++ = worldParticlesBBStream.m_rot[ip].x;
           }
-          worldParticlesBB.updateIntoGPU();
+          {
+            TRE_PROFILEDSCOPE("upload", upload);
+            worldParticlesBB.updateIntoGPU();
+          }
         }
         {
           const std::size_t nParticleToDraw = worldParticlesMeshStream.size();
@@ -580,7 +581,10 @@ int main(int argc, char **argv)
             *bufferX4++ = glm::vec4(qxy2 + qw2.z       , 1.f - qq2.x - qq2.z, qyz2 - qw2.x       , 0.f);
             *bufferX4++ = glm::vec4(qxz2 - qw2.y       , qyz2 + qw2.x       , 1.f - qq2.x - qq2.y, 0.f);
           }
-          worldParticlesMesh.updateIntoGPU();
+          {
+            TRE_PROFILEDSCOPE("upload", upload);
+            worldParticlesMesh.updateIntoGPU();
+          }
         }
       }
     }
@@ -853,7 +857,7 @@ int main(int argc, char **argv)
     // post-effects ----------------
 
     {
-      //TRE_PROFILEDSCOPE("postFX", render)
+      TRE_PROFILEDSCOPE("postFX (cpu cost)", postFX)
 
       if (withBlur)
       {
@@ -919,13 +923,15 @@ int main(int argc, char **argv)
                  int(1.f/myWindow.m_timing.frametime),
                  int(myWindow.m_timing.worktime * 1000),
                  int((myWindow.m_timing.frametime - myWindow.m_timing.worktime) * 1000));
-        worldHUDText.updateText_txt(0, txtFPS);
+        tre::textgenerator::s_textInfo tInfo;
+        tInfo.setupBasic(&worldHUDFont, 0.06f, txtFPS, glm::vec2(0.f, -0.08f - 0.08f * 0));
+        worldHUDModel.resizePart(0, tre::textgenerator::geometry_VertexCount(tInfo.m_text));
+        tre::textgenerator::generate(tInfo, &worldHUDModel, 0, 0, nullptr);
 
-        worldHUDText.updateText_color(2, showShadowMaps ? glm::vec4(0.f, 1.f, 0.f, 1.f) : glm::vec4(0.8f));
-        worldHUDText.updateText_color(3, withBlur ? glm::vec4(0.f, 1.f, 0.f, 1.f) : glm::vec4(0.8f));
-        worldHUDText.updateText_color(4, canMSAA ? (withMSAA ? glm::vec4(0.f, 1.f, 0.f, 1.f) : glm::vec4(0.8f)) : glm::vec4(1.f, 0.3f, 0.3f, 1.f));
+        worldHUDModel.colorizePart(2, showShadowMaps ? glm::vec4(0.f, 1.f, 0.f, 1.f) : glm::vec4(0.8f));
+        worldHUDModel.colorizePart(3, withBlur ? glm::vec4(0.f, 1.f, 0.f, 1.f) : glm::vec4(0.8f));
+        worldHUDModel.colorizePart(4, canMSAA ? (withMSAA ? glm::vec4(0.f, 1.f, 0.f, 1.f) : glm::vec4(0.8f)) : glm::vec4(1.f, 0.3f, 0.3f, 1.f));
 
-        worldHUDText.computeModelData();
         worldHUDModel.updateIntoGPU();
 
         glm::mat3 mViewModel_hud = glm::mat3(1.f);

@@ -204,8 +204,6 @@ public:
 protected:
   GLuint m_VAO = 0; ///< OpenGL handle (VAO)
   /// @}
-
-friend class textgenerator;
 };
 
 //=============================================================================

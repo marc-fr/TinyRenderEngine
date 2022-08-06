@@ -344,10 +344,7 @@ void profiler::draw() const
 
   glBindTexture(GL_TEXTURE_2D, m_font->get_texture().m_handle);
 
-  for (uint itext = 0; itext < m_textCountId; ++itext)
-  {
-    m_model.drawcall(m_textgenerator.get_partId(m_textFirstId + itext), 1, (itext == 0));
-  }
+  m_model.drawcall(m_partText, 1, false);
 }
 
 bool profiler::loadIntoGPU(font *fontToUse)
@@ -375,8 +372,6 @@ void profiler::updateIntoGPU()
 
   compute_data();
 
-  m_textgenerator.computeModelData();
-
   m_model.updateIntoGPU();
 }
 
@@ -385,8 +380,6 @@ void profiler::clearGPU()
   m_font = nullptr;
 
   m_model.clearGPU();
-
-  m_textgenerator.clearTexts();
 
   m_whiteTexture->clear();
   delete m_whiteTexture;
@@ -425,11 +418,7 @@ void profiler::create_data()
 {
   m_partTri = m_model.createPart(1024);
   m_partLine = m_model.createPart(1024);
-  m_textFirstId = m_textgenerator.createTexts(32, &m_model); // hard-coded limit : 32 texts
-  m_textCountId = 0;
-
-  for (uint iT = 0; iT < 32; ++iT)
-    m_textgenerator.updateText_font(m_textFirstId + iT, m_font);
+  m_partText = m_model.createPart(1024);
 }
 
 void profiler::compute_data()
@@ -445,10 +434,11 @@ void profiler::compute_data()
 
   m_model.resizePart(m_partTri, m_collectedRecords.size() * 6 + ((m_hoveredRecord != -1) ? 6 : 0));
   m_model.resizePart(m_partLine, (nThread + 1 + nTime + 2 + m_collectedRecords.size() + 3 + m_timeOverFrames.size()) * 2);
+  m_model.colorizePart(m_partText, glm::vec4(0.f));
 
   uint offsetLine = 0;
   uint offsetTri = 0;
-  m_textCountId = 0; // used as an offset
+  uint offsetText = 0;
 
   // computing scales
   {
@@ -510,7 +500,7 @@ void profiler::compute_data()
     }
     const double dYlevel = m_dYthread / levelmax;
 
-    uint irec = 0;
+    int irec = 0;
     for (const s_record & rec : m_collectedRecords)
     {
       const double x0 = m_xStart + rec.m_start * m_dX / m_dTime;
@@ -520,8 +510,7 @@ void profiler::compute_data()
 
       const glm::vec4 AABB(x0, m_yStart + level * dYlevel, x1, m_yStart + (level+1) * dYlevel);
       glm::vec4 color = rec.m_color;
-      if (m_hoveredRecord == irec)
-        color = color * 0.5f + 0.5f;
+      if (m_hoveredRecord == irec) color = color * 0.5f + 0.5f;
 
       m_model.fillDataRectangle(m_partTri, offsetTri, AABB, color, glm::vec4(0.f));
 
@@ -529,17 +518,17 @@ void profiler::compute_data()
 
       offsetTri += 6;
       offsetLine += 2;
-      irec++;
+      ++irec;
     }
   }
 
   // create text
   for(uint iT = 0; iT < nThread; ++iT)
   {
-    m_textgenerator.updateText_box(m_textFirstId, m_xTitle, m_yStart + iT * m_dYthread, m_xStart, m_yStart + iT * m_dYthread + m_dYthread);
-    m_textgenerator.updateText_fontsize(m_textFirstId, m_dYthread * 0.7f);
-    m_textgenerator.updateText_txt(m_textFirstId, m_context.m_name);
-    m_textCountId += 1;
+    textgenerator::s_textInfo txtInfo;
+    txtInfo.setupBasic(m_font, m_dYthread * 0.7f, m_context.m_name, glm::vec2(m_xTitle + 0.01f, m_yStart + iT * m_dYthread + m_dYthread));
+    textgenerator::generate(txtInfo, &m_model, m_partText, offsetText, nullptr);
+    offsetText += textgenerator::geometry_VertexCount(txtInfo.m_text);
   }
   for (uint iT = 0; iT < nTime; iT += 2)
   {
@@ -548,11 +537,10 @@ void profiler::compute_data()
     char txt[16];
     std::snprintf(txt, 15, "%.f ms", t * 1000.f);
 
-    m_textgenerator.updateText_fontsize(m_textFirstId + m_textCountId, m_dYthread * 0.5f);
-    m_textgenerator.updateText_txt(m_textFirstId + m_textCountId, txt);
-    m_textgenerator.updateText_pos(m_textFirstId + m_textCountId, x - 0.5f * m_dYthread, m_yStart - 0.02f * m_dYthread);
-
-    ++m_textCountId;
+    textgenerator::s_textInfo txtInfo;
+    txtInfo.setupBasic(m_font, m_dYthread * 0.5f, txt, glm::vec2(x - 0.5f * m_dYthread, m_yStart - 0.02f * m_dYthread));
+    textgenerator::generate(txtInfo, &m_model, m_partText, offsetText, nullptr);
+    offsetText += textgenerator::geometry_VertexCount(txtInfo.m_text);
   }
 
   // create graph-zone
@@ -586,20 +574,19 @@ void profiler::compute_data()
     m_model.fillDataLine(m_partLine, offsetLine + 4, x0, y10ms, xN, y10ms, glm::vec4(1.f, expf(-1.0f), expf(-6.0f), 0.4f));
     offsetLine += 6;
 
-    m_textgenerator.updateText_fontsize(m_textFirstId + m_textCountId, m_dYthread * 0.7f);
-    m_textgenerator.updateText_txt(m_textFirstId + m_textCountId, "frame");
-    m_textgenerator.updateText_pos(m_textFirstId + m_textCountId, m_xTitle, y0 + m_dYthread * 0.5f);
-    ++m_textCountId;
+    textgenerator::s_textInfo txtInfo;
 
-    m_textgenerator.updateText_fontsize(m_textFirstId + m_textCountId, m_dYthread * 0.5f);
-    m_textgenerator.updateText_txt(m_textFirstId + m_textCountId, "1ms");
-    m_textgenerator.updateText_pos(m_textFirstId + m_textCountId, x0 - 1.5f * m_dYthread, y1ms + m_dYthread * 0.25f);
-    ++m_textCountId;
+    txtInfo.setupBasic(m_font, m_dYthread * 0.7f, "frame", glm::vec2(m_xTitle, y0 + m_dYthread * 0.5));
+    textgenerator::generate(txtInfo, &m_model, m_partText, offsetText, nullptr);
+    offsetText += textgenerator::geometry_VertexCount(txtInfo.m_text);
 
-    m_textgenerator.updateText_fontsize(m_textFirstId + m_textCountId, m_dYthread * 0.5f);
-    m_textgenerator.updateText_txt(m_textFirstId + m_textCountId, "10ms");
-    m_textgenerator.updateText_pos(m_textFirstId + m_textCountId, x0 - 1.5f * m_dYthread, y10ms + m_dYthread * 0.25f);
-    ++m_textCountId;
+    txtInfo.setupBasic(m_font, m_dYthread * 0.5f, "1ms", glm::vec2(x0 - 1.5f * m_dYthread, y1ms + m_dYthread * 0.25f));
+    textgenerator::generate(txtInfo, &m_model, m_partText, offsetText, nullptr);
+    offsetText += textgenerator::geometry_VertexCount(txtInfo.m_text);
+
+    txtInfo.setupBasic(m_font, m_dYthread * 0.5f, "10ms", glm::vec2(x0 - 1.5f * m_dYthread, y10ms + m_dYthread * 0.25f));
+    textgenerator::generate(txtInfo, &m_model, m_partText, offsetText, nullptr);
+    offsetText += textgenerator::geometry_VertexCount(txtInfo.m_text);
   }
 
   // create tooltip
@@ -618,32 +605,32 @@ void profiler::compute_data()
       }
     }
 
-    m_textgenerator.updateText_fontsize(m_textFirstId + m_textCountId, m_dYthread * 0.7f);
-    {
-      std::string txt = hrec.m_path.front();
-      for (uint i = 1 ; i < hrec.length(); ++i)
-        txt += '/' + hrec.m_path[i];
-      char txtT[128];
-      std::snprintf(txtT, 127, "\n%.3f ms (mean: %.3f ms)",
-                    int(hrec.m_duration*1000000)*0.001f,
-                    mrec == nullptr ? 0.f : int(mrec->m_duration*1000000)*0.001f);
-      txt += txtT;
-      m_textgenerator.updateText_txt(m_textFirstId + m_textCountId, txt);
-    }
-    m_textgenerator.updateText_color(m_textFirstId + m_textCountId, glm::vec4(1.f));
+    std::string txt = hrec.m_path.front();
+    for (uint i = 1 ; i < hrec.length(); ++i)
+      txt += '/' + hrec.m_path[i];
+    char txtT[128];
+    std::snprintf(txtT, 127, "\n%.3f ms (mean: %.3f ms)",
+                  int(hrec.m_duration*1000000)*0.001f,
+                  mrec == nullptr ? 0.f : int(mrec->m_duration*1000000)*0.001f);
+    txt += txtT;
 
-    const glm::vec2 bsize = m_textgenerator.get_maxboxsize(m_textFirstId + m_textCountId);
+    textgenerator::s_textInfo txtInfo;
+    txtInfo.setupBasic(m_font, m_dYthread * 0.7f, txt);
 
-    m_textgenerator.updateText_pos(m_textFirstId + m_textCountId, m_mousePosition.x, m_mousePosition.y + bsize.y);
+    textgenerator::s_textInfoOut txtInfoOut;
+    textgenerator::generate(txtInfo, nullptr, 0, 0, &txtInfoOut); // without mesh
+
+    txtInfo.m_zone = glm::vec4(m_mousePosition.x, m_mousePosition.y + txtInfoOut.m_maxboxsize.y,
+                               m_mousePosition.x, m_mousePosition.y + txtInfoOut.m_maxboxsize.y);
+
+    textgenerator::generate(txtInfo, &m_model, m_partText, offsetText, nullptr);
+    offsetText += textgenerator::geometry_VertexCount(txtInfo.m_text);
+
 
     const glm::vec4 AABB(m_mousePosition.x, m_mousePosition.y,
-                         m_mousePosition.x + bsize.x, m_mousePosition.y + bsize.y);
+                         m_mousePosition.x + txtInfoOut.m_maxboxsize.x, m_mousePosition.y + txtInfoOut.m_maxboxsize.y);
 
-    const glm::vec4 color(0.f, 0.f, 0.f, 0.7f);
-
-    m_model.fillDataRectangle(m_partTri, m_collectedRecords.size() * 6, AABB, color, glm::vec4(0.f));
-
-    ++m_textCountId;
+    m_model.fillDataRectangle(m_partTri, m_collectedRecords.size() * 6, AABB, glm::vec4(0.f, 0.f, 0.f, 0.7f), glm::vec4(0.f));
   }
 }
 
