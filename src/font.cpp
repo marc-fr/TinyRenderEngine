@@ -29,29 +29,29 @@ void font::s_fontMap::write(std::ostream &outbuffer) const
 
 // ============================================================================
 
-bool font::loadFromBMPandFNT(const std::string & filebasename, SDL_Surface* &outSurface, s_fontMap &outMap)
+font::s_fontCache font::loadFromBMPandFNT(const std::string &filebasename)
 {
   const std::string filenameBMP = filebasename + ".bmp";
   const std::string filenameFNT = filebasename + ".fnt";
 
-  outSurface = nullptr;
-  outMap = _readFNT(filenameFNT);
-  if (outMap.m_fsize == 0) // durty validity test
-    return false;
-
-  // load texture-2D
-  outSurface = texture::loadTextureFromBMP(filenameBMP);
-  if (outSurface == nullptr) return false;
-
-  return true;
+  s_fontCache ret;
+  ret.m_surface = nullptr;
+  ret.m_map = _readFNT(filenameFNT);
+  if (ret.m_map.m_fsize != 0)
+  {
+   // load texture-2D
+   ret.m_surface = texture::loadTextureFromBMP(filenameBMP);
+  }
+  return ret;
 }
 
 // ----------------------------------------------------------------------------
 
-bool font::loadFromTTF(const std::string &filename, const uint fontSizePixel, SDL_Surface* &outSurface, s_fontMap &outMap)
+font::s_fontCache font::loadFromTTF(const std::string &filename, const uint fontSizePixel)
 {
-  outSurface = nullptr;
-  outMap.m_fsize = 0;
+  s_fontCache ret;
+  ret.m_surface = nullptr;
+  ret.m_map.m_fsize = 0;
 
 #ifdef TRE_WITH_FREETYPE
 
@@ -62,7 +62,7 @@ bool font::loadFromTTF(const std::string &filename, const uint fontSizePixel, SD
   if (err != 0)
   {
     TRE_LOG("font::loadFromTTF: failed to init the Free-Type library (" << FT_Error_String(err) << ")");
-    return false;
+    return ret;
   }
 
   FT_Face face;
@@ -71,7 +71,7 @@ bool font::loadFromTTF(const std::string &filename, const uint fontSizePixel, SD
   {
     TRE_LOG("font::loadFromTTF: failed to load the font " << filename << " (" << FT_Error_String(err) << ")");
     FT_Done_FreeType(library);
-    return false;
+    return ret;
   }
 
   err = FT_Set_Pixel_Sizes(face, 0, fontSizePixel);
@@ -80,27 +80,25 @@ bool font::loadFromTTF(const std::string &filename, const uint fontSizePixel, SD
     TRE_LOG("font::loadFromTTF: failed to set the font-size of " << filename << " (" << FT_Error_String(err) << ")");
     FT_Done_Face(face);
     FT_Done_FreeType(library);
-    return false;
+    return ret;
   }
 
   const uint texSize = (2 + (fontSizePixel * 10) / 16) * 16;
-  outSurface = SDL_CreateRGBSurface(0, texSize, texSize, 32, 0, 0, 0, 0);
-  if (outSurface == nullptr)
+  ret.m_surface = SDL_CreateRGBSurface(0, texSize, texSize, 32, 0, 0, 0, 0);
+  if (ret.m_surface == nullptr)
   {
     TRE_LOG("font::loadFromTTF: failed to create the SDL_Surface of size " << texSize);
     FT_Done_Face(face);
     FT_Done_FreeType(library);
-    return false;
+    return ret;
   }
 
-  outMap.m_fsize = fontSizePixel;
-  outMap.m_hline = float(fontSizePixel);
+  ret.m_map.m_fsize = fontSizePixel;
+  ret.m_map.m_hline = float(fontSizePixel);
 
   const float faceDescent = float(face->descender) / float(face->height);
 
-  uint *outPixels = reinterpret_cast<uint*>(outSurface->pixels);
-
-  bool generationSuccess = true;
+  uint *outPixels = reinterpret_cast<uint*>(ret.m_surface->pixels);
 
   {
     glm::uvec2 posGlyph = glm::uvec2(1);
@@ -125,7 +123,6 @@ bool font::loadFromTTF(const std::string &filename, const uint fontSizePixel, SD
         if (posGlyph.y + sizeGlyph.y >= texSize)
         {
           TRE_LOG("font::loadFromTTF: not enough space to contain all glyphs with font-size = " << fontSizePixel << " and texture = " << texSize << " * " << texSize);
-          generationSuccess = false;
           break;
         }
         // convert freetype mono-bitmap into SDL_RGBA8 sub-texture
@@ -140,7 +137,7 @@ bool font::loadFromTTF(const std::string &filename, const uint fontSizePixel, SD
           }
         }
         // load fontmap (keep pixel-unit for now)
-        s_charInfo &charInfo = outMap.m_charMap[unicode];
+        s_charInfo &charInfo = ret.m_map.m_charMap[unicode];
         charInfo.xadvance = glyph->advance.x / 64;
         charInfo.cax = float(posGlyph.x);
         charInfo.cay = float(posGlyph.y);
@@ -173,13 +170,13 @@ bool font::loadFromTTF(const std::string &filename, const uint fontSizePixel, SD
   char textureName[32];
   std::snprintf(textureName, 31, "%s-%d.bmp", filename.substr(fstart).c_str(), fontSizePixel);
   textureName[31] = '\0';
-   SDL_SaveBMP(outSurface, textureName);
+   SDL_SaveBMP(ret.m_surface, textureName);
 #endif
 
-   return generationSuccess;
+   return ret;
 #else
   TRE_LOG("font::loadFromTTF: libTIFF not available, cannot load " << filename << ", ");
-  return false;
+  return s_fontCache();
 #endif
 }
 
@@ -282,7 +279,7 @@ static const s_rawGliph _kLED_gliph[_kLED_size] = { { {0x0E, 0x11, 0x11, 0x1F, 0
                                                     { {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ' '}, 0, 1 },
                                                   };
 
-bool font::loadProceduralLed(const uint ptSize, const uint ptMargin, SDL_Surface* &outSurface, s_fontMap &outMap)
+font::s_fontCache font::loadProceduralLed(const uint ptSize, const uint ptMargin)
 {
   TRE_ASSERT(ptSize != 0);
   const uint ptSpan = ptSize + ptMargin;
@@ -293,25 +290,27 @@ bool font::loadProceduralLed(const uint ptSize, const uint ptMargin, SDL_Surface
   const uint W = spanW * 8;
   const uint H = spanH * 12;
 
-  outSurface = SDL_CreateRGBSurface(0, W, H, 32, 0, 0, 0, 0);
-  if (outSurface == nullptr)
+  s_fontCache ret;
+
+  ret.m_surface = SDL_CreateRGBSurface(0, W, H, 32, 0, 0, 0, 0);
+  if (ret.m_surface == nullptr)
   {
     TRE_LOG("font::loadProceduralLed: failed to create the SDL_Surface of size " << W << " * " << H);
-    return false;
+    return ret;
   }
 
   const glm::vec2 gliphSize = glm::vec2(gliphW, gliphH);
   const glm::vec2 spanSize = glm::vec2(spanW, spanH);
 
-  outMap.m_fsize = spanH;
-  outMap.m_hline = float(spanH);
+  ret.m_map.m_fsize = spanH;
+  ret.m_map.m_hline = float(spanH);
 
-  int32_t *surfPixel = static_cast<int32_t*>(outSurface->pixels);
+  int32_t *surfPixel = static_cast<int32_t*>(ret.m_surface->pixels);
   memset(surfPixel, 0, W * H * 4 /*32bits*/);
 
   for (uint ic = 0; ic < _kLED_size; ++ic)
   {
-    s_charInfo &charInfo = outMap.m_charMap[_kLED_gliph[ic].m_keyCode[7]];
+    s_charInfo &charInfo = ret.m_map.m_charMap[_kLED_gliph[ic].m_keyCode[7]];
     const char *charCode = &_kLED_gliph[ic].m_keyCode[0];
 
     const uint px = spanW * (ic % 8);
@@ -343,34 +342,42 @@ bool font::loadProceduralLed(const uint ptSize, const uint ptMargin, SDL_Surface
   char textureName[32];
   std::snprintf(textureName, 31, "Led-Font-pt%d-margin%d.bmp", ptSize, ptMargin);
   textureName[31] = '\0';
-   SDL_SaveBMP(outSurface, textureName);
+   SDL_SaveBMP(ret.m_surface, textureName);
 #endif
 
-  return true;
+  return ret;
 }
 
 // ----------------------------------------------------------------------------
 
-bool font::load(const std::vector<SDL_Surface *> &surfaces, const std::vector<s_fontMap> &maps, const bool freeSurfaces)
+bool font::load(const std::vector<s_fontCache> &fonts, const bool freeSurfaces)
 {
-  TRE_ASSERT(!surfaces.empty())
-  TRE_ASSERT(surfaces.size() == maps.size());
+  TRE_ASSERT(!fonts.empty());
+
+  for (const auto &cache : fonts)
+  {
+    if (cache.m_surface == nullptr || cache.m_map.m_fsize == 0)
+    {
+      TRE_LOG("font::load: failed because at least one of the font-variants is invalid.");
+      return false;
+    }
+  }
 
   // merge textures
 
   std::vector<glm::ivec4> textureCoords; // {x,y,w,h}
   SDL_Surface *finalTexture = nullptr;
 
-  _packTextures(surfaces, finalTexture, textureCoords);
+  _packTextures(fonts, finalTexture, textureCoords);
 
   if (freeSurfaces)
   {
-    for (auto &s : surfaces) SDL_FreeSurface(s);
+    for (auto &s : fonts) SDL_FreeSurface(s.m_surface);
   }
 
 #ifdef TRE_DEBUG
   char textureName[32];
-  std::snprintf(textureName, 31, "Font-gathered-%d.bmp", int(surfaces.size()));
+  std::snprintf(textureName, 31, "Font-gathered-%d.bmp", int(fonts.size()));
   textureName[31] = '\0';
   SDL_SaveBMP(finalTexture, textureName);
 #endif
@@ -383,13 +390,14 @@ bool font::load(const std::vector<SDL_Surface *> &surfaces, const std::vector<s_
 
   // merge fontMap
 
-  m_fontMaps = maps;
+  m_fontMaps.resize(fonts.size());
 
   for (uint it = 0, istop = m_fontMaps.size(); it < istop; ++it)
   {
     const glm::vec2 uvOffset = glm::vec2(textureCoords[it]) * invFinalSize;
 
     s_fontMap &fontmap = m_fontMaps[it];
+    fontmap = fonts[it].m_map;
     fontmap.m_hline *= invFinalSize.y;
     for (s_charInfo &ci : fontmap.m_charMap)
     {
@@ -412,17 +420,28 @@ bool font::load(const std::vector<SDL_Surface *> &surfaces, const std::vector<s_
 
 #define FONT_BIN_VERSION 0x001
 
-bool font::write(std::ostream &outbuffer, const std::vector<SDL_Surface*> &surfaces, const std::vector<s_fontMap> &maps, const bool freeSurfaces)
+bool font::write(std::ostream &outbuffer, const std::vector<s_fontCache> &fonts, const bool freeSurfaces)
 {
-  TRE_ASSERT(!surfaces.empty());
-  TRE_ASSERT(surfaces.size() == maps.size());
+  TRE_ASSERT(!fonts.empty());
 
   // header
   uint header[4];
   header[0] = FONT_BIN_VERSION;
-  header[1] = uint(surfaces.size());
+  header[1] = uint(fonts.size());
   header[2] = 0; // unused
   header[3] = 0; // unused
+
+
+  for (const auto &cache : fonts)
+  {
+    if (cache.m_surface == nullptr || cache.m_map.m_fsize == 0)
+    {
+      TRE_LOG("font::write: failed because at least one of the font-variants is invalid.");
+      header[1] = 0;
+      outbuffer.write(reinterpret_cast<const char*>(&header) , sizeof(header));
+      return false;
+    }
+  }
 
   outbuffer.write(reinterpret_cast<const char*>(&header) , sizeof(header));
 
@@ -431,11 +450,11 @@ bool font::write(std::ostream &outbuffer, const std::vector<SDL_Surface*> &surfa
   std::vector<glm::ivec4> textureCoords; // {x,y,w,h}
   SDL_Surface *finalTexture = nullptr;
 
-  _packTextures(surfaces, finalTexture, textureCoords);
+  _packTextures(fonts, finalTexture, textureCoords);
 
   if (freeSurfaces)
   {
-    for (auto &s : surfaces) SDL_FreeSurface(s);
+    for (auto &s : fonts) SDL_FreeSurface(s.m_surface);
   }
 
   if (!tre::texture::write(outbuffer, finalTexture, texture::MMASK_ALPHA_ONLY, true)) return false;
@@ -444,13 +463,15 @@ bool font::write(std::ostream &outbuffer, const std::vector<SDL_Surface*> &surfa
 
   // merge fontMap
 
-  std::vector<s_fontMap> localMaps = maps;
+  std::vector<s_fontMap> localMaps;
+  localMaps.resize(fonts.size());
 
-  for (uint it = 0, istop = localMaps.size(); it < istop; ++it)
+  for (uint it = 0, istop = fonts.size(); it < istop; ++it)
   {
     const glm::vec2 uvOffset = glm::vec2(textureCoords[it]) * invFinalSize;
 
     s_fontMap &fontmap = localMaps[it];
+    fontmap = fonts[it].m_map;
     fontmap.m_hline *= invFinalSize.y;
     for (s_charInfo &ci : fontmap.m_charMap)
     {
@@ -562,9 +583,9 @@ font::s_fontMap font::_readFNT(const std::string &fileFNT)
 
 // ----------------------------------------------------------------------------
 
-void font::_packTextures(const std::vector<SDL_Surface *> &textures, SDL_Surface *&packedTexture, std::vector<glm::ivec4> &coords)
+void font::_packTextures(const std::vector<s_fontCache> &caches, SDL_Surface *&packedTexture, std::vector<glm::ivec4> &coords)
 {
-  TRE_ASSERT(!textures.empty());
+  TRE_ASSERT(!caches.empty());
   TRE_ASSERT(packedTexture == nullptr);
 
   // sort still needed ?
@@ -578,14 +599,14 @@ void font::_packTextures(const std::vector<SDL_Surface *> &textures, SDL_Surface
 
   // compute textures coords
 
-  coords.resize(textures.size()); // {x,y,w,h}
+  coords.resize(caches.size()); // {x,y,w,h}
 
   glm::ivec2 posBlock = glm::ivec2(0);
   glm::ivec2 coordMax = glm::ivec2(0);
 
-  for (std::size_t it = 0, itStop = textures.size(); it < itStop; ++it)
+  for (std::size_t it = 0, itStop = caches.size(); it < itStop; ++it)
   {
-    const glm::ivec2 sizetexture = glm::ivec2(textures[it]->w, textures[it]->h);
+    const glm::ivec2 sizetexture = glm::ivec2(caches[it].m_surface->w, caches[it].m_surface->h);
 
     if (posBlock.x + sizetexture.x > coordMax.x)
     {
@@ -607,13 +628,13 @@ void font::_packTextures(const std::vector<SDL_Surface *> &textures, SDL_Surface
   packedTexture = SDL_CreateRGBSurface(0, coordMax.x, coordMax.y, 32, 0, 0, 0, 0);
   TRE_ASSERT(packedTexture != nullptr);
 
-  for (std::size_t it = 0, istop = textures.size(); it < istop; ++it)
+  for (std::size_t it = 0, istop = caches.size(); it < istop; ++it)
   {
-    TRE_ASSERT(textures[it]->w == coords[it].z);
-    TRE_ASSERT(textures[it]->h == coords[it].w);
-    SDL_Rect srcRect = {0, 0, textures[it]->w, textures[it]->h};
+    TRE_ASSERT(caches[it].m_surface->w == coords[it].z);
+    TRE_ASSERT(caches[it].m_surface->h == coords[it].w);
+    SDL_Rect srcRect = {0, 0, caches[it].m_surface->w, caches[it].m_surface->h};
     SDL_Rect dstRect = {coords[it].x, coords[it].y, coords[it].z, coords[it].w};
-    SDL_BlitSurface(textures[it], &srcRect, packedTexture, &dstRect);
+    SDL_BlitSurface(caches[it].m_surface, &srcRect, packedTexture, &dstRect);
   }
 }
 

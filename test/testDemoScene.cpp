@@ -192,12 +192,8 @@ int main(int argc, char **argv)
   worldParticlesMeshStream.resize(512);
 
   tre::font          worldHUDFont;
-  {
-    SDL_Surface *surf;
-    tre::font::s_fontMap map;
-    tre::font::loadFromBMPandFNT(TESTIMPORTPATH "resources/font_arial_88", surf, map);
-    worldHUDFont.load({ surf }, { map}, true);
-  }
+
+  worldHUDFont.load({ tre::font::loadFromBMPandFNT(TESTIMPORTPATH "resources/font_arial_88") }, true);
 
   tre::modelRaw2D    worldHUDModel;
   {

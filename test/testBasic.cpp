@@ -209,12 +209,7 @@ static int app_init()
 #endif
 
 #ifdef TEST_WITH_FPS
-  {
-    SDL_Surface *surf;
-    tre::font::s_fontMap map;
-    tre::font::loadFromBMPandFNT(TESTIMPORTPATH "resources/font_arial_88", surf, map);
-    font.load({surf}, {map}, true);
-  }
+  font.load({ tre::font::loadFromBMPandFNT(TESTIMPORTPATH "resources/font_arial_88") }, true);
   meshFps.createPart(128);
 #endif
 

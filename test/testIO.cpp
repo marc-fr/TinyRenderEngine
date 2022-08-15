@@ -43,12 +43,7 @@ bool test_bakePicture()
     status &= tre::texture::writeCube(container.getBlockWriteAndAdvance(), cubeFcaes, tre::texture::MMASK_MIPMAP, true);
   }
 
-  {
-    SDL_Surface *surf;
-    tre::font::s_fontMap map;
-    status &= tre::font::loadFromBMPandFNT(TESTIMPORTPATH "resources/font_arial_88", surf, map);
-    status &= tre::font::write(container.getBlockWriteAndAdvance(), { surf }, { map}, true);
-  }
+  { status &= tre::font::write(container.getBlockWriteAndAdvance(), { tre::font::loadFromBMPandFNT(TESTIMPORTPATH "resources/font_arial_88") }, true); }
 
 #ifdef TRE_WITH_SDL2_IMAGE
   { status &= tre::texture::write(container.getBlockWriteAndAdvance(), tre::texture::loadTextureFromFile(fileBMP), 0, true); }
@@ -57,12 +52,11 @@ bool test_bakePicture()
 
 #ifdef TRE_WITH_FREETYPE
   {
-    std::vector<SDL_Surface*>          surfs  = { nullptr, nullptr, nullptr, nullptr, nullptr };
-    std::vector<tre::font::s_fontMap>  maps  =  { {},      {},      {},      {}     , {}      };
-    const std::vector<unsigned>        fSizes = { 12,      24,      32,      64     , 128     };
+    std::vector<tre::font::s_fontCache> fonts  = { {},      {},      {},      {}     , {}      };
+    const std::vector<unsigned>         fSizes = { 12,      24,      32,      64     , 128     };
     for (std::size_t i = 0; i < 5; ++i)
-      status &= tre::font::loadFromTTF(TESTIMPORTPATH "resources/DejaVuSans.ttf", fSizes[i], surfs[i], maps[i]);
-    status &= tre::font::write(container.getBlockWriteAndAdvance(), surfs, maps, true);
+      fonts[i] = tre::font::loadFromTTF(TESTIMPORTPATH "resources/DejaVuSans.ttf", fSizes[i]);
+    status &= tre::font::write(container.getBlockWriteAndAdvance(), fonts, true);
   }
 #endif
 

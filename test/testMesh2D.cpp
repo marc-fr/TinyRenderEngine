@@ -153,13 +153,7 @@ int main(int argc, char **argv)
   // - load UI
 
   tre::font font;
-  {
-    SDL_Surface *surf;
-    tre::font::s_fontMap map;
-    tre::font::loadFromBMPandFNT(TESTIMPORTPATH "resources/font_arial_88", surf, map);
-    font.load({ surf }, { map}, true);
-  }
-
+  font.load({ tre::font::loadFromBMPandFNT(TESTIMPORTPATH "resources/font_arial_88") }, true);
 
   tre::baseUI2D bUI_main;
   bUI_main.set_defaultFont(&font);

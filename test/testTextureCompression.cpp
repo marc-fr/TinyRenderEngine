@@ -97,10 +97,7 @@ static int app_init(int argc, char **argv)
   // U.I
 
   {
-    SDL_Surface *surf;
-    tre::font::s_fontMap map;
-    tre::font::loadFromBMPandFNT(TESTIMPORTPATH "resources/font_arial_88", surf, map);
-    worldFont.load({ surf }, { map}, true);
+    worldFont.load({ tre::font::loadFromBMPandFNT(TESTIMPORTPATH "resources/font_arial_88") }, true);
   }
 
   {
@@ -207,10 +204,8 @@ static void app_update()
 #endif
     if (surf != nullptr)
     {
-      SDL_Surface *surfCopy = SDL_ConvertSurface(surf, surf->format, 0);
-
-      success &= textureREF.load(surf, tre::texture::MMASK_NEAREST_MAG_FILTER, true);
-      success &= textureCOMP.load(surfCopy, tre::texture::MMASK_NEAREST_MAG_FILTER | tre::texture::MMASK_COMPRESS, true);
+      success &= textureREF.load(surf, tre::texture::MMASK_NEAREST_MAG_FILTER, false);
+      success &= textureCOMP.load(surf, tre::texture::MMASK_NEAREST_MAG_FILTER | tre::texture::MMASK_COMPRESS, true);
     }
     else
     {

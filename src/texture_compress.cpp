@@ -661,12 +661,10 @@ static void _rawCompress4x4_ALPHA_DXT3(const uint8_t *pixelsIn, uint pxByteSize,
 
 // ============================================================================
 
-uint texture::_rawCompress(SDL_Surface *surface, GLenum targetFormat)
+uint texture::_rawCompress(const s_SurfaceTemp &surf, GLenum targetFormat)
 {
-  const int     pitch = surface->pitch;
-  const int     pxByteSize = surface->format->BytesPerPixel;
-  const uint8_t *inPixels = reinterpret_cast<const uint8_t*>(surface->pixels);
-  uint8_t       *outBuffer = reinterpret_cast<uint8_t*>(surface->pixels);
+  const uint8_t *inPixels = const_cast<const uint8_t*>(surf.pixels);
+  uint8_t       *outBuffer = surf.pixels;
   static_assert (sizeof(uint64_t) == 8, "bad size of uint64_t");
 
 #ifdef TRE_OPENGL_ES
@@ -680,26 +678,26 @@ uint texture::_rawCompress(SDL_Surface *surface, GLenum targetFormat)
 
   if (targetFormat == GL_COMPRESSED_RGB8_ETC2)
   {
-    for (int ih = 0; ih < surface->h; ih += 4)
+    for (uint ih = 0; ih < surf.h; ih += 4)
     {
-      for (int iw = 0; iw < surface->w; iw += 4)
+      for (uint iw = 0; iw < surf.w; iw += 4)
       {
-        formatETC::_rawCompress4x4_RGB8_ETC2(inPixels + pitch * ih + pxByteSize * iw, pxByteSize, pitch, outBuffer, reportPtr);
+        formatETC::_rawCompress4x4_RGB8_ETC2(inPixels + surf.pitch * ih + surf.pxByteSize * iw, surf.pxByteSize, surf.pitch, outBuffer, reportPtr);
         outBuffer += 8;
       }
     }
   }
   else if (targetFormat == GL_COMPRESSED_RGBA8_ETC2_EAC)
   {
-    TRE_ASSERT(pxByteSize == 4);
-    for (int ih = 0; ih < surface->h; ih += 4)
+    TRE_ASSERT(surf.pxByteSize == 4);
+    for (uint ih = 0; ih < surf.h; ih += 4)
     {
-      for (int iw = 0; iw < surface->w; iw += 4)
+      for (uint iw = 0; iw < surf.w; iw += 4)
       {
         uint64_t out1 = 0;
-        formatETC::_rawCompress4x4_ALPHA_EAC(inPixels + pitch * ih + 4 * iw, 4, pitch, reinterpret_cast<uint8_t*>(&out1), reportPtr);
+        formatETC::_rawCompress4x4_ALPHA_EAC(inPixels + surf.pitch * ih + 4 * iw, 4, surf.pitch, reinterpret_cast<uint8_t*>(&out1), reportPtr);
         uint64_t out2 = 0;
-        formatETC::_rawCompress4x4_RGB8_ETC2(inPixels + pitch * ih + 4 * iw, 4, pitch, reinterpret_cast<uint8_t*>(&out2), reportPtr);
+        formatETC::_rawCompress4x4_RGB8_ETC2(inPixels + surf.pitch * ih + 4 * iw, 4, surf.pitch, reinterpret_cast<uint8_t*>(&out2), reportPtr);
         memcpy(outBuffer, &out1, 8);
         outBuffer += 8;
         memcpy(outBuffer, &out2, 8);
@@ -715,7 +713,7 @@ uint texture::_rawCompress(SDL_Surface *surface, GLenum targetFormat)
   if (reportPtr != nullptr)
   {
     const uint countTotal = reportPtr->m_modeDIFFcount + reportPtr->m_modeINDIVcount;
-    TRE_ASSERT(int(countTotal) == (surface->h / 4) * (surface->w / 4));
+    TRE_ASSERT(int(countTotal) == (surf.h / 4) * (surf.w / 4));
     reportPtr->m_errorL2 = sqrtf(reportPtr->m_errorL2 / countTotal);
     TRE_LOG("report of conversion to ETC2: " <<
             "modeINDI = " << reportPtr->m_modeINDIVcount << " (" << int(reportPtr->m_modeINDIVcount * 100.f / countTotal) << " %), " <<
@@ -734,26 +732,26 @@ uint texture::_rawCompress(SDL_Surface *surface, GLenum targetFormat)
 
   if (targetFormat == GL_COMPRESSED_RGB_S3TC_DXT1_EXT)
   {
-    for (int ih = 0; ih < surface->h; ih += 4)
+    for (uint ih = 0; ih < surf.h; ih += 4)
     {
-      for (int iw = 0; iw < surface->w; iw += 4)
+      for (uint iw = 0; iw < surf.w; iw += 4)
       {
-        formatS3TC::_rawCompress4x4_RGB8_S3TC(inPixels + pitch * ih + pxByteSize * iw, pxByteSize, pitch, outBuffer, reportPtr);
+        formatS3TC::_rawCompress4x4_RGB8_S3TC(inPixels + surf.pitch * ih + surf.pxByteSize * iw, surf.pxByteSize, surf.pitch, outBuffer, reportPtr);
         outBuffer += 8;
       }
     }
   }
   else if (targetFormat == GL_COMPRESSED_RGBA_S3TC_DXT3_EXT)
   {
-    TRE_ASSERT(pxByteSize == 4);
-    for (int ih = 0; ih < surface->h; ih += 4)
+    TRE_ASSERT(surf.pxByteSize == 4);
+    for (uint ih = 0; ih < surf.h; ih += 4)
     {
-      for (int iw = 0; iw < surface->w; iw += 4)
+      for (uint iw = 0; iw < surf.w; iw += 4)
       {
         uint64_t out1 = 0;
-        formatS3TC::_rawCompress4x4_ALPHA_DXT3(inPixels + pitch * ih + 4 * iw, 4, pitch, reinterpret_cast<uint8_t*>(&out1), reportPtr);
+        formatS3TC::_rawCompress4x4_ALPHA_DXT3(inPixels + surf.pitch * ih + 4 * iw, 4, surf.pitch, reinterpret_cast<uint8_t*>(&out1), reportPtr);
         uint64_t out2 = 0;
-        formatS3TC::_rawCompress4x4_RGB8_S3TC(inPixels + pitch * ih + 4 * iw, 4, pitch, reinterpret_cast<uint8_t*>(&out2), reportPtr);
+        formatS3TC::_rawCompress4x4_RGB8_S3TC(inPixels + surf.pitch * ih + 4 * iw, 4, surf.pitch, reinterpret_cast<uint8_t*>(&out2), reportPtr);
         memcpy(outBuffer, &out1, 8);
         outBuffer += 8;
         memcpy(outBuffer, &out2, 8);
@@ -769,7 +767,7 @@ uint texture::_rawCompress(SDL_Surface *surface, GLenum targetFormat)
   if (reportPtr != nullptr)
   {
     const uint countTotal = reportPtr->m_modeLOWERcount + reportPtr->m_modeHIGHERcount;
-    TRE_ASSERT(int(countTotal) == (surface->h / 4) * (surface->w / 4));
+    TRE_ASSERT(int(countTotal) == (surf.h / 4) * (surf.w / 4));
     reportPtr->m_errorL2 = sqrtf(reportPtr->m_errorL2 / countTotal);
     TRE_LOG("report of conversion to ETC2: " <<
             "modeLOWER = " << reportPtr->m_modeLOWERcount << " (" << int(reportPtr->m_modeLOWERcount * 100.f / countTotal) << " %), " <<

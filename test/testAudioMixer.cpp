@@ -193,14 +193,10 @@ static int app_init()
 
   // -> Load other resources
 
+  if (!font.load({ tre::font::loadFromBMPandFNT(TESTIMPORTPATH "resources/font_arial_88") }, true))
   {
-    SDL_Surface *surf;
-    tre::font::s_fontMap map;
-    if (!tre::font::loadFromBMPandFNT(TESTIMPORTPATH "resources/font_arial_88", surf, map) || !font.load({ surf }, { map}, true))
-    {
-      TRE_LOG("Fail to load the font. Cannot have the GUI.");
-      withGUI = false;
-    }
+    TRE_LOG("Fail to load the font. Cannot have the GUI.");
+    withGUI = false;
   }
 
   // - Init Audio

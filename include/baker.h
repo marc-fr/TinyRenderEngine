@@ -12,6 +12,7 @@ namespace tre {
 class model;
 class texture;
 class font;
+class soundData;
 
 /**
  * @brief The baker class
@@ -39,6 +40,9 @@ public:
   bool readBlock(texture *t); ///< Shortcut for getBlockReadAndAdvance and read a texture from it
 
   bool readBlock(font *f); ///< Shortcut for getBlockReadAndAdvance and read a font from it
+
+  bool writeBlock(const soundData *s, int bitrate = 0); ///< Shortcut for getBlockWriteAndAdvance and bake a sound-data
+  bool readBlock(soundData *s); ///< Shortcut for getBlockReadAndAdvance and read a sound-data from it
 
   void flushAndCloseFile(); ///< flush data and close of the files.
 

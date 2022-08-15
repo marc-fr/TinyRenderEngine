@@ -51,13 +51,20 @@ public:
   /// @name I/O
   /// @{
 public:
-  static bool loadFromBMPandFNT(const std::string & filebasename, SDL_Surface* &outSurface, s_fontMap &outMap); ///< Create a font-texture and a font-map from a BMP-texture and a FNT-file.
-  static bool loadFromTTF(const std::string &filename, const uint fontSizePixel, SDL_Surface* &outSurface, s_fontMap &outMap); ///< Create a font-texture and a font-amp from a True-Type-font and a font-size.
-  static bool loadProceduralLed(const uint ptSize, const uint ptMargin, SDL_Surface* &outSurface, s_fontMap &outMap); ///< Create a font-texture and a font-amp from a prodedural LED-font.
 
-  bool load(const std::vector<SDL_Surface*> &surfaces, const std::vector<s_fontMap> &maps, const bool freeSurfaces); ///< Load (into GPU) a font from a list of font-textures and font-maps.
+  struct s_fontCache
+  {
+    SDL_Surface *m_surface = nullptr;
+    s_fontMap    m_map;
+  };
 
-  static bool write(std::ostream &outbuffer, const std::vector<SDL_Surface*> &surfaces, const std::vector<s_fontMap> &maps, const bool freeSurfaces); ///< Bake a font into binary-file.
+  static s_fontCache loadFromBMPandFNT(const std::string &filebasename); ///< Create a font-texture and a font-map from a BMP-texture and a FNT-file.
+  static s_fontCache loadFromTTF(const std::string &filename, const uint fontSizePixel); ///< Create a font-texture and a font-amp from a True-Type-font and a font-size.
+  static s_fontCache loadProceduralLed(const uint ptSize, const uint ptMargin); ///< Create a font-texture and a font-amp from a prodedural LED-font.
+
+  bool load(const std::vector<s_fontCache> &fonts, const bool freeSurfaces); ///< Load (into GPU) a font with its size-variants
+
+  static bool write(std::ostream &outbuffer, const std::vector<s_fontCache> &surfaces, const bool freeSurfaces); ///< Bake a font into binary-file.
 
   bool read(std::istream &inbuffer); ///< Read and load (into GPU) a font from binary-file.
 
@@ -65,7 +72,7 @@ public:
 
 private:
   static s_fontMap _readFNT(const std::string &fileFNT);
-  static void _packTextures(const std::vector<SDL_Surface*> &textures, SDL_Surface* &packedTexture, std::vector<glm::ivec4> &coords); ///< naive algo (which works better when the bigger texture is put first)
+  static void _packTextures(const std::vector<s_fontCache> &caches, SDL_Surface* &packedTexture, std::vector<glm::ivec4> &coords); ///< naive algo (which works better when the bigger texture is put first)
   /// @}
 
   /// @name Core

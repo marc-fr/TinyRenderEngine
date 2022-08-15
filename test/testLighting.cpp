@@ -148,12 +148,7 @@ int main(int argc, char **argv)
   // U.I
 
   tre::font worldFont;
-  {
-    SDL_Surface *surf;
-    tre::font::s_fontMap map;
-    tre::font::loadFromBMPandFNT(TESTIMPORTPATH "resources/font_arial_88", surf, map);
-    worldFont.load({ surf }, { map}, true);
-  }
+  worldFont.load({ tre::font::loadFromBMPandFNT(TESTIMPORTPATH "resources/font_arial_88") }, true);
 
   tre::baseUI2D worldUI;
   tre::ui::window *worldWin;

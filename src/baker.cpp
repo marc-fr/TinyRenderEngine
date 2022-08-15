@@ -3,6 +3,7 @@
 #include "model.h"
 #include "texture.h"
 #include "font.h"
+#include "audio.h"
 
 #include <fstream>
 
@@ -195,6 +196,16 @@ bool baker::readBlock(font *f)
 {
   f->read(getBlockReadAndAdvance());
   return true;
+}
+
+bool baker::writeBlock(const soundData *s, int bitrate)
+{
+  return s->write(getBlockWriteAndAdvance(), bitrate);
+}
+
+bool baker::readBlock(soundData *s)
+{
+  return s->read(getBlockReadAndAdvance());
 }
 
 // ============================================================================

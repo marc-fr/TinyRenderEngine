@@ -571,15 +571,7 @@ int main(int argc, char **argv)
 
   tre::font font;
   {
-    std::vector<SDL_Surface*>          surfs  = { nullptr, nullptr, nullptr };
-    std::vector<tre::font::s_fontMap>  maps  =  { {},      {},      {},     };
-    const std::vector<unsigned>        fSizes = { 12,      24,      32,     };
-    for (std::size_t i = 0; i < 3; ++i)
-    {
-      if (!tre::font::loadFromTTF(TESTIMPORTPATH "resources/DejaVuSans.ttf", fSizes[i], surfs[i], maps[i]))
-        tre::font::loadProceduralLed(fSizes[i], 0, surfs[i], maps[i]);
-    }
-    font.load(surfs, maps, true);
+    font.load({ tre::font::loadFromBMPandFNT(TESTIMPORTPATH "resources/font_arial_88") }, true);
   }
 
   tre::baseUI2D bUI_main;

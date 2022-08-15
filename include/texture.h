@@ -5,7 +5,6 @@
 
 #include "utils.h"
 
-#include <array>
 #include <vector>
 #include <string>
 #include <iostream>
@@ -54,14 +53,14 @@ public:
 
   static SDL_Surface *combine(const SDL_Surface *surfaceR, const SDL_Surface *surfaceG); ///< Combine surfaceR and surfaceG into a single surface with 2 channels. Returns nullptr on failure. The caller becomes the owner of the SDL_Surface (and is responsible to free it).
 
-  bool load(SDL_Surface *surface, int modemask, const bool freeSurface); ///< Load from SDL_Surface into GPU as 2D-Texture. Warning: the "surface" might be modified.
-  bool loadCube(const std::array<SDL_Surface *, 6> &cubeFaces, int modemask, const bool freeSurface);  ///< Load from SDL_Surface into GPU as CubeMap-Texture. Textures lost: X+, X-, Y+, Y-, Z+, Z-. Warning: the "surfaces" might be modified.
+  bool load(SDL_Surface *surface, int modemask, const bool freeSurface); ///< Load from SDL_Surface into GPU as 2D-Texture. Using freeSurface=true allows to apply modifiers in-place to the pixel data.
+  bool loadCube(const std::array<SDL_Surface *, 6> &cubeFaces, int modemask, const bool freeSurface);  ///< Load from SDL_Surface into GPU as CubeMap-Texture. Textures lost: X+, X-, Y+, Y-, Z+, Z-. Using freeSurface=true allows to apply modifiers in-place to the pixel data.
 
   bool loadWhite(); ///< Load a plain-white texture into GPU as 2D-texture.
   bool loadCheckerboard(uint width, uint height); ///< Load a texture with checker-board pattern into GPU as 2D-texture.
 
-  static bool write(std::ostream &outbuffer, SDL_Surface *surface, int modemask, const bool freeSurface); ///< Bake and write a surface into binary-format. Warning: the "surface" might be modified.
-  static bool writeCube(std::ostream &outbuffer, const std::array<SDL_Surface *, 6> &cubeFaces, int modemask, const bool freeSurface); ///< Bake and write a cubemap-surface into binary-format. Warning: the "surfaces" might be modified.
+  static bool write(std::ostream &outbuffer, SDL_Surface *surface, int modemask, const bool freeSurface); ///< Bake and write a surface into binary-format. Using freeSurface=true allows to apply modifiers in-place to the pixel data.
+  static bool writeCube(std::ostream &outbuffer, const std::array<SDL_Surface *, 6> &cubeFaces, int modemask, const bool freeSurface); ///< Bake and write a cubemap-surface into binary-format. Using freeSurface=true allows to apply modifiers in-place to the pixel data.
 
   bool read(std::istream &inbuffer); ///< load texture from binary-file, and load it into GPU.
 
@@ -84,11 +83,25 @@ protected:
 
 
 private:
-  static void _rawConvert_BRG_to_RGB(SDL_Surface *surface);
-  static void _rawPack_A8(SDL_Surface *surface);
-  static void _rawPack_RG8(SDL_Surface *surface);
+
+  struct s_SurfaceTemp
+  {
+     uint     w, h, pitch, pxByteSize;
+     uint8_t  *pixels;
+
+     std::vector<uint8_t> pixelsLocalBuffer;
+
+     s_SurfaceTemp() : pixels(nullptr) {}
+     s_SurfaceTemp(SDL_Surface *surf);
+
+     void copyToOwnBuffer();
+  };
+
+  static void _rawConvert_BRG_to_RGB(const s_SurfaceTemp &surf);
+  static void _rawPack_A8(s_SurfaceTemp &surf);
+  static void _rawPack_RG8(s_SurfaceTemp &surf);
   static void _rawUnpack_A8_to_RGBA8(std::vector<char> &pixelData);
-  static uint _rawCompress(SDL_Surface *surface, GLenum targetFormat); ///< compress textures on CPU (inplace, erase the surface's pixels). Returns the buffer byte-size, or zero on failure.
+  static uint _rawCompress(const s_SurfaceTemp &surf, GLenum targetFormat); ///< compress textures on CPU (inplace, erase the surface's pixels). Returns the buffer byte-size, or zero on failure.
 };
 
 } // namespace
