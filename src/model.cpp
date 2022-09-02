@@ -300,7 +300,7 @@ void modelRaw2D::drawcall(std::size_t partfirst, std::size_t partcount, const bo
     {
       tcount[pcount - 1] += GLsizei(m_partInfo[ipart].m_size);
     }
-    else
+    else if (m_partInfo[ipart].m_size > 0)
     {
       tfirst[pcount] = GLint(m_partInfo[ipart].m_offset);
       tcount[pcount] = GLsizei(m_partInfo[ipart].m_size);
@@ -563,7 +563,7 @@ void modelStaticIndexed3D::drawcall(std::size_t partfirst, std::size_t partcount
     {
       tcount[pcount - 1] += m_partInfo[ipart].m_size;
     }
-    else
+    else if (m_partInfo[ipart].m_size > 0)
     {
       tfirst[pcount] = reinterpret_cast<GLvoid*>( m_partInfo[ipart].m_offset * sizeof(GLfloat) );
       tcount[pcount] = m_partInfo[ipart].m_size;
