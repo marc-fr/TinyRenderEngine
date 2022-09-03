@@ -347,10 +347,6 @@ void windowHelper::s_timer::newFrame(const uint waitForFPS /* = 0 means no wait 
     else
     {
       frametime = dtms * 1.e-3f;
-      if (dtms > targetdtms + 15)
-      {
-        TRE_LOG("The program is lagging !!! target-dt=" << targetdtms << " ms, elapsed-dt=" << dtms << " ms");
-      }
     }
   }
   else

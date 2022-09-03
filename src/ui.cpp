@@ -1,7 +1,6 @@
 #include "ui.h"
 
 #include "shader.h"
-#include "texture.h"
 #include "font.h"
 
 namespace tre {
@@ -129,26 +128,32 @@ void baseUI::animate(float dt)
 
 void baseUI::clear()
 {
-  for (auto win : windowsList)
-  {
-    if (win != nullptr) delete(win);
-  }
+  for (auto win : windowsList) delete(win);
   windowsList.clear();
   m_model.clearParts();
+  m_textures.fill(nullptr);
+}
+
+// baseUI methods : builtin language support ==================================
+
+void baseUI::set_language(std::size_t lid)
+{
+  TRE_ASSERT(lid < TRE_UI_NLANGUAGES);
+  m_language = lid;
+  for (auto win : windowsList) win->m_isUpdateNeededAdress = win->m_isUpdateNeededLayout = win->m_isUpdateNeededData = true;
 }
 
 // baseUI methods : GPU interface =============================================
 
-void baseUI::loadIntoGPU()
+bool baseUI::loadIntoGPU()
 {
   TRE_ASSERT(!m_model.isLoadedGPU());
 
-  m_whiteTexture = new texture();
-  m_whiteTexture->loadWhite();
+  if (!m_textureWhite.loadWhite()) return false;
 
   createData();
   updateData();
-  m_model.loadIntoGPU();
+  return m_model.loadIntoGPU();
 }
 
 void baseUI::updateIntoGPU()
@@ -161,18 +166,40 @@ void baseUI::updateIntoGPU()
 void baseUI::clearGPU()
 {
   m_model.clearGPU();
+  m_textureWhite.clear();
+}
 
-  if (m_whiteTexture != nullptr)
+std::size_t baseUI::addTexture(texture *t)
+{
+  for (std::size_t i = 0; i < m_textures.size(); ++i)
   {
-    m_whiteTexture->clear();
-    delete m_whiteTexture;
-    m_whiteTexture = nullptr;
+    if (m_textures[i] == t) return i;
   }
+  for (std::size_t i = 0; i < m_textures.size(); ++i)
+  {
+    if (m_textures[i] == nullptr)
+    {
+      m_textures[i] = t;
+      return i;
+    }
+  }
+  return std::size_t(-1);
+}
+
+std::size_t baseUI::getTextureSlot(texture *t) const
+{
+  for (std::size_t i = 0; i < m_textures.size(); ++i)
+  {
+    if (m_textures[i] == t) return i;
+  }
+  return std::size_t(-1);
 }
 
 ui::window *  baseUI::create_window()
 {
+  TRE_ASSERT(!m_model.isLoadedGPU());
   ui::window * newwin = new ui::window(this);
+  if (newwin == nullptr) return nullptr; // out of memory ?!
   newwin->m_isUpdateNeededAdress = true;
   windowsList.push_back(newwin);
   return newwin;
@@ -195,19 +222,23 @@ void baseUI::createData()
 
   for (ui::window * curwin : windowsList)
   {
-    if (curwin==nullptr) continue;
-    curwin->compute_adressPlage();
+    curwin->m_adSolid.part = m_model.createPart(0u); // solid
+    curwin->m_adrLine.part = m_model.createPart(0u); // line
+    curwin->m_adrPict.part = m_model.createPart(0u); // one for each texture
+    for (std::size_t i = 1; i < m_textures.size(); ++i) m_model.createPart(0u); // one for each texture (note: assume that the parts are created in order)
+    curwin->m_adrText.part = m_model.createPart(0u); // text
   }
+
+  TRE_ASSERT(m_model.partCount() == (3 + m_textures.size()) * windowsList.size())
 }
 
 void baseUI::updateData()
 {
-  for (ui::window * curwindow : windowsList)
+  for (ui::window * curwin : windowsList)
   {
-    if (curwindow==nullptr) continue;
-    TRE_ASSERT(!curwindow->m_isUpdateNeededAdress); // not implemented yet
-    curwindow->compute_layout();
-    curwindow->compute_data();
+    curwin->compute_adressPlage();
+    curwin->compute_layout();
+    curwin->compute_data();
   }
 }
 
@@ -216,16 +247,19 @@ void baseUI::updateData()
 void baseUI2D::draw() const
 {
   TRE_ASSERT(m_shader != nullptr);
-  TRE_ASSERT(m_whiteTexture != nullptr);
+  TRE_ASSERT(m_textureWhite.m_handle != 0);
   TRE_ASSERT(glIsEnabled(GL_BLEND)==GL_TRUE);
   TRE_ASSERT(glIsEnabled(GL_DEPTH_TEST)==GL_FALSE); // needed ??
 
-  bool isFirstDraw = true;
+  bool isModelBound = false;
+  std::array<bool, s_textureSlotsCount> isTextureBound;
+  isTextureBound.fill(false);
+  bool isFontBound = false;
 
   glUseProgram(m_shader->m_drawProgram);
 
   glActiveTexture(GL_TEXTURE0);
-  glUniform1i(m_shader->getUniformLocation(shader::TexDiffuse),0);
+  glBindTexture(GL_TEXTURE_2D, m_textureWhite.m_handle);
 
   for (ui::window * curwin : windowsList)
   {
@@ -234,37 +268,52 @@ void baseUI2D::draw() const
     const glm::mat3 & matWin = curwin->get_mat3();
     m_shader->setUniformMatrix(m_PV * matWin);
 
-    if (curwin->m_adSolid.pcount != 0 || curwin->m_adrLine.pcount != 0)
+    glUniform1i(m_shader->getUniformLocation(shader::TexDiffuse),0);
+
+    m_model.drawcall(curwin->m_adSolid.part, 1, !isModelBound);
+    isModelBound = true;
+
+    m_model.drawcall(curwin->m_adrLine.part, 1, false, GL_LINES);
+
+    for (std::size_t tslot = 0; tslot < s_textureSlotsCount; ++tslot)
     {
-      glBindTexture(GL_TEXTURE_2D,m_whiteTexture->m_handle);
-
-      m_model.drawcall(curwin->m_adSolid.part, curwin->m_adSolid.pcount, isFirstDraw);
-      isFirstDraw = false;
-
-      m_model.drawcall(curwin->m_adrLine.part, curwin->m_adrLine.pcount, false, GL_LINES);
-    }
-
-
-    if (curwin->m_adrPict.pcount != 0)
-    {
-      for (uint ipict = 0; ipict < curwin->m_adrPict.pcount; ++ipict)
+      if (m_model.partInfo(curwin->m_adrPict.part + tslot).m_size > 0)
       {
-        const texture * curtex = curwin->m_widgetTextureSlot[ipict];
-        if (curtex == nullptr) continue;
-        glBindTexture(GL_TEXTURE_2D,curtex->m_handle);
-        m_model.drawcall(curwin->m_adrPict.part + ipict, 1, isFirstDraw);
-        isFirstDraw = false;
+        if (m_textures[tslot] == nullptr)
+        {
+          glUniform1i(m_shader->getUniformLocation(shader::TexDiffuse),0);
+        }
+        else
+        {
+          if (!isTextureBound[tslot])
+          {
+            glActiveTexture(GL_TEXTURE1 + tslot);
+            glBindTexture(GL_TEXTURE_2D, m_textures[tslot]->m_handle);
+            isTextureBound[tslot] = true;
+          }
+          glUniform1i(m_shader->getUniformLocation(shader::TexDiffuse),1 + tslot);
+        }
+        m_model.drawcall(curwin->m_adrPict.part + tslot, 1, false);
       }
     }
 
-    if (curwin->m_adrText.pcount != 0)
+    if (m_model.partInfo(curwin->m_adrText.part).m_size > 0)
     {
-      glBindTexture(GL_TEXTURE_2D,m_defaultFont->get_texture().m_handle); // We assume that texts are using the same font.
-      m_model.drawcall(curwin->m_adrText.part, curwin->m_adrText.pcount); // We assume that m_textgen created the part in the model continuously
-
-      isFirstDraw = false;
+      if (m_defaultFont == nullptr)
+      {
+        glUniform1i(m_shader->getUniformLocation(shader::TexDiffuse), 0);
+      }
+      else
+      {
+        if (!isFontBound)
+        {
+          glActiveTexture(GL_TEXTURE7);
+          glBindTexture(GL_TEXTURE_2D, m_defaultFont->get_texture().m_handle);
+        }
+        glUniform1i(m_shader->getUniformLocation(shader::TexDiffuse), 7);
+      }
+      m_model.drawcall(curwin->m_adrText.part, 1, false);
     }
-
   }
 }
 
@@ -440,15 +489,18 @@ bool baseUI2D::loadShader(shader *shaderToUse)
 void baseUI3D::draw() const
 {
   TRE_ASSERT(m_shader != nullptr);
-  TRE_ASSERT(m_whiteTexture != nullptr);
+  TRE_ASSERT(m_textureWhite.m_handle != 0);
   TRE_ASSERT(glIsEnabled(GL_BLEND)==GL_TRUE);
 
-  bool isFirstDraw = true;
+  bool isModelBound = false;
+  std::array<bool, s_textureSlotsCount> isTextureBound;
+  isTextureBound.fill(false);
+  bool isFontBound = false;
 
   glUseProgram(m_shader->m_drawProgram);
 
   glActiveTexture(GL_TEXTURE0);
-  glUniform1i(m_shader->getUniformLocation(shader::TexDiffuse),0);
+  glBindTexture(GL_TEXTURE_2D, m_textureWhite.m_handle);
 
   for (ui::window * curwin : windowsList)
   {
@@ -457,39 +509,53 @@ void baseUI3D::draw() const
     const glm::mat4 & matWin = curwin->get_mat4();
     m_shader->setUniformMatrix(m_PV * matWin, matWin);
 
-    if (curwin->m_adSolid.pcount != 0 || curwin->m_adrLine.pcount != 0)
+    glUniform1i(m_shader->getUniformLocation(shader::TexDiffuse),0);
+
+    m_model.drawcall(curwin->m_adSolid.part, 1, !isModelBound);
+    isModelBound = true;
+
+    m_model.drawcall(curwin->m_adrLine.part, 1, false, GL_LINES);
+
+    for (std::size_t tslot = 0; tslot < s_textureSlotsCount; ++tslot)
     {
-      glBindTexture(GL_TEXTURE_2D,m_whiteTexture->m_handle);
-
-      m_model.drawcall(curwin->m_adSolid.part, curwin->m_adSolid.pcount, isFirstDraw);
-      isFirstDraw = false;
-
-      m_model.drawcall(curwin->m_adrLine.part, curwin->m_adrLine.pcount, false, GL_LINES);
-    }
-
-
-    if (curwin->m_adrPict.pcount != 0)
-    {
-      for (uint ipict = 0; ipict < curwin->m_adrPict.pcount; ++ipict)
+      if (m_model.partInfo(curwin->m_adrPict.part + tslot).m_size > 0)
       {
-        const texture * curtex = curwin->m_widgetTextureSlot[ipict];
-        if (curtex == nullptr) continue;
-        glBindTexture(GL_TEXTURE_2D,curtex->m_handle);
-        m_model.drawcall(curwin->m_adrPict.part + ipict, 1, isFirstDraw);
-        isFirstDraw = false;
+        if (m_textures[tslot] == nullptr)
+        {
+          glUniform1i(m_shader->getUniformLocation(shader::TexDiffuse),0);
+        }
+        else
+        {
+          if (!isTextureBound[tslot])
+          {
+            glActiveTexture(GL_TEXTURE1 + tslot);
+            glBindTexture(GL_TEXTURE_2D, m_textures[tslot]->m_handle);
+            isTextureBound[tslot] = true;
+          }
+          glUniform1i(m_shader->getUniformLocation(shader::TexDiffuse),1 + tslot);
+        }
+        m_model.drawcall(curwin->m_adrPict.part + tslot, 1, false);
       }
     }
 
-    if (curwin->m_adrText.pcount != 0)
+    if (m_model.partInfo(curwin->m_adrText.part).m_size > 0)
     {
-      glBindTexture(GL_TEXTURE_2D,m_defaultFont->get_texture().m_handle); // We assume that texts are using the same font.
-      m_model.drawcall(curwin->m_adrText.part, curwin->m_adrText.pcount); // We assume that m_textgen created the part in the model continuously
-
-      isFirstDraw = false;
+      if (m_defaultFont == nullptr)
+      {
+        glUniform1i(m_shader->getUniformLocation(shader::TexDiffuse), 0);
+      }
+      else
+      {
+        if (!isFontBound)
+        {
+          glActiveTexture(GL_TEXTURE7);
+          glBindTexture(GL_TEXTURE_2D, m_defaultFont->get_texture().m_handle);
+        }
+        glUniform1i(m_shader->getUniformLocation(shader::TexDiffuse), 7);
+      }
+      m_model.drawcall(curwin->m_adrText.part, 1, false);
     }
-
   }
-
 }
 
 void baseUI3D::updateCameraInfo(const glm::mat4 &mProj, const glm::mat4 &mView, const glm::ivec2 &screenSize)

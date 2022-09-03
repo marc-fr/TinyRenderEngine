@@ -5,6 +5,7 @@
 
 #include "utils.h"
 
+#include <array>
 #include <vector>
 #include <string>
 #include <iostream>

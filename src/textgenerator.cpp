@@ -12,7 +12,7 @@ namespace textgenerator {
 void generate(const s_textInfo &info, modelRaw2D *outMesh, uint outPartId, uint outOffset, s_textInfoOut *outInfo)
 {
   TRE_ASSERT(info.m_font != nullptr);
-  TRE_ASSERT(std::strlen(info.m_text.c_str()) <= info.m_text.size());
+  TRE_ASSERT(info.m_text != nullptr);
 
   if (outMesh == nullptr && outInfo == nullptr) return;
 
@@ -42,7 +42,7 @@ void generate(const s_textInfo &info, modelRaw2D *outMesh, uint outPartId, uint 
   float posx = info.m_zone.x;
   float posy = info.m_zone.w;
   uint vidx = vertexOffset;
-  for (std::size_t ich = 0, iLen = info.m_text.size(); ich < iLen; ++ich)
+  for (std::size_t ich = 0, iLen = std::strlen(info.m_text); ich < iLen; ++ich)
   {
     unsigned char idchar = info.m_text[ich];
 

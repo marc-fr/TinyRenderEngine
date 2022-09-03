@@ -3,10 +3,8 @@
 
 #include "openglinclude.h"
 
-#include "utils.h"
-
 #include <vector>
-#include <string>
+#include <string> // std::strlen
 
 namespace tre {
 
@@ -33,11 +31,11 @@ namespace textgenerator
     glm::vec4    m_color = glm::vec4(1.f);
     glm::vec4    m_zone = glm::vec4(0.f); ///< zone in which the text is drawn (x1,y1,x2,y2). Use (x1,y1,x1,y1) if no out border.
     float        m_fontsize = 1.f; ///< font-size
-    std::string  m_text;
-    const font*  m_font = nullptr;
+    const char   *m_text = nullptr;
+    const font   *m_font = nullptr;
     glm::vec2    m_pixelSize = glm::vec2(0.f, 0.f); ///< snap to pixel. Size of a pixel. (Zero means no snapping.)
 
-    void setupBasic(const font *font, const float fontSize, const std::string &str, const glm::vec2 &pos = glm::vec2(0.f), const glm::vec4 &color = glm::vec4(1.f))
+    void setupBasic(const font *font, const float fontSize, const char *str, const glm::vec2 &pos = glm::vec2(0.f), const glm::vec4 &color = glm::vec4(1.f))
     {
       m_font = font;
       m_fontsize = fontSize;
@@ -53,9 +51,14 @@ namespace textgenerator
     uint m_choosenFontSizePixel = 0; ///< font-size from the font that has been used
   };
 
-  inline uint geometry_VertexCount(const std::string &txt) { return 6 * txt.size(); }
+  inline uint geometry_VertexCount(const char *txt) { return 6 * std::strlen(txt); }
 
-  void generate(const s_textInfo &info, modelRaw2D *outMesh, uint outPartId, uint outOffset, s_textInfoOut *outInfo); ///< Generate the geometry to render the text. outMesh or outInfo can be null.
+  /**
+   * @brief Generate the geometry to render the text (when outMesh is not null) and fill out gemetric info (when outInfo is not null).
+   * Either outMesh or outInfo can be null.
+   * It will write to the outMesh the vertex count given from "geometry_VertexCount". (Trailing vertices will have a full-transparent color.)
+   */
+  void generate(const s_textInfo &info, modelRaw2D *outMesh, uint outPartId, uint outOffset, s_textInfoOut *outInfo);
 };
 
 } // namespace

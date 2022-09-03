@@ -164,6 +164,7 @@ font::s_fontCache font::loadFromTTF(const std::string &filename, const uint font
   FT_Done_Face(face);
   FT_Done_FreeType(library);
 
+  TRE_LOG("font " << filename << " using " << fontSizePixel << " pixel-size loaded : texture-size = (" << ret.m_surface->w << " x " << ret.m_surface->h << ")");
 #ifdef TRE_DEBUG
   const std::size_t fstartRaw = filename.find_last_of('/');
   const std::size_t fstart = (fstartRaw != std::string::npos) ? fstartRaw + 1 : 0;

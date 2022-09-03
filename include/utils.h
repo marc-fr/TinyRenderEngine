@@ -59,11 +59,11 @@ private:
 
 public:
     span(_T* ptr, std::size_t len) noexcept : m_ptr(ptr), m_size(len) {}
-    span(std::vector<_T> &v, std::size_t begin, std::size_t len) noexcept : m_ptr(&v[begin]), m_size(len) {}
-    span(std::vector<_T> &v, std::size_t begin = 0u) noexcept : m_ptr(v.empty() ? nullptr : &v[begin]), m_size(v.empty() ? 0 : v.size() - begin) {}
+    span(const std::vector<_T> &v, std::size_t begin, std::size_t len) noexcept : m_ptr(const_cast<_T*>(&v[begin])), m_size(len) {}
+    span(const std::vector<_T> &v, std::size_t begin = 0u) noexcept : m_ptr(const_cast<_T*>(&v[begin])), m_size(v.size() <= begin ? 0 : v.size() - begin) {}
+    template<std::size_t _N> span(const std::array<_T, _N> &a) noexcept : m_ptr(const_cast<_T*>(&a[0])), m_size(a.size()) {}
 
-    _T       &operator[](std::size_t i) noexcept { return m_ptr[i]; }
-    const _T &operator[](std::size_t i) const noexcept { return m_ptr[i]; }
+    _T       &operator[](std::size_t i) const noexcept { return m_ptr[i]; }
 
     bool        empty() const noexcept { return m_size == 0; }
     std::size_t size() const noexcept { return m_size; }

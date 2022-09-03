@@ -16,10 +16,12 @@ void s_layoutGrid::set_dimension(uint row, uint col)
 
   m_cells.resize(col*row);
 
-  m_rowsHeight_User.resize(row, -1.f);
-  m_colsWidth_User.resize(col, -1.f);
+  m_rowsHeight_User.resize(row, s_size(-1.f));
+  m_colsWidth_User.resize(col, s_size(-1.f));
   m_rowsHeight.resize(row, 0.f);
   m_colsWidth.resize(col, 0.f);
+  m_rowsInbetweenSpace.resize(row + 1, s_size(-1.f));
+  m_colsInbetweenSpace.resize(col + 1, s_size(-1.f));
 
   m_dimension.x = col;
   m_dimension.y = row;
@@ -27,10 +29,9 @@ void s_layoutGrid::set_dimension(uint row, uint col)
 
 // ----------------------------------------------------------------------------
 
-glm::vec4 s_layoutGrid::computeWidgetZones(const ui::window &win, const glm::vec2 &offset)
+glm::vec2 s_layoutGrid::computeWidgetZones(const ui::window &win, const glm::vec2 &offset)
 {
-  if (m_dimension.x==0 || m_dimension.y==0)
-    return glm::vec4(offset, offset); // should not occur.
+  if (m_dimension.x==0 || m_dimension.y==0) return glm::vec2(0.f);
 
   TRE_ASSERT(m_dimension.x == m_colsWidth_User.size() && m_dimension.x == m_colsWidth.size());
   TRE_ASSERT(m_dimension.y == m_rowsHeight_User.size() && m_dimension.y == m_rowsHeight.size());
@@ -61,12 +62,12 @@ glm::vec4 s_layoutGrid::computeWidgetZones(const ui::window &win, const glm::vec
     // -> apply user info
     for (uint ix = 0; ix < m_dimension.x; ++ix)
     {
-      if (m_colsWidth_User[ix].size > 0.f)
+      if (m_colsWidth_User[ix].valid())
         m_colsWidth[ix] = glm::max(m_colsWidth[ix], win.resolve_sizeW(m_colsWidth_User[ix]));
     }
     for (uint iy = 0; iy < m_dimension.y; ++iy)
     {
-      if (m_rowsHeight_User[iy].size > 0.f)
+      if (m_rowsHeight_User[iy].valid())
         m_rowsHeight[iy] = glm::max(m_rowsHeight[iy], win.resolve_sizeH(m_rowsHeight_User[iy]));
     }
 
@@ -116,40 +117,41 @@ glm::vec4 s_layoutGrid::computeWidgetZones(const ui::window &win, const glm::vec
         }
       }
     }
-
-    // -> snap to pixel
-    for (float &cw : m_colsWidth)
-    {
-      const glm::vec2 out = win.snapToPixel(glm::vec2(cw, 0.f), glm::ivec2(0));
-      cw = out.x;
-    }
-    for (float &rh : m_rowsHeight)
-    {
-      const glm::vec2 out = win.snapToPixel(glm::vec2(0.f, rh), glm::ivec2(0));
-      rh = out.y;
-    }
   }
 
-  // 2. compute offsets of rows and columns
+  // 2.a compute space in-between rows and columns
+
+  std::vector<float> colsSpace(m_dimension.x + 1, 0.f), rowsSpace(m_dimension.y + 1, 0.f);
+
+  for (uint ix = 0; ix <= m_dimension.x; ++ix)
+  {
+    if (m_colsInbetweenSpace[ix].valid())
+      colsSpace[ix] = win.resolve_sizeW(m_colsInbetweenSpace[ix]);
+  }
+  for (uint iy = 0; iy <= m_dimension.y; ++iy)
+  {
+    if (m_rowsInbetweenSpace[iy].valid())
+      rowsSpace[iy] = win.resolve_sizeH(m_rowsInbetweenSpace[iy]);
+  }
+
+  // 2.b compute offsets of rows and columns
 
   std::vector<float> colsPos(m_dimension.x + 1), rowsPos(m_dimension.y + 1);
 
-  const glm::vec2 marginSnaped = win.snapToPixel(0.5f * win.resolve_sizeWH(m_cellMargin), glm::ivec2(2)) * 2.f;
+  const glm::vec2 cellMargin = win.resolve_sizeWH(m_cellMargin);
 
   {
-    colsPos[0] = 0.f;
-    rowsPos[0] = 0.f;
+    colsPos[0] = colsSpace[0];
+    rowsPos[0] = -rowsSpace[0];
 
     for (uint ix = 1; ix <= m_dimension.x; ++ix)
-      colsPos[ix] = colsPos[ix-1] + m_colsWidth[ix-1] + marginSnaped.x;
+      colsPos[ix] = colsPos[ix-1] + m_colsWidth[ix-1] + cellMargin.x + colsSpace[ix];
 
     for (uint iy = 1; iy <= m_dimension.y; ++iy)
-      rowsPos[iy] = rowsPos[iy-1] - m_rowsHeight[iy-1] - marginSnaped.y;
+      rowsPos[iy] = rowsPos[iy-1] - m_rowsHeight[iy-1] - cellMargin.y - rowsSpace[iy];
   }
 
   // 3. assign zone to widgets
-
-  const glm::vec2 offsetSnaped = win.snapToPixel(offset);
 
   for (uint ix = 0; ix < m_dimension.x; ++ix)
   {
@@ -162,8 +164,8 @@ glm::vec4 s_layoutGrid::computeWidgetZones(const ui::window &win, const glm::vec
       const uint ixN = glm::min(ix + cell.m_span.x, m_dimension.x);
       const uint iyN = glm::min(iy + cell.m_span.y, m_dimension.y);
 
-      glm::vec2 ptLB(colsPos[ix]  + 0.5f * marginSnaped.x, rowsPos[iyN] + 0.5f * marginSnaped.y);
-      glm::vec2 ptRT(colsPos[ixN] - 0.5f * marginSnaped.x, rowsPos[iy]  - 0.5f * marginSnaped.y);
+      glm::vec2 ptLB(colsPos[ix]  + 0.5f * cellMargin.x, rowsPos[iyN] + 0.5f * cellMargin.y + rowsSpace[iyN]);
+      glm::vec2 ptRT(colsPos[ixN] - 0.5f * cellMargin.x - colsSpace[ixN], rowsPos[iy]  - 0.5f * cellMargin.y);
 
       const glm::vec2 wSize = glm::min(cell.m_widget->get_zoneSizeDefault(), ptRT - ptLB);
 
@@ -195,11 +197,11 @@ glm::vec4 s_layoutGrid::computeWidgetZones(const ui::window &win, const glm::vec
           ptRT.y = ptLB.y + wSize.y;
       }
 
-      cell.m_widget->set_zone(glm::vec4(offsetSnaped + ptLB, offsetSnaped + ptRT));
+      cell.m_widget->set_zone(glm::vec4(offset + ptLB, offset + ptRT));
     }
   }
 
-  return glm::vec4(offset, offset) + glm::vec4(0.f, rowsPos[m_dimension.y], colsPos[m_dimension.x], 0.f);
+  return glm::vec2(colsPos[m_dimension.x], -rowsPos[m_dimension.y]);
 }
 
 // ----------------------------------------------------------------------------

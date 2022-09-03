@@ -31,9 +31,6 @@ public:
   s_value wvalue;
 
   virtual uint get_vcountSolid() const override { return 18; }
-  virtual uint get_vcountLine() const override { return 0; }
-  virtual uint get_vcountPict() const override { return 0; }
-  virtual uint get_countText() const override { return 0; }
 
   virtual glm::vec2 get_zoneSizeDefault() const override
   {
@@ -45,10 +42,10 @@ public:
   {
     auto & objsolid = get_parentUI()->getDrawModel();
 
-    objsolid.fillDataRectangle(m_adSolid.part, m_adSolid.offset + 0, wzone, glm::vec4(0.f), glm::vec4(0.f));
+    objsolid.fillDataRectangle(m_adSolid.part, m_adSolid.offset + 0, m_zone, glm::vec4(0.f), glm::vec4(0.f));
 
-    const float valx1 = wzone.x + (wzone.z-wzone.x) * (wvalue.m_peak);
-    const glm::vec4 zoneBar1 = glm::vec4(wzone.x,wzone.y,valx1,wzone.w);
+    const float valx1 = m_zone.x + (m_zone.z-m_zone.x) * (wvalue.m_peak);
+    const glm::vec4 zoneBar1 = glm::vec4(m_zone.x,m_zone.y,valx1,m_zone.w);
     const glm::vec4 zoneC1 = glm::vec4(0.5f * wvalue.m_peak, 0.5f * (1.f - wvalue.m_peak), 0.f, 1.f);
     objsolid.fillDataRectangle(m_adSolid.part, m_adSolid.offset + 6, zoneBar1, glm::vec4(0.f), glm::vec4(0.f));
     objsolid.layout().m_colors.get<glm::vec4>(m_adSolid.offset + 6    ) = glm::vec4(0.f, 0.5f, 0.f, 1.f);
@@ -58,8 +55,8 @@ public:
     objsolid.layout().m_colors.get<glm::vec4>(m_adSolid.offset + 6 + 4) = zoneC1;
     objsolid.layout().m_colors.get<glm::vec4>(m_adSolid.offset + 6 + 5) = glm::vec4(0.f, 0.5f, 0.f, 1.f);
 
-    const float valx2 = wzone.x + (wzone.z-wzone.x) * (wvalue.m_RMS);
-    const glm::vec4 zoneBar2 = glm::vec4(wzone.x,wzone.y,valx2,wzone.w);
+    const float valx2 = m_zone.x + (m_zone.z-m_zone.x) * (wvalue.m_RMS);
+    const glm::vec4 zoneBar2 = glm::vec4(m_zone.x,m_zone.y,valx2,m_zone.w);
     const glm::vec4 zoneC2 = glm::vec4(wvalue.m_peak, 1.f - wvalue.m_peak, 0.f, 1.f);
     objsolid.fillDataRectangle(m_adSolid.part, m_adSolid.offset + 12, zoneBar2, glm::vec4(0.f), glm::vec4(0.f));
     objsolid.layout().m_colors.get<glm::vec4>(m_adSolid.offset + 12    ) = glm::vec4(0.f, 1.f, 0.f, 1.f);
@@ -92,9 +89,9 @@ public:
     const uint adPart = m_adrLine.part;
     const uint adOffset = m_adrLine.offset + tre::ui::widgetPicture::get_vcountLine();
 
-    const float xC = wzone.x + (wzone.z - wzone.x) * wcursor;
-    const glm::vec2 pA = glm::vec2(xC, wzone.y);
-    const glm::vec2 pB = glm::vec2(xC, wzone.w);
+    const float xC = m_zone.x + (m_zone.z - m_zone.x) * wcursor;
+    const glm::vec2 pA = glm::vec2(xC, m_zone.y);
+    const glm::vec2 pB = glm::vec2(xC, m_zone.w);
     objsolid.fillDataLine(adPart, adOffset, pA, pB, glm::vec4(0.3f, 1.f, 0.3f, 1.f));
   }
 
@@ -167,7 +164,8 @@ static std::array<s_music, 5> listMusic = { s_music("origin", 0), s_music("no-co
 
 static tre::audioContext audioCtx;
 
-static std::array<tre::texture, 64> listTextures;
+static tre::texture textureWaveforms;
+static const unsigned textureWaveformMaxCount = 32;
 
 // =============================================================================
 
@@ -296,6 +294,10 @@ static int app_init()
   {
     unsigned iRaw = 1;
 
+    const unsigned textureWaveformSlot = baseUI.addTexture(&textureWaveforms);
+    SDL_Surface *textureWaveformLoading = SDL_CreateRGBSurface(0, 128, 32 * textureWaveformMaxCount, 32, 0, 0, 0, 0);
+    unsigned iWaveform = 0;
+
     for (auto &s : listSound)
     {
       // main row for music.
@@ -360,10 +362,10 @@ static int app_init()
 
         auto  *wWaveform = new widgetWaveform();
         {
-          SDL_Surface *surf = SDL_CreateRGBSurface(0, 128, 32, 32, 0, 0, 0, 0);
-          widgetWaveform::genWaveForm(s.m_audio[0], surf, 0, 32);
-          listTextures[iRaw].load(surf, 0, true);
-          wWaveform->set_texId(&listTextures[iRaw]);
+          TRE_ASSERT(iWaveform < textureWaveformMaxCount);
+          widgetWaveform::genWaveForm(s.m_audio[0], textureWaveformLoading, 0 + 32 * iWaveform, 32 + 32 * iWaveform);
+          wWaveform->set_texId(textureWaveformSlot)->set_texUV(glm::vec4(0.f, iWaveform * 1.f / textureWaveformMaxCount, 1.f, (iWaveform + 1.f) / textureWaveformMaxCount));
+          ++iWaveform;
         }
         wWaveform->wcb_animate = [&s](tre::ui::widget *w, float )
         {
@@ -462,10 +464,10 @@ static int app_init()
 
         auto  *wWaveform = new widgetWaveform();
         {
-          SDL_Surface *surf = SDL_CreateRGBSurface(0, 128, 32, 32, 0, 0, 0, 0);
-          widgetWaveform::genWaveForm(*s.audioData(), surf, 0, 32);
-          listTextures[iRaw].load(surf, 0, true);
-          wWaveform->set_texId(&listTextures[iRaw]);
+          TRE_ASSERT(iWaveform < textureWaveformMaxCount);
+          widgetWaveform::genWaveForm(*s.audioData(), textureWaveformLoading, 0 + 32 * iWaveform, 32 + 32 * iWaveform);
+          wWaveform->set_texId(textureWaveformSlot)->set_texUV(glm::vec4(0.f, iWaveform * 1.f / textureWaveformMaxCount, 1.f, (iWaveform + 1.f) / textureWaveformMaxCount));
+          ++iWaveform;
         }
         wWaveform->wcb_animate = [&s](tre::ui::widget *w, float )
         {
@@ -496,6 +498,7 @@ static int app_init()
 
     }
 
+    textureWaveforms.load(textureWaveformLoading, 0, true);
   }
 
   if (withGUI)
@@ -561,12 +564,12 @@ static void app_quit()
 
   audioCtx.stopSystem();
 
-  for (tre::texture &t : listTextures) t.clear();
-
   baseUI.clearShader();
   baseUI.clearGPU();
   baseUI.clear();
   font.clear();
+
+  textureWaveforms.clear();
 
   windowCtx.OpenGLQuit();
   windowCtx.SDLQuit();

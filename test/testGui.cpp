@@ -5,6 +5,7 @@
 #include "shader.h"
 #include "texture.h"
 #include "font.h"
+#include "textgenerator.h"
 #include "windowHelper.h"
 
 #include <time.h>
@@ -25,6 +26,8 @@ struct s_sceneOption
   float m_ui_size = 0.95f;     // main window's font-size
   float m_ui_saturation = 0.f; // main window's color saturation (color masking)
   float m_ui_cellMargin = 1.f; // main window's cells margin
+  float m_ui_col0Spacing = 0.f;// main window's spacing between column 0 and 1
+  uint  m_ui_language = 0;     // main window's language
 };
 
 // =============================================================================
@@ -58,22 +61,68 @@ public:
   widgetColor() : widget() {}
   virtual ~widgetColor() override {}
 
-  virtual unsigned get_vcountSolid() const override
+  virtual uint get_vcountSolid() const override
   {
     return 6;
   }
-  //virtual const tre::texture* get_textureSlot() const override; // grid texture ?
   virtual glm::vec2 get_zoneSizeDefault() const override
   {
     const float h = get_parentWindow()->resolve_sizeH(get_parentWindow()->get_fontSize());
     return glm::vec2(3.f * h, h);
-
   }
   virtual void compute_data() override
   {
     auto & objsolid = get_parentUI()->getDrawModel();
 
-    objsolid.fillDataRectangle(m_adSolid.part, m_adSolid.offset, wzone, wcolor, glm::vec4(0.f));
+    objsolid.fillDataRectangle(m_adSolid.part, m_adSolid.offset, m_zone, wcolor, glm::vec4(0.f));
+  }
+};
+
+// =============================================================================
+
+class widgetCheckPixelSnap : public tre::ui::widget
+{
+public:
+  widgetCheckPixelSnap() : widget() {}
+  virtual ~widgetCheckPixelSnap() override {}
+
+  virtual uint get_vcountSolid() const override { return 6; }
+  virtual uint get_vcountLine() const override { return 20; }
+  virtual glm::vec2 get_zoneSizeDefault() const override
+  {
+    const float h = get_parentWindow()->resolve_sizeH(get_parentWindow()->get_fontSize());
+    return glm::vec2(3.f * h, h);
+  }
+  virtual void compute_data() override
+  {
+    auto & objsolid = get_parentUI()->getDrawModel();
+
+    objsolid.fillDataRectangle(m_adSolid.part, m_adSolid.offset, m_zone, glm::vec4(0.f, 0.f, 0.f, 1.f), glm::vec4(0.f));
+
+    const glm::vec2 pxSize2 = get_parentWindow()->resolve_sizeWH(tre::ui::s_size(2, tre::ui::SIZE_PIXEL));
+
+    glm::vec2 pxOffset = get_parentWindow()->resolve_pixelOffset();
+    pxOffset.x += m_zone.x;
+    pxOffset.y += m_zone.w;
+
+    // draw base line (not snapped)
+
+    objsolid.fillDataLine(m_adrLine.part, m_adrLine.offset +  0, glm::vec2(m_zone.x, m_zone.y), glm::vec2(m_zone.x, m_zone.w), glm::vec4(1.f));
+    objsolid.fillDataLine(m_adrLine.part, m_adrLine.offset +  2, glm::vec2(m_zone.x, m_zone.w), glm::vec2(m_zone.z, m_zone.w), glm::vec4(1.f));
+
+    // draw 4 horizontal and 4 vertical lines every 2-pixels (if the zone is large enough)
+
+    objsolid.fillDataLine(m_adrLine.part, m_adrLine.offset +  4, glm::vec2(pxOffset.x + pxSize2.x * 1, m_zone.y), glm::vec2(pxOffset.x + pxSize2.x * 1, m_zone.w), glm::vec4(1.f));
+    objsolid.fillDataLine(m_adrLine.part, m_adrLine.offset +  6, glm::vec2(pxOffset.x + pxSize2.x * 2, m_zone.y), glm::vec2(pxOffset.x + pxSize2.x * 2, m_zone.w), glm::vec4(1.f));
+    objsolid.fillDataLine(m_adrLine.part, m_adrLine.offset +  8, glm::vec2(pxOffset.x + pxSize2.x * 3, m_zone.y), glm::vec2(pxOffset.x + pxSize2.x * 3, m_zone.w), glm::vec4(1.f));
+    objsolid.fillDataLine(m_adrLine.part, m_adrLine.offset + 10, glm::vec2(pxOffset.x + pxSize2.x * 4, m_zone.y), glm::vec2(pxOffset.x + pxSize2.x * 4, m_zone.w), glm::vec4(1.f));
+
+    objsolid.fillDataLine(m_adrLine.part, m_adrLine.offset + 12, glm::vec2(m_zone.x, pxOffset.y -  pxSize2.y * 1), glm::vec2(m_zone.z, pxOffset.y - pxSize2.y * 1), glm::vec4(1.f));
+    objsolid.fillDataLine(m_adrLine.part, m_adrLine.offset + 14, glm::vec2(m_zone.x, pxOffset.y -  pxSize2.y * 2), glm::vec2(m_zone.z, pxOffset.y - pxSize2.y * 2), glm::vec4(1.f));
+    objsolid.fillDataLine(m_adrLine.part, m_adrLine.offset + 16, glm::vec2(m_zone.x, pxOffset.y -  pxSize2.y * 3), glm::vec2(m_zone.z, pxOffset.y - pxSize2.y * 3), glm::vec4(1.f));
+    objsolid.fillDataLine(m_adrLine.part, m_adrLine.offset + 18, glm::vec2(m_zone.x, pxOffset.y -  pxSize2.y * 4), glm::vec2(m_zone.z, pxOffset.y - pxSize2.y * 4), glm::vec4(1.f));
+
+    m_isUpdateNeededData = true; // hack, always update
   }
 };
 
@@ -149,18 +198,16 @@ bool s_uiManager::load(const s_loadArgs &args)
     menuWmain->set_layoutGrid(12,5);
     menuWmain->set_cellMargin(tre::ui::s_size(m_sceneOption.m_ui_cellMargin, tre::ui::SIZE_PIXEL));
 
-    widgetTextAndReport *wTR = new widgetTextAndReport;
-    wTR->set_text("Widgets")->set_color(glm::vec4(1.f,1.f,0.f,1.f));
-    menuWmain->set_widget(wTR,0,0);
-    //menuWmain->create_widgetText(0,0)->set_text("Widgets")->set_color(glm::vec4(1.f,1.f,0.f,1.f));
+    const uint pic1_Slot = menu.addTexture(args.picture1);
 
+    menuWmain->create_widgetText(0,0)->set_text("Widgets")->set_color(glm::vec4(1.f,1.f,0.f,1.f));
     menuWmain->create_widgetText(0,1)->set_text("Info")->set_color(glm::vec4(1.f,1.f,0.f,1.f));
     menuWmain->create_widgetText(0,2)->set_text("Active")->set_color(glm::vec4(1.f,1.f,0.f,1.f));
     menuWmain->create_widgetText(0,3, 2,1)->set_text("Edit")->set_color(glm::vec4(1.f,1.f,0.f,1.f));
 
     menuWmain->create_widgetText(1,0)->set_text("- widget Picture:");
-    menuWmain->create_widgetPicture(1,1)->set_texId(args.picture1);
-    menuWmain->create_widgetPicture(1,2)->set_texId(args.picture1)->set_isactive(true);
+    menuWmain->create_widgetPicture(1,1)->set_texId(pic1_Slot);
+    menuWmain->create_widgetPicture(1,2)->set_texId(pic1_Slot)->set_isactive(true);
 
     menuWmain->create_widgetText(2,0)->set_text("- widget Bar min:");
     menuWmain->create_widgetBar(2,1)->set_withborder(false);
@@ -198,8 +245,14 @@ bool s_uiManager::load(const s_loadArgs &args)
     menuWmain->create_widgetText(7,2)->set_text("click")
         ->set_withbackground(true)->set_withborder(true)->set_isactive(true);
 
+    const std::array<std::string, TRE_UI_NLANGUAGES> trTxt = {"Translate me !", "Traduit-moi !"};
+    menuWmain->create_widgetTextTranslatate(8,0, 1,99)->set_texts(trTxt);
+
+    tre::ui::widget *wSnapLines = new widgetCheckPixelSnap;
+    menuWmain->set_widget(wSnapLines, 10, 0, 1, 55);
+
     tre::ui::widget *wFeedBackFontSize = new widgetTextAndReport;
-    menuWmain->set_widget(wFeedBackFontSize, 11,0, 1,55);
+    menuWmain->set_widget(wFeedBackFontSize, 11,0, 1, 55);
     wFeedBackFontSize->wcb_animate = [](tre::ui::widget *self, float)
     {
       widgetTextAndReport* selfTx = static_cast<widgetTextAndReport*>(self);
@@ -234,7 +287,7 @@ bool s_uiManager::load(const s_loadArgs &args)
       menuWoption->set_mat3(m);
     }
 
-    menuWoption->set_layoutGrid(11,2);
+    menuWoption->set_layoutGrid(20,2);
     menuWoption->set_colAlignment(1, tre::ui::ALIGN_MASK_CENTERED);
 
     menuWoption->create_widgetText(0,0, 1,2)->set_text("Main window controls")->set_fontsizeModifier(1.1f)->set_color(glm::vec4(1.f, 0.f, 1.f, 1.f));
@@ -245,6 +298,8 @@ bool s_uiManager::load(const s_loadArgs &args)
     {
       this->m_sceneOption.m_ui_alpha = static_cast<tre::ui::widgetBar*>(self)->get_value();
       if (this->menuWmain != nullptr) this->menuWmain->set_transparency(m_sceneOption.m_ui_alpha);
+      if (this->hudWmain != nullptr) this->hudWmain->set_transparency(m_sceneOption.m_ui_alpha);
+      if (this->hudWfixedSize != nullptr) this->hudWfixedSize->set_transparency(m_sceneOption.m_ui_alpha);
     };
 
     menuWoption->create_widgetText(2,0)->set_text("background");
@@ -252,7 +307,8 @@ bool s_uiManager::load(const s_loadArgs &args)
     wBackalpha->wcb_modified_ongoing = [this] (tre::ui::widget *self)
     {
       this->m_sceneOption.m_ui_backalpha = static_cast<tre::ui::widgetBar*>(self)->get_value();
-      if (this->menuWmain != nullptr) this->menuWmain->set_color(glm::vec4(0.2f,0.2f,0.2f,m_sceneOption.m_ui_backalpha));
+      const glm::vec4 bgColor = glm::vec4(0.2f,0.2f,0.2f,m_sceneOption.m_ui_backalpha);
+      if (this->menuWmain != nullptr) this->menuWmain->set_color(bgColor);
     };
 
     menuWoption->create_widgetText(3,0)->set_text("size");
@@ -274,11 +330,21 @@ bool s_uiManager::load(const s_loadArgs &args)
     };
 
     menuWoption->create_widgetText(5,0)->set_text("cell margin (in Pixel)");
-    tre::ui::widget *wCellMargin = menuWoption->create_widgetBar(5,1)->set_value(m_sceneOption.m_ui_cellMargin)->set_valuemin(0.f)->set_valuemax(16.f)->set_isactive(true)->set_iseditable(true);
+    tre::ui::widget *wCellMargin = menuWoption->create_widgetBar(5,1)->set_value(m_sceneOption.m_ui_cellMargin)->set_valuemin(0.f)->set_valuemax(16.f)->set_snapInterval(1.f)->set_isactive(true)->set_iseditable(true);
     wCellMargin->wcb_modified_ongoing = [this] (tre::ui::widget *self)
     {
       this->m_sceneOption.m_ui_cellMargin = static_cast<tre::ui::widgetBar*>(self)->get_value();
       if (this->menuWmain != nullptr) this->menuWmain->set_cellMargin(tre::ui::s_size(this->m_sceneOption.m_ui_cellMargin, tre::ui::SIZE_PIXEL));
+      if (this->hudWmain != nullptr) this->hudWmain->set_cellMargin(tre::ui::s_size(this->m_sceneOption.m_ui_cellMargin, tre::ui::SIZE_PIXEL));
+      if (this->hudWfixedSize != nullptr) this->hudWfixedSize->set_cellMargin(tre::ui::s_size(this->m_sceneOption.m_ui_cellMargin, tre::ui::SIZE_PIXEL));
+    };
+
+    menuWoption->create_widgetText(6,0)->set_text("col-0 spacing (in Pixel)");
+    tre::ui::widget *wCol0Spacing = menuWoption->create_widgetBar(6,1)->set_value(m_sceneOption.m_ui_col0Spacing)->set_valuemin(0.f)->set_valuemax(16.f)->set_snapInterval(1.f)->set_isactive(true)->set_iseditable(true);
+    wCol0Spacing->wcb_modified_ongoing = [this] (tre::ui::widget *self)
+    {
+      this->m_sceneOption.m_ui_col0Spacing = static_cast<tre::ui::widgetBar*>(self)->get_value();
+      if (this->menuWmain != nullptr) this->menuWmain->set_colSpacement(0, tre::ui::s_size(this->m_sceneOption.m_ui_col0Spacing, tre::ui::SIZE_PIXEL), false);
     };
 
     menuWoption->create_widgetText(7,0, 1,2)->set_text("Scene controls")->set_fontsizeModifier(1.1f)->set_color(glm::vec4(1.f, 0.f, 1.f, 1.f));
@@ -313,6 +379,64 @@ bool s_uiManager::load(const s_loadArgs &args)
 
       selfTx->set_text(outT);
     };
+
+    menuWoption->create_widgetText(12,0, 1,2)->set_text("Window controls")->set_fontsizeModifier(1.1f)->set_color(glm::vec4(1.f, 0.f, 1.f, 1.f));
+
+    menuWoption->create_widgetText(13,0)->set_text("show main");
+    tre::ui::widget *wShowMain = menuWoption->create_widgetBoxCheck(13,1)->set_value(true)->set_isactive(true)->set_iseditable(true);
+    wShowMain->wcb_modified_finished = [this] (tre::ui::widget *self)
+    {
+      if (menuWmain != nullptr) menuWmain->set_visible(static_cast<tre::ui::widgetBoxCheck*>(self)->get_value());
+    };
+    wShowMain->wcb_animate = [this] (tre::ui::widget *self, float )
+    {
+      if (menuWmain != nullptr) static_cast<tre::ui::widgetBoxCheck*>(self)->set_value(menuWmain->get_visible());
+      else                      static_cast<tre::ui::widgetBoxCheck*>(self)->set_value(false)->set_isactive(false);
+    };
+
+    menuWoption->create_widgetText(14,0)->set_text("show color");
+    tre::ui::widget *wShowColor = menuWoption->create_widgetBoxCheck(14,1)->set_value(true)->set_isactive(true)->set_iseditable(true);
+    wShowColor->wcb_modified_finished = [this] (tre::ui::widget *self)
+    {
+      menuWcolor->set_visible(static_cast<tre::ui::widgetBoxCheck*>(self)->get_value());
+    };
+    wShowColor->wcb_animate = [this] (tre::ui::widget *self, float )
+    {
+      if (menuWcolor != nullptr) static_cast<tre::ui::widgetBoxCheck*>(self)->set_value(menuWcolor->get_visible());
+      else                       static_cast<tre::ui::widgetBoxCheck*>(self)->set_value(false)->set_isactive(false);
+    };
+
+    menuWoption->create_widgetText(15,0)->set_text("show 3D-fixed");
+    tre::ui::widget *wShow3DFixed = menuWoption->create_widgetBoxCheck(15,1)->set_value(true)->set_isactive(true)->set_iseditable(true);
+    wShow3DFixed->wcb_modified_finished = [this] (tre::ui::widget *self)
+    {
+      hudWfixedSize->set_visible(static_cast<tre::ui::widgetBoxCheck*>(self)->get_value());
+    };
+    wShow3DFixed->wcb_animate = [this] (tre::ui::widget *self, float )
+    {
+      if (hudWfixedSize != nullptr) static_cast<tre::ui::widgetBoxCheck*>(self)->set_value(hudWfixedSize->get_visible());
+      else                          static_cast<tre::ui::widgetBoxCheck*>(self)->set_value(false)->set_isactive(false);
+    };
+
+    menuWoption->create_widgetText(16,0)->set_text("show 3D-varying");
+    tre::ui::widget *wShow3DVarying = menuWoption->create_widgetBoxCheck(16,1)->set_value(true)->set_isactive(true)->set_iseditable(true);
+    wShow3DVarying->wcb_modified_finished = [this] (tre::ui::widget *self)
+    {
+      hudWmain->set_visible(static_cast<tre::ui::widgetBoxCheck*>(self)->get_value());
+    };
+    wShow3DVarying->wcb_animate = [this] (tre::ui::widget *self, float )
+    {
+      if (hudWmain != nullptr) static_cast<tre::ui::widgetBoxCheck*>(self)->set_value(hudWmain->get_visible());
+      else                     static_cast<tre::ui::widgetBoxCheck*>(self)->set_value(false)->set_isactive(false);
+    };
+
+    menuWoption->create_widgetText(19,0)->set_text("language");
+    static const std::array<std::string, TRE_UI_NLANGUAGES> kLanguages = {"English", "Français"};
+    tre::ui::widget *wLanguage = menuWoption->create_widgetLineChoice(19,1)->set_values(kLanguages)->set_isactive(true)->set_iseditable(true);
+    wLanguage->wcb_modified_finished = [this] (tre::ui::widget *self)
+    {
+      menu.set_language(static_cast<tre::ui::widgetLineChoice*>(self)->get_selectedIndex());
+    };
   }
 
   if (args.withColor)
@@ -341,8 +465,6 @@ bool s_uiManager::load(const s_loadArgs &args)
     widgetColor *wBase = new widgetColor;
     menuWcolor->set_widget(wBase, 0, 2, 4, 1);
 
-    // menuWcolor->create_widgetLineSeparator
-
     menuWcolor->create_widgetText(5, 0, 4, 1)->set_text("back color");
     tre::ui::widgetBar *wBackR = menuWcolor->create_widgetBar(5, 1); wBackR->set_value(0.2f)->set_color(glm::vec4(1.f, 0.3f, 0.3f, 1.f))->set_isactive(true)->set_iseditable(true);
     tre::ui::widgetBar *wBackG = menuWcolor->create_widgetBar(6, 1); wBackG->set_value(0.2f)->set_color(glm::vec4(0.3f, 1.f, 0.3f, 1.f))->set_isactive(true)->set_iseditable(true);
@@ -351,8 +473,6 @@ bool s_uiManager::load(const s_loadArgs &args)
 
     widgetColor *wBack = new widgetColor;
     menuWcolor->set_widget(wBack, 5, 2, 4, 1);
-
-    // menuWcolor->create_widgetLineSeparator
 
     menuWcolor->create_widgetText(10, 0)->set_text("blend");
     tre::ui::widgetBar *wBlendValue = menuWcolor->create_widgetBar(10, 1); wBlendValue->set_withtext(true)->set_isactive(true)->set_iseditable(true);
@@ -382,7 +502,7 @@ bool s_uiManager::load(const s_loadArgs &args)
     widgetColor *wHueInv = new widgetColor;
     menuWcolor->set_widget(wHueInv, 13, 3);
 
-    menuWcolor->wcb_animate = [=](tre::ui::widget *, float) // easy way (the values are re-computed each frames)
+    menuWcolor->wcb_animate = [=](tre::ui::widget *, float) // gore-way (the values are re-computed each frames)
     {
       const glm::vec4 baseColor = glm::vec4(wBaseR->get_value(), wBaseG->get_value(), wBaseB->get_value(), wBaseA->get_value());
       const glm::vec4 backColor = glm::vec4(wBackR->get_value(), wBackG->get_value(), wBackB->get_value(), wBackA->get_value());
@@ -601,9 +721,10 @@ int main(int argc, char **argv)
     uiArgs.font = &texFont;
     uiArgs.picture1 = &texTest;
 
-    //uiArgs.withMain = false;  // for debuging
-    //uiArgs.with3D = false;    // for debuging
-    //uiArgs.withColor = false; // for debuging
+    //uiArgs.withOption = false; // fot debuging
+    //uiArgs.withMain = false;   // for debuging
+    //uiArgs.with3D = false;     // for debuging
+    //uiArgs.withColor = false;  // for debuging
 
     uiManager.load(uiArgs);
 

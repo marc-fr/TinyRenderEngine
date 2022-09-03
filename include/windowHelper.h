@@ -4,8 +4,6 @@
 #include "openglinclude.h"
 #include "utils.h"
 
-#include <vector>
-
 namespace tre {
 
 /**

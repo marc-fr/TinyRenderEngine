@@ -13,34 +13,28 @@ public:
   widgetTextTitle() : widgetText() {}
   virtual ~widgetTextTitle() override {}
 
-  virtual uint get_vcountSolid() const override { return 2 * 6; }
+  virtual uint get_vcountSolid() const override { return widgetText::get_vcountSolid() + 2 * 6; }
   virtual void compute_data() override;
-  //virtual void acceptEvent(s_eventIntern &event) override;
 };
 
 void widgetTextTitle::compute_data()
 {
-  wwithbackground = false;
+  TRE_ASSERT(wwithbackground == false); // have a custom bg.
   widgetText::compute_data();
   // process
   auto & objsolid = get_parentUI()->getDrawModel();
-  const uint vertexOffsetLocal = m_adSolid.offset; // + widgetText::get_vcountSolid();
+  const uint vertexOffsetLocal = m_adSolid.offset + widgetText::get_vcountSolid();
 
-  const float sepY = 0.35f * wzone.y + 0.65f * wzone.w;
+  const float sepY = 0.35f * m_zone.y + 0.65f * m_zone.w;
 
   const glm::vec4 colorFront = resolve_color();
   const glm::vec4 colorParent = get_parent()->resolve_color();
   const glm::vec4 colorBack1 = 0.5f * colorFront + 0.5f * colorParent; // TODO: color blend modes ?
   const glm::vec4 colorBack2 = 0.3f * colorFront + 0.7f * colorParent; // TODO: color blend modes ?
 
-  objsolid.fillDataRectangle(m_adSolid.part, vertexOffsetLocal + 0, glm::vec4(wzone.x,wzone.y,wzone.z,sepY   ), colorBack2, glm::vec4(0.f));
-  objsolid.fillDataRectangle(m_adSolid.part, vertexOffsetLocal + 6, glm::vec4(wzone.x,sepY   ,wzone.z,wzone.w), colorBack1, glm::vec4(0.f));
+  objsolid.fillDataRectangle(m_adSolid.part, vertexOffsetLocal + 0, glm::vec4(m_zone.x,m_zone.y,m_zone.z,sepY   ), colorBack2, glm::vec4(0.f));
+  objsolid.fillDataRectangle(m_adSolid.part, vertexOffsetLocal + 6, glm::vec4(m_zone.x,sepY   ,m_zone.z,m_zone.w), colorBack1, glm::vec4(0.f));
 }
-
-/*void widgetTextTitle::acceptEvent(s_eventIntern &event)
-{
-  acceptEventBase_focus(event);
-}*/
 
 // global properties ----------------------------------------------------------
 
@@ -59,26 +53,27 @@ void window::set_visible(bool a_visible)
 
 window *window::set_topbar(const std::string &name, bool canBeMoved, bool canBeClosed)
 {
-  if (wTopBar != nullptr) delete(wTopBar);
+  if (wOwnWidgets[0] != nullptr) delete(wOwnWidgets[0]);
 
   widgetTextTitle *wTextTitle = new widgetTextTitle;
   wTextTitle->set_text(name)->set_isactive(canBeMoved);
-  wTopBar = wTextTitle;
-  wTopBar->m_parent = this;
+  wOwnWidgets[0] = wTextTitle;
+  wOwnWidgets[0]->m_parent = this;
 
   if (canBeClosed)
   {
-    if (wCloseButton != nullptr) delete(wCloseButton);
+    if (wOwnWidgets[1] != nullptr) delete(wOwnWidgets[1]);
 
     widgetBoxCheck *wCloseBox = new widgetBoxCheck;
-    wCloseBox->set_value(true)->set_isactive(true);
+    wCloseBox->set_withBorder(false);
+    wCloseBox->set_value(true);
+    wCloseBox->set_isactive(true);
     wCloseBox->wcb_clicked_left = [this](widget *)
     {
       this->set_visible(false);
     };
-
-    wCloseButton = wCloseBox;
-    wCloseButton->m_parent = this;
+    wOwnWidgets[1] = wCloseBox;
+    wOwnWidgets[1]->m_parent = this;
   }
 
   m_isUpdateNeededAdress = true;
@@ -88,7 +83,7 @@ window *window::set_topbar(const std::string &name, bool canBeMoved, bool canBeC
 
 window* window::set_topbarName(const std::string &name)
 {
-  if (wTopBar != nullptr) wTopBar->set_text(name);
+  if (wOwnWidgets[0] != nullptr) get_selfwidget_Title()->set_text(name);
   return this;
 }
 
@@ -109,6 +104,7 @@ void window::set_rowHeight(uint row, const s_size relHeight)
 void window::set_colAlignment(uint col, uint alignMask)
 {
   TRE_ASSERT(col < wlayout.m_dimension.x);
+  m_isUpdateNeededLayout = true;
   for (uint row = 0; row < wlayout.m_dimension.y; ++row)
     wlayout.m_cells[wlayout.index(row, col)].m_alignMask = alignMask;
 }
@@ -116,33 +112,37 @@ void window::set_colAlignment(uint col, uint alignMask)
 void window::set_rowAlignment(uint row, uint alignMask)
 {
   TRE_ASSERT(row < wlayout.m_dimension.y);
+  m_isUpdateNeededLayout = true;
   for (uint col = 0; col < wlayout.m_dimension.x; ++col)
     wlayout.m_cells[wlayout.index(row, col)].m_alignMask = alignMask;
 }
 
-float window::resolve_sizeW(s_size size) const
+void window::set_colSpacement(uint col, const s_size width, const bool atLeft)
 {
-  return resolve_sizeWH(size).x;
+  TRE_ASSERT(col < wlayout.m_dimension.x);
+  m_isUpdateNeededLayout = true;
+  wlayout.m_colsInbetweenSpace[col + (atLeft ? 0u : 1u)] = width;
 }
 
-float window::resolve_sizeH(s_size size) const
+void window::set_rowSpacement(uint row, const s_size height, const bool atTop)
 {
-  return resolve_sizeWH(size).y;
+  TRE_ASSERT(row < wlayout.m_dimension.y);
+  m_isUpdateNeededLayout = true;
+  wlayout.m_rowsInbetweenSpace[row + (atTop ? 0u : 1u)] = height;
 }
 
 glm::vec2 window::resolve_sizeWH(s_size size) const
 {
-  if (size.unit == SIZE_NATIVE)
-    return glm::vec2(size.size, size.size); // aspect ratio ??
+  if (size.unit == SIZE_NATIVE) return glm::vec2(size.size, size.size);
+
   TRE_ASSERT(size.unit == SIZE_PIXEL);
   if (get_parentUI()->get_dimension() == 2)
   {
     const baseUI2D *ui = static_cast<const baseUI2D*>(get_parentUI());
-    return ui->projectWindowPointFromScreen(glm::ivec2(size.size, size.size), wmat3, false);
+    return ui->projectWindowPointFromScreen(glm::vec2(size.size, size.size), wmat3, false);
   }
-  else
+  else if (get_parentUI()->get_dimension() == 3)
   {
-    TRE_ASSERT(get_parentUI()->get_dimension() == 3);
     const baseUI3D *ui = static_cast<const baseUI3D*>(get_parentUI());
 
     const glm::vec4 ptWin = glm::vec4(0.f, 0.f, 0.f, 1.f);
@@ -151,7 +151,24 @@ glm::vec2 window::resolve_sizeWH(s_size size) const
     const glm::vec2 sizeViewport = size.size * 2.f / ui->get_viewport();
     return ptClip.w * sizeViewport;
   }
+  else
+  {
+    TRE_FATAL("invalid space-dimension of the parent-UI");
+  }
 }
+
+glm::vec2 window::resolve_pixelOffset() const
+{
+  if (get_parentUI()->get_dimension() == 2)
+  {
+    const baseUI2D *ui = static_cast<const baseUI2D*>(get_parentUI());
+    glm::vec2 screenCoordSnaped = glm::floor(ui->projectWindowPointToScreen(glm::vec2(0.f), wmat3)); // not mandatory, but allow to return an offset closer to zero.
+    return ui->projectWindowPointFromScreen(screenCoordSnaped + glm::vec2(0.5f, 0.5f) /* offset by half a pixel*/, wmat3);
+  }
+
+  return glm::vec2(0.f); // fallback to zero if not implemented or supported
+}
+
 
 // interface with widgets -----------------------------------------------------
 
@@ -172,20 +189,20 @@ void window::set_widget(widget * w, uint row, uint col, const uint span_row, con
 
 void window::set_selfwidget_Title(widgetText *w)
 {
-  if (wTopBar != nullptr) delete(wTopBar);
+  if (wOwnWidgets[0] != nullptr) delete(wOwnWidgets[0]);
 
-  wTopBar = w;
-  if (w != nullptr) wTopBar->m_parent = this;
+  wOwnWidgets[0] = w;
+  if (w != nullptr) wOwnWidgets[0]->m_parent = this;
 
   m_isUpdateNeededAdress = true;
 }
 
 void window::set_selfwidget_CloseBox(widget * w)
 {
-  if (wCloseButton != nullptr) delete(wCloseButton);
+  if (wOwnWidgets[1] != nullptr) delete(wOwnWidgets[1]);
 
-  wCloseButton = w;
-  if (w != nullptr) wCloseButton->m_parent = this;
+  wOwnWidgets[1] = w;
+  if (w != nullptr) wOwnWidgets[1]->m_parent = this;
 
   m_isUpdateNeededAdress = true;
 }
@@ -196,22 +213,42 @@ void window::clear()
 {
   wlayout.clear();
 
-  if (wTopBar) delete(wTopBar);
-  wTopBar = nullptr;
-
-  if (wCloseButton) delete(wCloseButton);
-  wCloseButton = nullptr;
+  for (auto *widPtr : wOwnWidgets)
+  {
+    if (widPtr != nullptr) delete(widPtr);
+  }
+  wOwnWidgets.fill(nullptr);
 }
 
 void window::compute_adressPlage()
 {
-  // compute count and adress-plage
+  // needs update ?
+  bool willUpdate = m_isUpdateNeededAdress;
+  m_isUpdateNeededAdress = false;
+
+  for (const s_layoutGrid::s_cell &c : wlayout.m_cells)
+  {
+    if (c.m_widget == nullptr) continue;
+    willUpdate |= c.m_widget->m_isUpdateNeededAdress;
+    c.m_widget->m_isUpdateNeededAdress = false;
+  }
+  for (auto *widPtr : wOwnWidgets)
+  {
+    if (widPtr == nullptr) continue;
+    willUpdate |= widPtr->m_isUpdateNeededAdress;
+    widPtr->m_isUpdateNeededAdress = false;
+  }
+
+  if (!willUpdate) return;
+
+  // set flags
+  m_isUpdateNeededData = true;
+
+  // compute adress-plage
   auto & model   = get_parentUI()->getDrawModel();
 
   // -> for solid
   {
-    m_adSolid.part = model.createPart(0);
-    m_adSolid.pcount = 1;
     uint offsetVertex = 6; // the window's box
     for(const auto &cell : wlayout.m_cells)
     {
@@ -220,25 +257,18 @@ void window::compute_adressPlage()
       cell.m_widget->m_adSolid.offset = offsetVertex;
       offsetVertex += cell.m_widget->get_vcountSolid();
     }
-    if (wTopBar != nullptr)
+    for (auto *widPtr : wOwnWidgets)
     {
-      wTopBar->m_adSolid.part   = m_adSolid.part;
-      wTopBar->m_adSolid.offset = offsetVertex;
-      offsetVertex += wTopBar->get_vcountSolid();
-    }
-    if (wCloseButton != nullptr)
-    {
-      wCloseButton->m_adSolid.part   = m_adSolid.part;
-      wCloseButton->m_adSolid.offset = offsetVertex;
-      offsetVertex += wCloseButton->get_vcountSolid();
+      if (widPtr == nullptr) continue;
+      widPtr->m_adSolid.part   = m_adSolid.part;
+      widPtr->m_adSolid.offset = offsetVertex;
+      offsetVertex += widPtr->get_vcountSolid();
     }
     model.resizePart(m_adSolid.part, offsetVertex);
   }
 
   // -> for line
   {
-    m_adrLine.part = model.createPart(0);
-    m_adrLine.pcount = 1;
     uint offsetVertex = 0;
     for(const auto &cell : wlayout.m_cells)
     {
@@ -247,175 +277,140 @@ void window::compute_adressPlage()
       cell.m_widget->m_adrLine.offset = offsetVertex;
       offsetVertex += cell.m_widget->get_vcountLine();
     }
-    if (wTopBar != nullptr)
+    for (auto *widPtr : wOwnWidgets)
     {
-      wTopBar->m_adrLine.part   = m_adrLine.part;
-      wTopBar->m_adrLine.offset = offsetVertex;
-      offsetVertex += wTopBar->get_vcountLine();
-    }
-    if (wCloseButton != nullptr)
-    {
-      wCloseButton->m_adrLine.part   = m_adrLine.part;
-      wCloseButton->m_adrLine.offset = offsetVertex;
-      offsetVertex += wCloseButton->get_vcountLine();
+      if (widPtr == nullptr) continue;
+      widPtr->m_adrLine.part   = m_adrLine.part;
+      widPtr->m_adrLine.offset = offsetVertex;
+      offsetVertex += widPtr->get_vcountLine();
     }
     model.resizePart(m_adrLine.part, offsetVertex);
   }
 
   // -> for pict
   {
-    uint widCount = 0;
+    std::array<uint, baseUI::s_textureSlotsCount> offsetVertexPerSlot;
+    offsetVertexPerSlot.fill(0u);
     for(const auto &cell : wlayout.m_cells)
     {
       if (cell.m_widget == nullptr) continue;
       const uint vertexCount = cell.m_widget->get_vcountPict();
-      if (vertexCount == 0) continue;
-      cell.m_widget->m_adrPict.part   = model.createPart(vertexCount);
-      cell.m_widget->m_adrPict.offset = 0;
-      if (widCount == 0) m_adrPict.part = cell.m_widget->m_adrPict.part;
-      TRE_ASSERT(cell.m_widget->m_adrPict.part == m_adrPict.part + widCount); // the adress-plage must be contiguous
-      widCount++;
+      const uint textureSlot = cell.m_widget->get_textureSlot();
+      if (textureSlot >= baseUI::s_textureSlotsCount) continue;
+      cell.m_widget->m_adrPict.part   = m_adrPict.part + textureSlot;
+      cell.m_widget->m_adrPict.offset = offsetVertexPerSlot[textureSlot];
+      offsetVertexPerSlot[textureSlot] += vertexCount;
     }
-    if (wTopBar != nullptr && wTopBar->get_vcountPict() != 0)
+    for (auto *widPtr : wOwnWidgets)
     {
-      TRE_FATAL("not implemented");
+      if (widPtr == nullptr) continue;
+      TRE_ASSERT(widPtr->get_vcountPict() == 0); // not implemented
     }
-    if (wCloseButton != nullptr && wCloseButton->get_vcountPict() != 0)
-    {
-      TRE_FATAL("not implemented");
-    }
-    m_adrPict.pcount = widCount;
+    for (std::size_t i = 0; i < baseUI::s_textureSlotsCount; ++i) model.resizePart(m_adrPict.part + i, offsetVertexPerSlot[i]);
   }
 
   // -> for text
   {
-    uint txtCount = 0;
+    uint offsetVertex = 0;
     for(const auto &cell : wlayout.m_cells)
     {
       if (cell.m_widget == nullptr) continue;
-      const uint txtLocalCount = cell.m_widget->get_countText();
-      if (txtLocalCount == 0) continue;
-      TRE_ASSERT(txtLocalCount == 1);
-      cell.m_widget->m_adrText.part   = model.createPart(0);
-      cell.m_widget->m_adrText.offset = 0;
-      if (txtCount == 0) m_adrText.part = cell.m_widget->m_adrText.part;
-      TRE_ASSERT(cell.m_widget->m_adrText.part == m_adrText.part + txtCount); // the adress-plage must be contiguous
-      txtCount += txtLocalCount;
+      cell.m_widget->m_adrText.part   = m_adrText.part;
+      cell.m_widget->m_adrText.offset = offsetVertex;
+      offsetVertex += cell.m_widget->get_vcountText();
     }
-    if (wTopBar != nullptr && wTopBar->get_countText() != 0)
+    for (auto *widPtr : wOwnWidgets)
     {
-      const uint txtLocalCount = wTopBar->get_countText();
-      TRE_ASSERT(txtLocalCount == 1);
-      wTopBar->m_adrText.part   = model.createPart(0);
-      wTopBar->m_adrText.offset = 0;
-      if (txtCount == 0) m_adrText.part = wTopBar->m_adrText.part;
-      TRE_ASSERT(wTopBar->m_adrText.part == m_adrText.part + txtCount); // the adress-plage must be contiguous
-      txtCount += txtLocalCount;
+      if (widPtr == nullptr) continue;
+      widPtr->m_adrText.part   = m_adrText.part;
+      widPtr->m_adrText.offset = offsetVertex;
+      offsetVertex += widPtr->get_vcountText();
     }
-    if (wCloseButton != nullptr && wCloseButton->get_countText() != 0)
-    {
-      const uint txtLocalCount = wCloseButton->get_countText();
-      TRE_ASSERT(txtLocalCount == 1);
-      wCloseButton->m_adrText.part   = model.createPart(0);
-      wCloseButton->m_adrText.offset = 0;
-      if (txtCount == 0) m_adrText.part = wCloseButton->m_adrText.part;
-      TRE_ASSERT(wCloseButton->m_adrText.part == m_adrText.part + txtCount); // the adress-plage must be contiguous
-      txtCount += txtLocalCount;
-    }
-    m_adrText.pcount = txtCount;
+    model.resizePart(m_adrText.part, 0u); // hack, discard previous data.
+    model.resizePart(m_adrText.part, offsetVertex);
   }
-
-  // -> mark window's data to be computed.
-  m_isUpdateNeededAdress = false;
-  m_isUpdateNeededLayout = true;
 }
 
 void window::compute_layout()
 {
   // needs update ?
   bool willUpdate = m_isUpdateNeededLayout;
-  if (!willUpdate)
+  m_isUpdateNeededLayout = false;
+
+  for (const s_layoutGrid::s_cell &c : wlayout.m_cells)
   {
-    for (const s_layoutGrid::s_cell &c : wlayout.m_cells)
-    {
-      if (c.m_widget == nullptr) continue;
-      if (c.m_widget->m_isUpdateNeededData)
-      {
-        willUpdate = true;
-        break;
-      }
-    }
+    if (c.m_widget == nullptr) continue;
+    willUpdate |= c.m_widget->m_isUpdateNeededLayout;
+    c.m_widget->m_isUpdateNeededLayout = false;
   }
+  for (auto *widPtr : wOwnWidgets)
+  {
+    if (widPtr == nullptr) continue;
+    willUpdate |= widPtr->m_isUpdateNeededLayout;
+    widPtr->m_isUpdateNeededLayout = false;
+  }
+
   if (!willUpdate) return;
 
-  const glm::vec2 topBarZoneSize = (wTopBar != nullptr) ? wTopBar->get_zoneSizeDefault() : glm::vec2(0.f);
-  const glm::vec2 topCloseButtonZoneSize = (wCloseButton != nullptr) ? wCloseButton->get_zoneSizeDefault() : glm::vec2(0.f);
+  widget *widTopBar = wOwnWidgets[0];
+  widget *widCloseButton = wOwnWidgets[1];
 
-  glm::vec4 innerZone = wlayout.computeWidgetZones(*this, glm::vec2(wzone.x, wzone.w - topBarZoneSize.y));
+  // note: no need to set "m_isUpdateNeededData" because "set_zone()" will flag widget(s) wih this flag.
+
+  const glm::vec2 topBarZoneSize = (widTopBar != nullptr) ? widTopBar->get_zoneSizeDefault() : glm::vec2(0.f);
+  const glm::vec2 topCloseButtonZoneSize = (widCloseButton != nullptr) ? widCloseButton->get_zoneSizeDefault() : glm::vec2(0.f);
+
+  glm::vec2 offset = glm::vec2(m_zone.x, m_zone.y);
+  glm::vec2 innerSize = wlayout.computeWidgetZones(*this, glm::vec2(m_zone.x, m_zone.y + m_zone.w - topBarZoneSize.y));
 
   // add zone for top-bar
   {
-    innerZone.w += topBarZoneSize.y;
-
-    if (innerZone.z - innerZone.x < topBarZoneSize.x + topCloseButtonZoneSize.x)
-      innerZone.z = innerZone.x + topBarZoneSize.x + topCloseButtonZoneSize.x;
+    innerSize.y += topBarZoneSize.y;
+    innerSize.x = glm::max(innerSize.x, topBarZoneSize.x + topCloseButtonZoneSize.x);
   }
 
   // window alignment
 
   if (walignMask & ALIGN_MASK_HORIZONTAL_CENTERED)
   {
-    const float halfSize = 0.5f * (innerZone.z - innerZone.x);
-    innerZone.x = -halfSize;
-    innerZone.z =  halfSize;
+    offset.x = -0.5f * innerSize.x;
   }
   else if (walignMask & ALIGN_MASK_HORIZONTAL_RIGHT)
   {
-    innerZone.x -= innerZone.z;
-    innerZone.z = 0.f;
+    offset.x = -innerSize.x;
   }
   else //if (walignMask & ALIGN_MASK_HORIZONTAL_LEFT)
   {
-    innerZone.z -= innerZone.x;
-    innerZone.x = 0.f;
+    offset.x = 0.f;
   }
 
   if (walignMask & ALIGN_MASK_VERTICAL_CENTERED)
   {
-    const float halfSize = 0.5f * (innerZone.w - innerZone.y);
-    innerZone.y = -halfSize;
-    innerZone.w =  halfSize;
+    offset.y = -0.5f * innerSize.y;
   }
   else if (walignMask & ALIGN_MASK_VERTICAL_BOTTOM)
   {
-    innerZone.w -= innerZone.y;
-    innerZone.y = 0.f;
+    offset.y = 0.f;
   }
   else //if (walignMask & ALIGN_MASK_VERTICAL_TOP)
   {
-    innerZone.y -= innerZone.w;
-    innerZone.w = 0.f;
+    offset.y = -innerSize.y;
   }
 
   // final set
 
-  if (wzone != innerZone)
+  if (m_zone.x != offset.x || m_zone.y != offset.y || m_zone.z != innerSize.x || m_zone.w != innerSize.y)
   {
-    wzone = innerZone;
+    m_zone = glm::vec4(offset, innerSize);
 
-    wlayout.computeWidgetZones(*this, glm::vec2(wzone.x, wzone.w - topBarZoneSize.y));
+    wlayout.computeWidgetZones(*this, glm::vec2(m_zone.x, m_zone.y + m_zone.w - topBarZoneSize.y));
 
-    if (wTopBar != nullptr)
-      wTopBar->set_zone(glm::vec4(wzone.x, wzone.w - topBarZoneSize.y, wzone.z, wzone.w));
+    if (widTopBar != nullptr)
+      widTopBar->set_zone(glm::vec4(m_zone.x, m_zone.y + m_zone.w - topBarZoneSize.y, m_zone.x + m_zone.z, m_zone.y + m_zone.w));
 
-    if (wCloseButton != nullptr)
-      wCloseButton->set_zone(glm::vec4(wzone.z - topCloseButtonZoneSize.x, wzone.w - topCloseButtonZoneSize.y, wzone.z, wzone.w));
-
-    // update flags
-    m_isUpdateNeededData = true; // recompute all widgets
+    if (widCloseButton != nullptr)
+      widCloseButton->set_zone(glm::vec4(m_zone.x + m_zone.z - topCloseButtonZoneSize.x, m_zone.y +  m_zone.w - topCloseButtonZoneSize.y, m_zone.x + m_zone.z, m_zone.y + m_zone.w));
   }
-
-  m_isUpdateNeededLayout = false;
 }
 
 void window::compute_data()
@@ -433,18 +428,19 @@ void window::compute_data()
         break;
       }
     }
-    if (wTopBar != nullptr)
-      willUpdate |= wTopBar->m_isUpdateNeededData;
-    if (wCloseButton != nullptr)
-      willUpdate |= wCloseButton->m_isUpdateNeededData;
+    for (auto *widPtr : wOwnWidgets)
+    {
+      if (widPtr == nullptr) continue;
+      willUpdate |= widPtr->m_isUpdateNeededData;
+    }
   }
   if (!willUpdate) return;
 
-  const glm::vec4 colorBase = wcolortheme.resolveColor(wcolor, resolve_colorModifier()) * wcolormask;
-
-  auto & objsolid = get_parentUI()->getDrawModel();
-
-  objsolid.fillDataRectangle(m_adSolid.part, 0, wzone, colorBase, glm::vec4(0.f));
+  {
+    const glm::vec4 colorBase = wcolortheme.resolveColor(wcolor, resolve_colorModifier()) * wcolormask;
+    auto & objsolid = get_parentUI()->getDrawModel();
+    objsolid.fillDataRectangle(m_adSolid.part, 0, glm::vec4(m_zone.x, m_zone.y, m_zone.x + m_zone.z, m_zone.y + m_zone.w), colorBase, glm::vec4(0.f));
+  }
 
   // window's widgets
   for (const s_layoutGrid::s_cell &c : wlayout.m_cells)
@@ -454,39 +450,15 @@ void window::compute_data()
     c.m_widget->compute_data();
     c.m_widget->m_isUpdateNeededData = false;
   }
-  if (wTopBar != nullptr)
+  for (auto *widPtr : wOwnWidgets)
   {
-    wTopBar->compute_data();
-    wTopBar->m_isUpdateNeededData = false;
-  }
-  if (wCloseButton != nullptr)
-  {
-    wCloseButton->compute_data();
-    wCloseButton->m_isUpdateNeededData = false;
+    if (widPtr == nullptr) continue;
+    if (!m_isUpdateNeededData && !widPtr->m_isUpdateNeededData) continue;
+    widPtr->compute_data();
+    widPtr->m_isUpdateNeededData = false;
   }
 
   m_isUpdateNeededData = false;
-
-  // hack for pict
-  {
-    m_widgetTextureSlot.clear();
-    m_widgetTextureSlot.reserve(m_adrPict.pcount);
-    for (const s_layoutGrid::s_cell &c : wlayout.m_cells)
-    {
-      if (c.m_widget != nullptr && c.m_widget->get_vcountPict() != 0)
-        m_widgetTextureSlot.push_back(c.m_widget->get_textureSlot());
-    }
-    if (wTopBar != nullptr && wTopBar->get_vcountPict() != 0)
-    {
-      m_widgetTextureSlot.push_back(wTopBar->get_textureSlot());
-    }
-    if (wCloseButton != nullptr && wCloseButton->get_vcountPict() != 0)
-    {
-      m_widgetTextureSlot.push_back(wCloseButton->get_textureSlot());
-    }
-    TRE_ASSERT(m_adrPict.pcount == m_widgetTextureSlot.size());
-  }
-
 }
 
 void window::acceptEvent(s_eventIntern &event)
@@ -508,8 +480,11 @@ void window::acceptEvent(s_eventIntern &event)
 
   if (!m_isMoved)
   {
-    if (wCloseButton != nullptr) wCloseButton->acceptEvent(event);
-    if (wTopBar != nullptr) wTopBar->acceptEvent(event);
+    for (std::size_t i = wOwnWidgets.size(); i-- != 0; ) // specific here, so "close"-widget is receiving the event first.
+    {
+      widget *widPtr = wOwnWidgets[i];
+      if (widPtr != nullptr) widPtr->acceptEvent(event);
+    }
 
     acceptEventBase_click(event);
   }
@@ -517,7 +492,10 @@ void window::acceptEvent(s_eventIntern &event)
   event.accepted |= eventAccepted_save;
 
   // move
-  if (wTopBar != nullptr)
+
+  widget *widTopBar = wOwnWidgets[0];
+
+  if (widTopBar != nullptr)
   {
     if (m_isMoved)
     {
@@ -538,7 +516,7 @@ void window::acceptEvent(s_eventIntern &event)
     else
     {
       const bool isClickedL = (event.event.type == SDL_MOUSEBUTTONDOWN && event.event.button.button == SDL_BUTTON_LEFT);
-      if (isClickedL && wTopBar->get_ishighlighted())
+      if (isClickedL && widTopBar->get_ishighlighted())
       {
         m_isMoved = true;
         if (get_parentUI()->get_dimension() == 2) wmatPrev.m3 = wmat3;
@@ -556,30 +534,6 @@ void window::animate(float dt)
   {
     if (c.m_widget != nullptr) c.m_widget->animate(dt);
   }
-}
-
-glm::vec2 window::snapToPixel(const glm::vec2 &windowCoord) const
-{
-  if (get_parentUI()->get_dimension() == 2 && wsnapPixels)
-  {
-    const baseUI2D *ui = static_cast<const baseUI2D*>(get_parentUI());
-    const glm::ivec2 screenCoordSnaped = glm::ceil(ui->projectWindowPointToScreen(windowCoord, wmat3));
-    return ui->projectWindowPointFromScreen(screenCoordSnaped, wmat3);
-  }
-  return windowCoord;
-}
-
-glm::vec2 window::snapToPixel(const glm::vec2 &windowSize, const glm::ivec2 &pixelMin) const
-{
-  if (get_parentUI()->get_dimension() == 2 && wsnapPixels)
-  {
-    const baseUI2D *ui = static_cast<const baseUI2D*>(get_parentUI());
-    glm::ivec2 screenCoordSnaped = glm::ceil(ui->projectWindowPointToScreen(windowSize, wmat3, false));
-    if (screenCoordSnaped.x < pixelMin.x) screenCoordSnaped.x = pixelMin.x;
-    if (screenCoordSnaped.y < pixelMin.y) screenCoordSnaped.y = pixelMin.y;
-    return ui->projectWindowPointFromScreen(screenCoordSnaped, wmat3, false);
-  }
-  return windowSize;
 }
 
 } // namespace ui
