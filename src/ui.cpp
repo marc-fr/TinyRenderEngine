@@ -139,6 +139,7 @@ void baseUI::clear()
 void baseUI::set_language(std::size_t lid)
 {
   TRE_ASSERT(lid < TRE_UI_NLANGUAGES);
+  if (lid == m_language) return;
   m_language = lid;
   for (auto win : windowsList) win->m_isUpdateNeededAdress = win->m_isUpdateNeededLayout = win->m_isUpdateNeededData = true;
 }

@@ -20,7 +20,7 @@ bool s_partInfo::read(std::istream &inbuffer)
   {
     char *tmpname = new char[header[0]];
     inbuffer.read(tmpname, sizeof(char) * header[0]);
-    m_name = std::string(tmpname);
+    m_name = std::string(tmpname, header[0]);
     delete[] tmpname;
   }
   m_bbox.read(inbuffer);
@@ -717,6 +717,7 @@ bool model::loadfromWavefront(const std::string & objfile, const std::string & m
     }
     else if (line.substr(0,2) == "f ")
     {
+      // TODO: use "std::stoi" (much better error handling)
       uint pi = 0, pj = 0, pk = 0;
       uint ni = 0, nj = 0, nk = 0;
       uint ti = 0, tj = 0, tk = 0;

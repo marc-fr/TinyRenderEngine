@@ -17,6 +17,12 @@ bool windowHelper::SDLInit(Uint32 sdl_init_flags, const char * windowname, Uint3
                              nullptr);
     return false;
   }
+  // Version SDL version
+#ifdef TRE_PRINTS
+  SDL_version v;
+  SDL_GetVersion(&v);
+  TRE_LOG("SDL Version: " << unsigned(v.major) << "." << unsigned(v.minor) << "." << unsigned(v.patch));
+#endif
   // Set OpenGL version
 #ifdef TRE_OPENGL_ES
   SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
@@ -164,7 +170,7 @@ bool windowHelper::OpenGLInit()
   m_glContext = SDL_GL_CreateContext(m_window);
   if (!m_glContext)
   {
-    const std::string msg = std::string(SDL_GetError()) + std::string("\nA graphics card and driver with OpenGL support is required.\nInstalling the latest driver may resolve the issue.\n\nThe program will close.");
+    const std::string msg = std::string(SDL_GetError()) + std::string("\nA graphics card and driver with OpenGL support is required.");
     SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,
                              "Initialization failed",
                              msg.c_str(),

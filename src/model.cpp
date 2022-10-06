@@ -282,7 +282,7 @@ void modelRaw2D::drawcall(std::size_t partfirst, std::size_t partcount, const bo
   if (partcount == 0) return;
   TRE_ASSERT((partfirst+partcount) <= m_partInfo.size());
 
-#ifdef TRE_OPENGL_ES
+#if 1 // def TRE_OPENGL_ES (rework this opt, avoid std::vector !)
   for (std::size_t ipart = partfirst; ipart < (partfirst+partcount); ++ipart)
   {
     if (m_partInfo[ipart].m_size > 0)
@@ -545,7 +545,7 @@ void modelStaticIndexed3D::drawcall(std::size_t partfirst, std::size_t partcount
   if (partcount == 0) return;
   TRE_ASSERT((partfirst+partcount) <= m_partInfo.size());
 
-#ifdef TRE_OPENGL_ES
+#if 1 // def TRE_OPENGL_ES (rework this opt, avoid std::vector !)
   for (std::size_t ipart = partfirst; ipart < (partfirst+partcount); ++ipart)
   {
     if (m_partInfo[ipart].m_size > 0)

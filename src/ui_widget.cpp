@@ -244,8 +244,7 @@ void widgetTextEdit::acceptEvent(s_eventIntern &event)
       acceptEventBase_focus(event);
       wisEditing &= wishighlighted;
     }
-    else if (event.event.type == SDL_KEYDOWN &&
-             (event.event.key.keysym.sym == SDLK_ESCAPE || (event.event.key.keysym.sym == SDLK_BACKSPACE && !wallowMultiLines)))
+    else if (event.event.type == SDL_KEYDOWN && event.event.key.keysym.sym == SDLK_ESCAPE)
     {
       wisEditing = false;
       event.accepted = true;
@@ -390,7 +389,7 @@ void widgetPicture::compute_data()
 
   const glm::vec4 uvSwap = glm::vec4(wtexUV.x, wtexUV.w, wtexUV.z, wtexUV.y);
 
-  objsolid.fillDataRectangle(m_adrPict.part, m_adrPict.offset, m_zone, wmultiply ? resolve_color() : get_parentWindow()->get_colormask(), uvSwap);
+  objsolid.fillDataRectangle(m_adrPict.part, m_adrPict.offset, m_zone, resolve_color(), uvSwap);
 }
 void widgetPicture::acceptEvent(s_eventIntern &event)
 {
@@ -408,7 +407,7 @@ uint widgetBar::get_textureSlot() const { return uint(-1); }
 glm::vec2 widgetBar::get_zoneSizeDefault() const
 {
   const float h = get_parentWindow()->resolve_sizeH(get_parentWindow()->get_fontSize());
-  return glm::vec2(5.f * h, h);
+  return glm::vec2(wwidthFactor * h, h);
 }
 void widgetBar::compute_data()
 {

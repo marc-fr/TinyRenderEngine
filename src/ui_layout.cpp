@@ -63,12 +63,12 @@ glm::vec2 s_layoutGrid::computeWidgetZones(const ui::window &win, const glm::vec
     for (uint ix = 0; ix < m_dimension.x; ++ix)
     {
       if (m_colsWidth_User[ix].valid())
-        m_colsWidth[ix] = glm::max(m_colsWidth[ix], win.resolve_sizeW(m_colsWidth_User[ix]));
+        m_colsWidth[ix] = win.resolve_sizeW(m_colsWidth_User[ix]);
     }
     for (uint iy = 0; iy < m_dimension.y; ++iy)
     {
       if (m_rowsHeight_User[iy].valid())
-        m_rowsHeight[iy] = glm::max(m_rowsHeight[iy], win.resolve_sizeH(m_rowsHeight_User[iy]));
+        m_rowsHeight[iy] = win.resolve_sizeH(m_rowsHeight_User[iy]);
     }
 
     // -> multi-span
@@ -91,8 +91,8 @@ glm::vec2 s_layoutGrid::computeWidgetZones(const ui::window &win, const glm::vec
           if (totalWidth < wdefaultSize.x)
           {
             uint jx = ix;
-            while (m_colsWidth_User[jx].size > 0.f && jx < jstop) { ++jx; }
-            if (m_colsWidth_User[jx].size <= 0.f)
+            while (m_colsWidth_User[jx].valid() && jx < jstop) { ++jx; }
+            if (!m_colsWidth_User[jx].valid())
             {
               m_colsWidth[jx] += wdefaultSize.x - totalWidth;
             }
@@ -108,8 +108,8 @@ glm::vec2 s_layoutGrid::computeWidgetZones(const ui::window &win, const glm::vec
           if (totalHeight < wdefaultSize.y)
           {
             uint jy = iy;
-            while (m_rowsHeight_User[jy].size > 0.f && jy < jstop) { ++jy; }
-            if (m_rowsHeight_User[jy].size <= 0.f)
+            while (m_rowsHeight_User[jy].valid() && jy < jstop) { ++jy; }
+            if (!m_rowsHeight_User[jy].valid())
             {
               m_rowsHeight[jy] += wdefaultSize.y - totalHeight;
             }
@@ -121,7 +121,7 @@ glm::vec2 s_layoutGrid::computeWidgetZones(const ui::window &win, const glm::vec
 
   // 2.a compute space in-between rows and columns
 
-  std::vector<float> colsSpace(m_dimension.x + 1, 0.f), rowsSpace(m_dimension.y + 1, 0.f);
+  std::vector<float> colsSpace(m_dimension.x + 1, 0.f), rowsSpace(m_dimension.y + 1, 0.f); // TODO: keep those vectors (avoid allocation/deallocation)
 
   for (uint ix = 0; ix <= m_dimension.x; ++ix)
   {
@@ -136,7 +136,7 @@ glm::vec2 s_layoutGrid::computeWidgetZones(const ui::window &win, const glm::vec
 
   // 2.b compute offsets of rows and columns
 
-  std::vector<float> colsPos(m_dimension.x + 1), rowsPos(m_dimension.y + 1);
+  std::vector<float> colsPos(m_dimension.x + 1), rowsPos(m_dimension.y + 1); // TODO: keep those vectors (avoid allocation/deallocation)
 
   const glm::vec2 cellMargin = win.resolve_sizeWH(m_cellMargin);
 

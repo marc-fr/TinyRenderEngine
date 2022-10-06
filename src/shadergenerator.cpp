@@ -826,7 +826,7 @@ void shaderGenerator::createShaderSource_VertexMain(std::string &sourceVertex)
   else
   {
     TRE_ASSERT(m_layout.category == PRGM_2D);
-    TRE_ASSERT(!m_layout.hasPIX_Position);
+    TRE_ASSERT(!m_layout.hasPIX_Position_clipspace);
     sourceVertex += "  gl_Position = vec4(vertexPosition,0.1f,1.f);\n";
   }
 
@@ -834,7 +834,10 @@ void shaderGenerator::createShaderSource_VertexMain(std::string &sourceVertex)
     sourceVertex += "gl_Position.z = gl_Position.w;\n";
 
   if (m_layout.hasPIX_Position)
-    sourceVertex += "  " + prefixOut + "Position = (MModel * vec4(out_Position, 1.f)).xyz;\n";
+  {
+    if (m_layout.is2D()) sourceVertex += "  " + prefixOut + "Position = vec3(vertexPosition, 0.f);\n";
+    else                 sourceVertex += "  " + prefixOut + "Position = (MModel * vec4(out_Position, 1.f)).xyz;\n";
+  }
 
   if (m_layout.hasPIX_Position_clipspace)
     sourceVertex += "  " + prefixOut + "Position_clipspace = gl_Position.xyz / gl_Position.w;\n";

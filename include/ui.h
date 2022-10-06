@@ -162,6 +162,8 @@ public:
   widget_DECLAREATTRIBUTE(widget,bool,isactive,= false, m_isUpdateNeededData) ///< When true, the widget receives events and can trigger callbacks
   widget_DECLAREATTRIBUTE(widget,bool,iseditable,= false, m_isUpdateNeededData) ///< When true, the widget is editable from events
   widget_DECLAREATTRIBUTE(widget,bool,ishighlighted, = false, m_isUpdateNeededData) ///< read & write attribute: "acceptEvent" modifies the value; user can change the value, but no callback will be triggered in this case.
+  widget_DECLAREATTRIBUTE(widget,s_size,widthMin, = 0.f, m_isUpdateNeededLayout) ///< minimal width
+  widget_DECLAREATTRIBUTE(widget,s_size,heightMin, = 0.f, m_isUpdateNeededLayout) ///< minimal height
   /// @}
 
   /// @name callbacks
@@ -208,15 +210,15 @@ protected:
   void acceptEventBase_click(s_eventIntern &event); ///< trigger simple click-callbacks (warning: event can be modified)
   void set_zone(const glm::vec4 &assignedZone) { m_isUpdateNeededData |= (m_zone != assignedZone); m_zone = assignedZone; }
 
-  glm::vec4  m_zone;                         ///< Widget zone (xmin,ymin,xmax,ymax)
+  glm::vec4  m_zone = glm::vec4(0.f);        ///< Widget zone (xmin,ymin,xmax,ymax)
   bool       m_isUpdateNeededAdress = true;  ///< true when an object's adress update is needed (nbr of vertice changed, ...)
   bool       m_isUpdateNeededLayout = true;  ///< true when a layout update is needed (widget gets resized, ..., typically when get_zoneSizeDefault() will return a new different value)
   bool       m_isUpdateNeededData   = true;  ///< true when the vertice-data will changed (positions, color, ...)
 
   struct s_objAdress
   {
-    uint part;
-    uint offset;
+    uint part = 0u;
+    uint offset = 0u;
   };
   mutable s_objAdress m_adSolid, m_adrLine, m_adrPict, m_adrText; ///< Adress plage for each specific object
   /// @}
@@ -299,6 +301,9 @@ public:
   widget_DECLAREATTRIBUTE(widgetTextEdit,bool,allowMultiLines,= false, m_isUpdateNeededLayout)
   widget_DECLAREATTRIBUTE(widgetTextEdit,float,cursorAnimSpeed,= 1.f, m_isUpdateNeededData)
 
+public:
+  bool get_isEditing() const { return wisEditing; }
+
 private:
   bool  wisEditing = false;
   int   wcursorPos = -1;
@@ -311,7 +316,6 @@ class widgetPicture : public widget
   widget_DECLARECOMMUNMETHODS()
   widget_DECLAREATTRIBUTE(widgetPicture,uint,texId,= uint(-1), m_isUpdateNeededAdress)
   widget_DECLAREATTRIBUTE(widgetPicture,glm::vec4,texUV,= glm::vec4(0.f,0.f,1.f,1.f), m_isUpdateNeededLayout)
-  widget_DECLAREATTRIBUTE(widgetPicture,bool,multiply,= true, m_isUpdateNeededData) ///< True if the color needs to be multiply with the widget's color
   widget_DECLAREATTRIBUTE(widgetPicture,float,heightModifier,= 1.f, m_isUpdateNeededLayout) ///< height factor in regards with the default cell's height.
   widget_DECLAREATTRIBUTE(widgetPicture,bool,snapPixels, = false, m_isUpdateNeededData) ///< snap pixels to entire zoom factor
 };
@@ -327,7 +331,8 @@ class widgetBar : public widget
   widget_DECLAREATTRIBUTE(widgetBar,bool,withthreshold,= false, m_isUpdateNeededAdress)
   widget_DECLAREATTRIBUTE(widgetBar,float,valuethreshold,= 1.f, m_isUpdateNeededData)
   widget_DECLAREATTRIBUTE(widgetBar,bool,withtext,= false, m_isUpdateNeededAdress)
-  widget_DECLAREATTRIBUTE(widgetBar,float,snapInterval, = 0.f, m_isUpdateNeededData)  ///< Negative or zero value means no snapping
+  widget_DECLAREATTRIBUTE(widgetBar,float,snapInterval, = 0.f, m_isUpdateNeededData) ///< Negative or zero value means no snapping
+  widget_DECLAREATTRIBUTE(widgetBar,float,widthFactor, = 5.f, m_isUpdateNeededData) ///< Width/Height ratio
 };
 
 class widgetBarZero : public widgetBar
@@ -418,8 +423,8 @@ public:
 
 public:
   void set_layoutGrid(uint row, uint col) { m_isUpdateNeededAdress = true; wlayout.set_dimension(row, col); } ///< set the layout.
-  void set_colWidth(uint col, const s_size width); ///< set the size of a column, that overwrites the automatic size. A negative value will unset the value.
-  void set_rowHeight(uint row, const s_size height); /// set the size of a row, that overwrites the automatic size. A negative value will unset the value.
+  void set_colWidth(uint col, const s_size width); ///< set the width of a column, that overwrites the automatic size. A negative value will unset the value.
+  void set_rowHeight(uint row, const s_size height); /// set the height of a row, that overwrites the automatic size. A negative value will unset the value.
   void set_cellMargin(const s_size margin) { m_isUpdateNeededLayout |= (wlayout.m_cellMargin != margin); wlayout.m_cellMargin = margin; }
   void set_colAlignment(uint col, uint alignMask); ///< set the alignment of the widgets in the column
   void set_rowAlignment(uint row, uint alignMask); ///< set the alignment of the widgets in the row
@@ -548,7 +553,7 @@ protected:
 public:
   static const std::size_t s_textureSlotsCount = 4;
   std::size_t addTexture(texture *t); ///< Add a new texture. Returns the slot id. The baseUI does not take ownership of the texture.
-  texture     *getTexture(uint id) {  return (id < s_textureSlotsCount) ? m_textures[id] : nullptr; }
+  texture     *getTexture(uint id) const {  return (id < s_textureSlotsCount) ? m_textures[id] : nullptr; }
   std::size_t getTextureSlot(texture *t) const;
 protected:
   std::array<texture*, s_textureSlotsCount> m_textures; ///< Textures.

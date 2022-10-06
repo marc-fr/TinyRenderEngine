@@ -33,7 +33,7 @@ namespace textgenerator
     float        m_fontsize = 1.f; ///< font-size
     const char   *m_text = nullptr;
     const font   *m_font = nullptr;
-    glm::vec2    m_pixelSize = glm::vec2(0.f, 0.f); ///< snap to pixel. Size of a pixel. (Zero means no snapping.)
+    glm::vec2    m_pixelSize = glm::vec2(0.f, 0.f); ///< Size of a pixel. (Zero means no valid size.)
 
     void setupBasic(const font *font, const float fontSize, const char *str, const glm::vec2 &pos = glm::vec2(0.f), const glm::vec4 &color = glm::vec4(1.f))
     {

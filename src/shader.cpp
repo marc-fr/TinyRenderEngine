@@ -56,7 +56,7 @@ bool shader::loadCustomShader(const s_layout & shaderLayout , const char * sourc
 
   m_layout.hasBUF_Normal |= m_layout.hasBUF_TangentU;
   m_layout.hasUNI_MModel |= m_layout.hasBUF_Normal;
-  m_layout.hasUNI_MView  |= m_layout.hasPIX_Position || m_layout.hasPIX_Normal || m_layout.hasUBO_ptslight || m_layout.hasUBO_sunlight;
+  m_layout.hasUNI_MView  |= m_layout.hasPIX_Normal || m_layout.hasUBO_ptslight || m_layout.hasUBO_sunlight;
 
   //-- Create the shader source
 

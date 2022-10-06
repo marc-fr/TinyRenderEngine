@@ -1,4 +1,5 @@
 # TinyRenderEngine
+
 Toolkit aimed to provide a foundation for the development of games or game engines
 
 ## Description
@@ -37,14 +38,6 @@ The web-assembly platform is also supported, through the compatibility with Open
 * libTIFF (optionnal)
 
 * [opus](https://opus-codec.org) (optionnal)
-
-## Folder structure
-
-* [cmake](./cmake): custom cmake utilities
-* [doc](./doc): reference papers that inspire algorithms and documentation resources
-* [include](./include): public headers
-* [src](./src): sources and private headers
-* [test](./test): sources for unit-test and show-cases
 
 ## Code sample
 
