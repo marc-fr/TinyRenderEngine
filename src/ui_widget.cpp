@@ -1,8 +1,7 @@
+#include "tre_ui.h"
 
-#include "ui.h"
-
-#include "textgenerator.h"
-#include "texture.h"
+#include "tre_textgenerator.h"
+#include "tre_texture.h"
 
 namespace tre {
 

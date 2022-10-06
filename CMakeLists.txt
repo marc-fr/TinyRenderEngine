@@ -37,7 +37,7 @@ set(SRC_LIST_LIB
   src/ui_widget.cpp
   src/ui_window.cpp
   src/utils.cpp
-  src/windowHelper.cpp
+  src/windowContext.cpp
 )
 add_library(${PROJECT_NAME} STATIC ${SRC_LIST_LIB})
 

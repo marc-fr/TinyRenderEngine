@@ -1,11 +1,9 @@
 #ifndef RENDERTARGET_H
 #define RENDERTARGET_H
 
-#include "openglinclude.h"
-
-#include "utils.h"
-#include "shader.h"
-#include "model.h"
+#include "tre_utils.h"
+#include "tre_shader.h"
+#include "tre_model.h"
 
 namespace tre {
 

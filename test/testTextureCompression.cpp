@@ -1,9 +1,9 @@
 
-#include "shader.h"
-#include "model.h"
-#include "ui.h"
-#include "font.h"
-#include "windowHelper.h"
+#include "tre_shader.h"
+#include "tre_model.h"
+#include "tre_ui.h"
+#include "tre_font.h"
+#include "tre_windowContext.h"
 
 #ifdef TRE_EMSCRIPTEN
 #include <emscripten.h>
@@ -30,8 +30,10 @@ static const std::vector<std::string> texturesPathDefault = { TESTIMPORTPATH "re
 
 // Other resources
 
+static tre::windowContext myWindow;
+static tre::windowContext::s_controls myControls;
+
 static std::string       texturePathFromArg;
-static tre::windowHelper myWindow;
 static tre::texture      textureREF;
 static tre::texture      textureCOMP;
 static tre::modelRaw2D   meshSquare;
@@ -144,13 +146,14 @@ static void app_update()
 
   // event actions + updates -------
 
-  myWindow.m_controls.newFrame();
+  myWindow.SDLEvent_newFrame();
+  myControls.newFrame();
 
   //-> SDL events
   while(SDL_PollEvent(&event) == 1)
   {
     myWindow.SDLEvent_onWindow(event);
-    myWindow.m_controls.treatSDLEvent(event);
+    myControls.treatSDLEvent(event);
     worldUI.acceptEvent(event);
 
     if (event.type == SDL_KEYDOWN)
@@ -168,14 +171,14 @@ static void app_update()
     }
   }
 
-  if (myWindow.m_controls.m_keyUP)    mView[2][1] -= 0.01f;
-  if (myWindow.m_controls.m_keyDOWN)  mView[2][1] += 0.01f;
-  if (myWindow.m_controls.m_keyLEFT)  mView[2][0] += 0.01f;
-  if (myWindow.m_controls.m_keyRIGHT) mView[2][0] -= 0.01f;
-  if (myWindow.m_controls.m_keySHIFT) { mView *= 1.02f; mView[2][2] = 1.f; }
-  if (myWindow.m_controls.m_keyCTRL)  { mView /= 1.02f; mView[2][2] = 1.f; }
+  if (myControls.m_keyUP)    mView[2][1] -= 0.01f;
+  if (myControls.m_keyDOWN)  mView[2][1] += 0.01f;
+  if (myControls.m_keyLEFT)  mView[2][0] += 0.01f;
+  if (myControls.m_keyRIGHT) mView[2][0] -= 0.01f;
+  if (myControls.m_keySHIFT) { mView *= 1.02f; mView[2][2] = 1.f; }
+  if (myControls.m_keyCTRL)  { mView /= 1.02f; mView[2][2] = 1.f; }
 
-  if (myWindow.m_controls.m_viewportResized)
+  if (myWindow.m_viewportResized)
   {
     worldUI.updateCameraInfo(myWindow.m_matProjection2D, myWindow.m_resolutioncurrent);
 
@@ -306,7 +309,7 @@ int main(int argc, char **argv)
   // emscripten_set_fullscreenchange_callback
   // emscripten_set_canvas_element_size
 #else
-  while(!myWindow.m_controls.m_quit)
+  while(!myWindow.m_quit && !myWindow.m_quit)
   {
     app_update();
   }

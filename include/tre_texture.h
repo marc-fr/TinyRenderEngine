@@ -1,9 +1,7 @@
 #ifndef TEXTURE_H
 #define TEXTURE_H
 
-#include "openglinclude.h"
-
-#include "utils.h"
+#include "tre_utils.h"
 
 #include <array>
 #include <vector>

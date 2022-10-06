@@ -1,6 +1,6 @@
-#include "audio.h"
+#include "tre_audio.h"
 
-#include "utils.h"
+#include "tre_utils.h"
 
 #ifdef TRE_WITH_OPUS
 #include "opus.h"

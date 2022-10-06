@@ -1,12 +1,11 @@
 
-#include "shader.h"
-#include "rendertarget.h"
-#include "model.h"
-#include "model_tools.h"
-#include "contact_2D.h"
-#include "font.h"
-#include "ui.h"
-#include "windowHelper.h"
+#include "tre_shader.h"
+#include "tre_model.h"
+#include "tre_model_tools.h"
+#include "tre_contact_2D.h"
+#include "tre_font.h"
+#include "tre_ui.h"
+#include "tre_windowContext.h"
 
 #include <string>
 #include <chrono>
@@ -115,7 +114,8 @@ int main(int argc, char **argv)
   (void)argc;
   (void)argv;
 
-  tre::windowHelper myWindow;
+  tre::windowContext myWindow;
+  tre::windowContext::s_controls myControls;
 
   if (!myWindow.SDLInit(SDL_INIT_VIDEO, "test Mesh 2D", SDL_WINDOW_RESIZABLE))
     return -1;
@@ -190,17 +190,18 @@ int main(int argc, char **argv)
 
   // - MAIN LOOP ------------
 
-  while(!myWindow.m_controls.m_quit)
+  while(!myControls.m_quit)
   {
     // event actions + updates --------
 
-    myWindow.m_controls.newFrame();
+    myWindow.SDLEvent_newFrame();
+    myControls.newFrame();
 
     //-> SDL events
     while(SDL_PollEvent(&event) == 1)
     {
       myWindow.SDLEvent_onWindow(event);
-      myWindow.m_controls.treatSDLEvent(event);
+      myControls.treatSDLEvent(event);
 
       if (event.type == SDL_KEYDOWN)
       {
@@ -227,17 +228,17 @@ int main(int argc, char **argv)
     }
 
     const glm::vec2 invProj = 1.f / glm::vec2(myWindow.m_matProjection2D[0][0], myWindow.m_matProjection2D[1][1]);
-    const glm::vec2 mousePos = (glm::vec2(-1.f, 1.f) + glm::vec2(2.f, -2.f) * glm::vec2(myWindow.m_controls.m_mouse) * myWindow.m_resolutioncurrentInv) * invProj;
+    const glm::vec2 mousePos = (glm::vec2(-1.f, 1.f) + glm::vec2(2.f, -2.f) * glm::vec2(myControls.m_mouse) * myWindow.m_resolutioncurrentInv) * invProj;
 
     if (mainMode == MM_EDIT)
     {
       data.m_envelop.back() = mousePos;
 
-      if (myWindow.m_controls.m_mouseLEFT == myWindow.m_controls.MASK_BUTTON_RELEASED)
+      if (myControls.m_mouseLEFT == myControls.MASK_BUTTON_RELEASED)
       {
         data.m_envelop.push_back(mousePos);
       }
-      else if (myWindow.m_controls.m_mouseRIGHT == myWindow.m_controls.MASK_BUTTON_RELEASED && data.m_envelop.size() > 1)
+      else if (myControls.m_mouseRIGHT == myControls.MASK_BUTTON_RELEASED && data.m_envelop.size() > 1)
       {
         data.m_envelop.pop_back();
       }

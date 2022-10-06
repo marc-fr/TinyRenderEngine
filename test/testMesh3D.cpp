@@ -1,11 +1,10 @@
 
-#include "shader.h"
-#include "rendertarget.h"
-#include "model.h"
-#include "model_tools.h"
-#include "font.h"
-#include "ui.h"
-#include "windowHelper.h"
+#include "tre_shader.h"
+#include "tre_model.h"
+#include "tre_model_tools.h"
+#include "tre_font.h"
+#include "tre_ui.h"
+#include "tre_windowContext.h"
 
 #include <string>
 #include <chrono>
@@ -323,7 +322,9 @@ int main(int argc, char **argv)
     strncpy(static_cast<char*>(meshFile), argv[1], 256);
   }
 
-  tre::windowHelper myWindow;
+  tre::windowContext myWindow;
+  tre::windowContext::s_controls myControls;
+  tre::windowContext::s_timer myTimings;
 
   if (!myWindow.SDLInit(SDL_INIT_VIDEO, "test Mesh 3D", SDL_WINDOW_RESIZABLE))
     return -1;
@@ -652,18 +653,19 @@ int main(int argc, char **argv)
 
   // - MAIN LOOP ------------
 
-  while(!myWindow.m_controls.m_quit)
+  while(!myWindow.m_quit && !myControls.m_quit)
   {
     // event actions + updates --------
 
-    myWindow.m_controls.newFrame();
-    myWindow.m_timing.newFrame(0, myWindow.m_controls.m_pause);
+    myWindow.SDLEvent_newFrame();
+    myControls.newFrame();
+    myTimings.newFrame(0, myControls.m_pause);
 
     //-> SDL events
     while(SDL_PollEvent(&event) == 1)
     {
       myWindow.SDLEvent_onWindow(event);
-      myWindow.m_controls.treatSDLEvent(event);
+      myControls.treatSDLEvent(event);
 
       if (event.type == SDL_KEYDOWN)
       {
@@ -677,7 +679,7 @@ int main(int argc, char **argv)
 
         else if (event.key.keysym.sym == SDLK_F9) { showTetrahedrization = ! showTetrahedrization; }
 
-        else if (event.key.keysym.sym == SDLK_o) { myWindow.m_timing.scenetime = 0.f; }
+        else if (event.key.keysym.sym == SDLK_o) { myTimings.scenetime = 0.f; }
 
         else if (event.key.keysym.sym == SDLK_RIGHT)
           meshPartSelected = (meshPartSelected == meshPartCount - 1) ? 0 : meshPartSelected + 1;
@@ -687,21 +689,21 @@ int main(int argc, char **argv)
       else if (event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT)
       {
         mModelPrev = mModel;
-        myWindow.m_controls.m_pause = true;
+        myControls.m_pause = true;
       }
     }
 
-    //if (myWindow.m_controls.m_keyUP  ) // TODO, additionnal control for debug
-    //if (myWindow.m_controls.m_keyDOWN) // TODO, additionnal control for debug
+    //if (myControls.m_keyUP  ) // TODO, additionnal control for debug
+    //if (myControls.m_keyDOWN) // TODO, additionnal control for debug
 
-    if (myWindow.m_controls.m_home) mModelScale = 1.f;
-    if (myWindow.m_controls.m_mouse.z < 0.f) mModelScale *= 1.2f;
-    if (myWindow.m_controls.m_mouse.z > 0.f) mModelScale /= 1.2f;
-    if (!myWindow.m_controls.m_pause) myWindow.m_controls.m_mouseLEFT = 0; // hack, cancel any mouse action
+    if (myControls.m_home) mModelScale = 1.f;
+    if (myControls.m_mouse.z < 0.f) mModelScale *= 1.2f;
+    if (myControls.m_mouse.z > 0.f) mModelScale /= 1.2f;
+    if (!myControls.m_pause) myControls.m_mouseLEFT = 0; // hack, cancel any mouse action
 
-    if ((myWindow.m_controls.m_mouseLEFT & tre::windowHelper::s_controls::MASK_BUTTON_PRESSED) != 0)
+    if ((myControls.m_mouseLEFT & tre::windowContext::s_controls::MASK_BUTTON_PRESSED) != 0)
     {
-      const glm::vec2 diff = glm::vec2(myWindow.m_controls.m_mouse - myWindow.m_controls.m_mousePrev) * myWindow.m_resolutioncurrentInv;
+      const glm::vec2 diff = glm::vec2(myControls.m_mouse - myControls.m_mousePrev) * myWindow.m_resolutioncurrentInv;
       mModel = glm::rotate(glm::rotate(glm::mat4(1.f), diff.x, glm::vec3(0.f,1.f,0.f)), diff.y, glm::vec3(1.f,0.f,0.f)) * mModelPrev;
     }
 
@@ -762,8 +764,8 @@ int main(int argc, char **argv)
     if (curShader.layout().hasUNI_uniColor && &curShader == &shaderDataVisu)
       glUniform4fv(curShader.getUniformLocation(tre::shader::uniColor), 1, glm::value_ptr(uChoiceVisu));
 
-    if (!myWindow.m_controls.m_pause)
-      mModel = glm::rotate(mModel, myWindow.m_timing.frametime * 6.28f * 0.2f, glm::vec3(0.8f,0.6f,0.f));
+    if (!myControls.m_pause)
+      mModel = glm::rotate(mModel, myTimings.frametime * 6.28f * 0.2f, glm::vec3(0.8f,0.6f,0.f));
 
     glm::mat4 curModel = mModel;
     curModel[0] *= mModelScale;
@@ -896,7 +898,7 @@ int main(int argc, char **argv)
 
     // end render pass --------------
 
-    myWindow.m_timing.endFrame_beforeGPUPresent();
+    myTimings.endFrame_beforeGPUPresent();
 
     SDL_GL_SwapWindow( myWindow.m_window );
   }

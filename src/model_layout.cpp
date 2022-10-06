@@ -1,4 +1,4 @@
-#include "model.h"
+#include "tre_model.h"
 
 #include <math.h>
 #include <array>

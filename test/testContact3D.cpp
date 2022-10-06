@@ -1,16 +1,14 @@
-
 #include "testContact3D.h"
 
 #include <iostream> // std::cout std::endl
 
-#include "model.h"
-#include "model_tools.h"
-#include "shader.h"
-#include "contact_3D.h"
-#include "gizmo.h"
-#include "utils.h"
-#include "baker.h"
-#include "windowHelper.h"
+#include "tre_model.h"
+#include "tre_model_tools.h"
+#include "tre_shader.h"
+#include "tre_contact_3D.h"
+#include "tre_gizmo.h"
+#include "tre_baker.h"
+#include "tre_windowContext.h"
 
 #ifndef TESTIMPORTPATH
 #define TESTIMPORTPATH ""
@@ -347,7 +345,9 @@ bool sceneObjectSphere::rayTrace(const glm::vec3 &origin, const glm::vec3 &direc
 
 int main(int argc, char **argv)
 {
-  tre::windowHelper myWindow;
+  tre::windowContext myWindow;
+  tre::windowContext::s_controls myControls;
+  tre::windowContext::s_view3D myView3D(&myWindow);
 
   if (!myWindow.SDLInit(SDL_INIT_VIDEO, "test Contact 3D", SDL_WINDOW_RESIZABLE))
     return -1;
@@ -446,63 +446,64 @@ int main(int argc, char **argv)
   // Main loop
   SDL_Event rawEvent;
 
-  myWindow.m_view3D.m_matView[3] = glm::vec4(0.f, 0.f, -5.f, 1.f);
-  myWindow.m_view3D.setScreenBoundsMotion(true);
-  myWindow.m_view3D.setKeyBinding(true);
-  myWindow.m_view3D.m_keySensitivity = glm::vec3(0.5f);
-  myWindow.m_view3D.m_mouseSensitivity = glm::vec4(1.f, 1.f, 1.f, 3.f);
+  myView3D.m_matView[3] = glm::vec4(0.f, 0.f, -5.f, 1.f);
+  myView3D.setScreenBoundsMotion(true);
+  myView3D.setKeyBinding(true);
+  myView3D.m_keySensitivity = glm::vec3(0.5f);
+  myView3D.m_mouseSensitivity = glm::vec4(1.f, 1.f, 1.f, 3.f);
 
   sceneObjectBase *objectHovered = nullptr;
 
   std::cout << "Start main loop ..." << std::endl;
 
-  while(!myWindow.m_controls.m_quit)
+  while(!myWindow.m_quit && !myControls.m_quit)
   {
-    myWindow.m_controls.newFrame();
+    myWindow.SDLEvent_newFrame();
+    myControls.newFrame();
 
     // Event
     while(SDL_PollEvent(&rawEvent) == 1)
     {
       myWindow.SDLEvent_onWindow(rawEvent);
-      myWindow.m_controls.treatSDLEvent(rawEvent);
+      myControls.treatSDLEvent(rawEvent);
 
-      if (!myWindow.m_view3D.m_mouseBound)
+      if (!myView3D.m_mouseBound)
         gizmo.acceptEvent(rawEvent);
 
       if (rawEvent.type == SDL_KEYUP && rawEvent.key.keysym.sym == SDLK_HOME) // view-reset
       {
-         myWindow.m_view3D.m_matView = glm::mat4(1.f);
-         myWindow.m_view3D.m_matView[3] = glm::vec4(0.f, 0.f, -5.f, 1.f);
+         myView3D.m_matView = glm::mat4(1.f);
+         myView3D.m_matView[3] = glm::vec4(0.f, 0.f, -5.f, 1.f);
       }
     }
 
     // camera motion
 
-    if (myWindow.m_controls.m_hasFocus)
-      myWindow.m_view3D.treatControlEvent(myWindow.m_controls, 0.17f /*about 60 fps*/);
+    if (myWindow.m_hasFocus)
+      myView3D.treatControlEvent(myControls, 0.17f /*about 60 fps*/);
 
-    if (myWindow.m_controls.m_mouseRIGHT & myWindow.m_controls.MASK_BUTTON_RELEASED)
-      myWindow.m_view3D.setMouseBinding(!myWindow.m_view3D.m_mouseBound);
+    if (myControls.m_mouseRIGHT & myControls.MASK_BUTTON_RELEASED)
+      myView3D.setMouseBinding(!myView3D.m_mouseBound);
 
-    if (myWindow.m_controls.m_viewportResized)
+    if (myWindow.m_viewportResized)
     {
       // ...
     }
 
-    gizmo.updateCameraInfo(myWindow.m_matProjection3D, myWindow.m_view3D.m_matView, myWindow.m_resolutioncurrent);
+    gizmo.updateCameraInfo(myWindow.m_matProjection3D, myView3D.m_matView, myWindow.m_resolutioncurrent);
 
     // logic
 
     bool hasRayCast = false;
 
-    if (!gizmo.isGrabbed() && !myWindow.m_view3D.m_mouseBound)
+    if (!gizmo.isGrabbed() && !myView3D.m_mouseBound)
     {
       // ray-cast the mouse "direction" against the scene's objects
-      const glm::vec4 mouseClipPos = glm::vec4( (-1.f + 2.f * float(myWindow.m_controls.m_mouse.x)  * myWindow.m_resolutioncurrentInv.x),
-                                                ( 1.f - 2.f * float(myWindow.m_controls.m_mouse.y)  * myWindow.m_resolutioncurrentInv.y),
+      const glm::vec4 mouseClipPos = glm::vec4( (-1.f + 2.f * float(myControls.m_mouse.x)  * myWindow.m_resolutioncurrentInv.x),
+                                                ( 1.f - 2.f * float(myControls.m_mouse.y)  * myWindow.m_resolutioncurrentInv.y),
                                                 1.f, 1.f);
-      const glm::vec3 rayOrigin = glm::inverse(myWindow.m_view3D.m_matView) * glm::vec4(-glm::vec3(myWindow.m_view3D.m_matView[3]), 0.f);
-      const glm::vec4 mousePtFar = glm::inverse(myWindow.m_matProjection3D * myWindow.m_view3D.m_matView) * mouseClipPos;
+      const glm::vec3 rayOrigin = glm::inverse(myView3D.m_matView) * glm::vec4(-glm::vec3(myView3D.m_matView[3]), 0.f);
+      const glm::vec4 mousePtFar = glm::inverse(myWindow.m_matProjection3D * myView3D.m_matView) * mouseClipPos;
       const glm::vec3 rayDireciton = glm::normalize(glm::vec3(mousePtFar) / mousePtFar.w - rayOrigin);
 
       tre::s_contact3D hitInfo;
@@ -639,14 +640,14 @@ int main(int argc, char **argv)
     meshDraw.drawcall(0,0,true); // HACK, just bind the model's VAO
 
     for (sceneObjectBase *oBase : sceneObjects)
-      oBase->draw(shaderLigthed, myWindow.m_matProjection3D, myWindow.m_view3D.m_matView);
+      oBase->draw(shaderLigthed, myWindow.m_matProjection3D, myView3D.m_matView);
 
     // Draw Gizmo
 
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_CULL_FACE);
 
-    if (!myWindow.m_view3D.m_mouseBound)
+    if (!myView3D.m_mouseBound)
     {
       gizmo.updateIntoGPU();
       gizmo.draw();
@@ -656,7 +657,7 @@ int main(int argc, char **argv)
 
     glUseProgram(shaderSolid.m_drawProgram);
 
-    shaderSolid.setUniformMatrix(myWindow.m_matProjection3D * myWindow.m_view3D.m_matView);
+    shaderSolid.setUniformMatrix(myWindow.m_matProjection3D * myView3D.m_matView);
 
     meshDebug.drawcall(0,0,true); // HACK, just bind the model's VAO
 

@@ -1,7 +1,7 @@
 #ifndef TEXTGENERATOR_H
 #define TEXTGENERATOR_H
 
-#include "openglinclude.h"
+#include "tre_openglinclude.h"
 
 #include <vector>
 #include <string> // std::strlen

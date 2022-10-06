@@ -1,6 +1,6 @@
-#include "model_tools.h"
+#include "tre_model_tools.h"
 
-#include "contact_3D.h"
+#include "tre_contact_3D.h"
 
 #include <glm/gtx/component_wise.hpp>
 #include <glm/gtx/norm.hpp> // for glm::length2()

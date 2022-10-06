@@ -1,4 +1,4 @@
-#include "shader.h"
+#include "tre_shader.h"
 
 #ifdef TRE_DEBUG
 #include <fstream>

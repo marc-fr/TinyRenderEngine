@@ -1,10 +1,10 @@
 
-#include "shader.h"
-#include "rendertarget.h"
-#include "model.h"
-#include "ui.h"
-#include "font.h"
-#include "windowHelper.h"
+#include "tre_shader.h"
+#include "tre_rendertarget.h"
+#include "tre_model.h"
+#include "tre_ui.h"
+#include "tre_font.h"
+#include "tre_windowContext.h"
 
 #include <math.h>
 #include <string>
@@ -20,7 +20,8 @@
 
 int main(int argc, char **argv)
 {
-  tre::windowHelper myWindow;
+  tre::windowContext myWindow;
+  tre::windowContext::s_controls myControls;
 
   if (!myWindow.SDLInit(SDL_INIT_VIDEO, "test Lighting", SDL_WINDOW_RESIZABLE))
     return -1;
@@ -235,11 +236,12 @@ int main(int argc, char **argv)
 
   // MAIN LOOP
 
-  while(!myWindow.m_controls.m_quit)
+  while(!myControls.m_quit)
   {
     // event actions + updates -------
 
-    myWindow.m_controls.newFrame();
+    myWindow.SDLEvent_newFrame();
+    myControls.newFrame();
 
     worldWin->get_widget(1, 1)->set_isactive(shaderMode == 1 || shaderMode == 2);
     worldWin->get_widget(2, 1)->set_isactive(shaderMode == 1 || shaderMode == 2 || shaderMode == 0);
@@ -248,7 +250,7 @@ int main(int argc, char **argv)
     while(SDL_PollEvent(&event) == 1)
     {
       myWindow.SDLEvent_onWindow(event);
-      myWindow.m_controls.treatSDLEvent(event);
+      myControls.treatSDLEvent(event);
       worldUI.acceptEvent(event);
 
       if (event.type == SDL_KEYDOWN)
@@ -264,15 +266,15 @@ int main(int argc, char **argv)
       }
     }
 
-    if (myWindow.m_controls.m_keyUP)    mViewEulerAndDistance.x += 0.01f;
-    if (myWindow.m_controls.m_keyDOWN)  mViewEulerAndDistance.x -= 0.01f;
-    if (myWindow.m_controls.m_keyLEFT)  mViewEulerAndDistance.y += 0.01f;
-    if (myWindow.m_controls.m_keyRIGHT) mViewEulerAndDistance.y -= 0.01f;
+    if (myControls.m_keyUP)    mViewEulerAndDistance.x += 0.01f;
+    if (myControls.m_keyDOWN)  mViewEulerAndDistance.x -= 0.01f;
+    if (myControls.m_keyLEFT)  mViewEulerAndDistance.y += 0.01f;
+    if (myControls.m_keyRIGHT) mViewEulerAndDistance.y -= 0.01f;
 
-    if (myWindow.m_controls.m_keyCTRL)  mViewEulerAndDistance.w += 0.1f;
-    if (myWindow.m_controls.m_keySHIFT) mViewEulerAndDistance.w -= 0.1f;
+    if (myControls.m_keyCTRL)  mViewEulerAndDistance.w += 0.1f;
+    if (myControls.m_keySHIFT) mViewEulerAndDistance.w -= 0.1f;
 
-    if (myWindow.m_controls.m_viewportResized)
+    if (myWindow.m_viewportResized)
     {
       worldUI.updateCameraInfo(myWindow.m_matProjection2D, myWindow.m_resolutioncurrent);
       rtMultisampled.resize(myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);

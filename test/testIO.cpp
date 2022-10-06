@@ -1,9 +1,9 @@
 
-#include "baker.h"
-#include "model.h"
-#include "texture.h"
-#include "font.h"
-#include "windowHelper.h"
+#include "tre_baker.h"
+#include "tre_model.h"
+#include "tre_texture.h"
+#include "tre_font.h"
+#include "tre_windowContext.h"
 
 #include <iostream> // std::cout std::endl
 
@@ -171,7 +171,7 @@ int main(int argc, char **argv)
   (void)argc;
   (void)argv;
 
-  tre::windowHelper context;
+  tre::windowContext context;
 
   if (!context.SDLInit(SDL_INIT_VIDEO, "no-window", SDL_WINDOW_HIDDEN))
   {

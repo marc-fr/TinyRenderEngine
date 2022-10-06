@@ -1,4 +1,4 @@
-#include "texture.h"
+#include "tre_texture.h"
 
 namespace tre {
 

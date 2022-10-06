@@ -1,9 +1,9 @@
-#include "baker.h"
+#include "tre_baker.h"
 
-#include "model.h"
-#include "texture.h"
-#include "font.h"
-#include "audio.h"
+#include "tre_model.h"
+#include "tre_texture.h"
+#include "tre_font.h"
+#include "tre_audio.h"
 
 #include <fstream>
 

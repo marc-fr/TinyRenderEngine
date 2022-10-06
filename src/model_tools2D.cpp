@@ -1,4 +1,4 @@
-#include "model_tools.h"
+#include "tre_model_tools.h"
 
 #include <glm/gtx/extended_min_max.hpp>
 

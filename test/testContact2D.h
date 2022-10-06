@@ -2,8 +2,7 @@
 #include <vector>
 #include <array>
 
-#include "openglinclude.h"
-#include "model.h"
+#include "tre_model.h"
 
 namespace tre {
   struct s_contact2D;

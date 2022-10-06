@@ -1,7 +1,7 @@
 #ifndef UTILS_DEFINED
 #define UTILS_DEFINED
 
-#include "openglinclude.h"
+#include "tre_openglinclude.h"
 
 #include <array>
 #include <vector>
@@ -362,6 +362,6 @@ bool checkLayoutMatch_Shader_Model(shader *pshader, model *pmodel);
 
 } // namespace
 
-#include "utils.hpp"
+#include "tre_utils.hpp"
 
 #endif

@@ -1,12 +1,12 @@
 
-#include "shader.h"
-#include "rendertarget.h"
-#include "model.h"
-#include "model_tools.h"
-#include "textgenerator.h"
-#include "profiler.h"
-#include "font.h"
-#include "windowHelper.h"
+#include "tre_shader.h"
+#include "tre_rendertarget.h"
+#include "tre_model.h"
+#include "tre_model_tools.h"
+#include "tre_textgenerator.h"
+#include "tre_profiler.h"
+#include "tre_font.h"
+#include "tre_windowContext.h"
 
 #include <math.h>
 #include <stdlib.h> // rand,srand
@@ -26,7 +26,10 @@ int main(int argc, char **argv)
   (void)argc;
   (void)argv;
 
-  tre::windowHelper myWindow;
+  tre::windowContext myWindow;
+  tre::windowContext::s_controls myControls;
+  tre::windowContext::s_timer myTimings;
+  tre::windowContext::s_view3D myView3D(&myWindow);
 
   if (!myWindow.SDLInit(SDL_INIT_VIDEO, "test Demo scene", SDL_WINDOW_RESIZABLE))
     return -1;
@@ -410,11 +413,11 @@ int main(int argc, char **argv)
 
   SDL_Event event;
 
-  myWindow.m_timing.initialize();
+  myTimings.initialize();
 
-  myWindow.m_view3D.m_matView[3] = glm::vec4(0.f, -3.f, -9.8f, 1.f);
-  myWindow.m_view3D.setScreenBoundsMotion(true);
-  myWindow.m_view3D.setKeyBinding(true);
+  myView3D.m_matView[3] = glm::vec4(0.f, -3.f, -9.8f, 1.f);
+  myView3D.setScreenBoundsMotion(true);
+  myView3D.setKeyBinding(true);
 
   bool showShadowMaps = false;
   bool withMSAA = canMSAA;
@@ -422,8 +425,11 @@ int main(int argc, char **argv)
 
   // MAIN LOOP
 
-  while(!myWindow.m_controls.m_quit)
+  while(!myWindow.m_quit && !myControls.m_quit)
   {
+    myWindow.SDLEvent_newFrame();
+    myControls.newFrame();
+    myTimings.newFrame(0, myControls.m_pause);
     tre::profiler_newFrame();
 
     // event actions + updates -------
@@ -431,13 +437,10 @@ int main(int argc, char **argv)
     {
       TRE_PROFILEDSCOPE("events", ev)
 
-      myWindow.m_controls.newFrame();
-      myWindow.m_timing.newFrame(0, myWindow.m_controls.m_pause);
-
       while(SDL_PollEvent(&event) == 1)
       {
         myWindow.SDLEvent_onWindow(event);
-        myWindow.m_controls.treatSDLEvent(event);
+        myControls.treatSDLEvent(event);
 
         tre::profiler_acceptEvent(event);
 
@@ -446,13 +449,13 @@ int main(int argc, char **argv)
         if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_F7) withMSAA = !withMSAA && canMSAA;
       }
 
-      if (myWindow.m_controls.m_hasFocus)
-        myWindow.m_view3D.treatControlEvent(myWindow.m_controls, myWindow.m_timing.frametime);
+      if (myWindow.m_hasFocus)
+        myView3D.treatControlEvent(myControls, myTimings.frametime);
 
-      if (myWindow.m_controls.m_mouseRIGHT & myWindow.m_controls.MASK_BUTTON_RELEASED)
-        myWindow.m_view3D.setMouseBinding(!myWindow.m_view3D.m_mouseBound);
+      if (myControls.m_mouseRIGHT & myControls.MASK_BUTTON_RELEASED)
+        myView3D.setMouseBinding(!myView3D.m_mouseBound);
 
-      if (myWindow.m_controls.m_viewportResized)
+      if (myWindow.m_viewportResized)
       {
         rtMultisampled.resize(myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
         rtResolveMSAA.resize(myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
@@ -473,14 +476,14 @@ int main(int argc, char **argv)
 
     // world simulation -------------------
 
-    if (!myWindow.m_controls.m_pause)
+    if (!myControls.m_pause)
     {
       TRE_PROFILEDSCOPE("particles", particles);
 
       // particle evolve
       {
         TRE_PROFILEDSCOPE("evolve", particlesE);
-        const float sceneDt = myWindow.m_timing.frametime;
+        const float sceneDt = myTimings.frametime;
         for (std::size_t ip = 0; ip < worldParticlesBBStream.size(); ++ip)
         {
           worldParticlesBBStream.m_vel[ip] *= 0.99f;
@@ -590,7 +593,7 @@ int main(int argc, char **argv)
     {
       TRE_PROFILEDSCOPE("prepare", prepare)
 
-      const float sunTheta = myWindow.m_timing.scenetime*6.28f*0.02f;
+      const float sunTheta = myTimings.scenetime*6.28f*0.02f;
       sunLight_Data.direction = glm::normalize( glm::vec3( 0.2f, -fabsf(cosf(sunTheta)), sinf(sunTheta) ) );
 
       sunLight_ShadowMap.computeUBO_forMap(sunLight_Data, sunShadow_Data, 0);
@@ -598,7 +601,7 @@ int main(int argc, char **argv)
       tre::shader::updateUBO_sunLight(sunLight_Data);
       tre::shader::updateUBO_sunShadow(sunShadow_Data);
 
-      const float ptsLightTheta = myWindow.m_timing.scenetime*6.28f*0.11f;
+      const float ptsLightTheta = myTimings.scenetime*6.28f*0.11f;
       const glm::vec3 ptsLightPos = glm::vec3(-3.f * cosf(ptsLightTheta), 3.f + 1.f * cosf(sunTheta), 3.f * sinf(ptsLightTheta));
 
       ptsLight_Data.col(0) = glm::vec4(1.0f, 1.0f, 0.2f, 9.0f);
@@ -612,13 +615,13 @@ int main(int argc, char **argv)
 
     glm::mat4 mModelCube;
     mModelCube = glm::translate(glm::mat4(1.f),glm::vec3(0.f,2.5f,0.f));
-    mModelCube = glm::rotate(mModelCube,myWindow.m_timing.scenetime*6.28f*0.2f,glm::vec3(0.8f,0.f,0.6f));
+    mModelCube = glm::rotate(mModelCube,myTimings.scenetime*6.28f*0.2f,glm::vec3(0.8f,0.f,0.6f));
 
     glm::mat4 mModelSphere;
     mModelSphere = glm::translate(glm::mat4(1.f),glm::vec3(7.f,2.5f,0.f));
-    mModelSphere = glm::rotate(mModelSphere,myWindow.m_timing.scenetime*6.28f*0.2f,glm::vec3(0.8f,0.f,0.6f));
+    mModelSphere = glm::rotate(mModelSphere,myTimings.scenetime*6.28f*0.2f,glm::vec3(0.8f,0.f,0.6f));
 
-    const glm::mat4 mPV = myWindow.m_matProjection3D * myWindow.m_view3D.m_matView;
+    const glm::mat4 mPV = myWindow.m_matProjection3D * myView3D.m_matView;
 
     // shadow-map render pass --------------
 
@@ -708,7 +711,7 @@ int main(int argc, char **argv)
       glBindTexture(GL_TEXTURE_CUBE_MAP,worldSkyBoxTex.m_handle);
       glUniform1i(shaderSkybox.getUniformLocation(tre::shader::TexCube),3);
 
-      glm::mat4 MViewBox(myWindow.m_view3D.m_matView);
+      glm::mat4 MViewBox(myView3D.m_matView);
       MViewBox[3] = glm::vec4(0.f,0.f,0.f,1.f); // no translation
 
       shaderSkybox.setUniformMatrix(myWindow.m_matProjection3D * MViewBox, glm::mat4(1.f), MViewBox);
@@ -741,7 +744,7 @@ int main(int argc, char **argv)
       glBindTexture(GL_TEXTURE_2D,worldGroundMetalRough.m_handle);
       glUniform1i(shaderMaterialMapped.getUniformLocation(tre::shader::TexBRDF),6);
 
-      shaderMaterialMapped.setUniformMatrix(mPV, glm::mat4(1.f), myWindow.m_view3D.m_matView);
+      shaderMaterialMapped.setUniformMatrix(mPV, glm::mat4(1.f), myView3D.m_matView);
 
       worldMesh.drawcall(0, 1);
 
@@ -752,7 +755,7 @@ int main(int argc, char **argv)
       glUniform1i(shaderMaterialUni.getUniformLocation(tre::shader::TexShadowSun0),2);
       glUniform1i(shaderMaterialUni.getUniformLocation(tre::shader::TexShadowPts0),3);
 
-      shaderMaterialUni.setUniformMatrix(mPV, glm::mat4(1.f), myWindow.m_view3D.m_matView);
+      shaderMaterialUni.setUniformMatrix(mPV, glm::mat4(1.f), myView3D.m_matView);
 
       glUniform2f(shaderMaterialUni.getUniformLocation(tre::shader::uniBRDF), 0.f, 0.7f);
 
@@ -764,7 +767,7 @@ int main(int argc, char **argv)
 
       const glm::vec4 ucolorMove(0.2f,1.0f,0.2f,1.f);
 
-      shaderMaterialUni.setUniformMatrix(mPV * mModelCube, mModelCube, myWindow.m_view3D.m_matView);
+      shaderMaterialUni.setUniformMatrix(mPV * mModelCube, mModelCube, myView3D.m_matView);
 
       glUniform2f(shaderMaterialUni.getUniformLocation(tre::shader::uniBRDF), 1.f, 0.1f);
 
@@ -785,7 +788,7 @@ int main(int argc, char **argv)
 
       glUniform2f(shaderSphere.getUniformLocation(tre::shader::uniBRDF), 0.f, 0.5f);
 
-      shaderSphere.setUniformMatrix(mPV * mModelSphere, mModelSphere, myWindow.m_view3D.m_matView);
+      shaderSphere.setUniformMatrix(mPV * mModelSphere, mModelSphere, myView3D.m_matView);
 
       worldObjects.drawcall(1,1);
 
@@ -837,7 +840,7 @@ int main(int argc, char **argv)
       glBindTexture(GL_TEXTURE_2D, rtResolveMSAA.depthHandle());
       glUniform1i(shaderInstancedBB.getUniformLocation(tre::shader::TexDepth),5);
 
-      glm::mat3 invView = glm::mat3(myWindow.m_view3D.m_matView);
+      glm::mat3 invView = glm::mat3(myView3D.m_matView);
       invView = glm::transpose(invView);
 
       shaderInstancedBB.setUniformMatrix(mPV);
@@ -916,9 +919,9 @@ int main(int argc, char **argv)
       {
         char txtFPS[128];
         snprintf(txtFPS, 127, "%03d fps (Work-elapsed = %03d ms, Swap-latency = %03d ms)",
-                 int(1.f/myWindow.m_timing.frametime),
-                 int(myWindow.m_timing.worktime * 1000),
-                 int((myWindow.m_timing.frametime - myWindow.m_timing.worktime) * 1000));
+                 int(1.f/myTimings.frametime),
+                 int(myTimings.worktime * 1000),
+                 int((myTimings.frametime - myTimings.worktime) * 1000));
         tre::textgenerator::s_textInfo tInfo;
         tInfo.setupBasic(&worldHUDFont, 0.06f, txtFPS, glm::vec2(0.f, -0.08f - 0.08f * 0));
         worldHUDModel.resizePart(0, tre::textgenerator::geometry_VertexCount(tInfo.m_text));
@@ -958,14 +961,14 @@ int main(int argc, char **argv)
 
     // end render pass --------------
 
-    myWindow.m_timing.endFrame_beforeGPUPresent();
+    myTimings.endFrame_beforeGPUPresent();
 
     SDL_GL_SwapWindow( myWindow.m_window );
   }
 
   TRE_LOG("Main loop exited");
-  TRE_LOG("Average work elapsed-time needed for each frame: " << myWindow.m_timing.worktime_average * 1000 << " ms");
-  TRE_LOG("Average frame elapsed-time needed for each frame (Vsync enabled): " << myWindow.m_timing.frametime_average * 1000 << " ms");
+  TRE_LOG("Average work elapsed-time needed for each frame: " << myTimings.worktime_average * 1000 << " ms");
+  TRE_LOG("Average frame elapsed-time needed for each frame (Vsync enabled): " << myTimings.frametime_average * 1000 << " ms");
 
   // Finalize
   worldSkyboxModel.clearGPU();

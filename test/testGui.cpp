@@ -1,12 +1,12 @@
 
-#include "ui.h"
-#include "model.h" // a word-mesh
-#include "gizmo.h"
-#include "shader.h"
-#include "texture.h"
-#include "font.h"
-#include "textgenerator.h"
-#include "windowHelper.h"
+#include "tre_ui.h"
+#include "tre_model.h" // a word-mesh
+#include "tre_gizmo.h"
+#include "tre_shader.h"
+#include "tre_texture.h"
+#include "tre_font.h"
+#include "tre_textgenerator.h"
+#include "tre_windowContext.h"
 
 #include <time.h>
 #include <string>
@@ -657,7 +657,9 @@ int main(int argc, char **argv)
   (void)argc;
   (void)argv;
 
-  tre::windowHelper myWindow;
+  tre::windowContext myWindow;
+  tre::windowContext::s_controls myControls;
+  tre::windowContext::s_timer myTimings;
 
   if (!myWindow.SDLInit(SDL_INIT_VIDEO, "test GUI", SDL_WINDOW_RESIZABLE))
     return -1;
@@ -739,19 +741,19 @@ int main(int argc, char **argv)
 
   SDL_Event event;
 
-  myWindow.m_timing.initialize();
+  myTimings.initialize();
 
   // - MAIN LOOP --->
 
-  while(!myWindow.m_controls.m_quit)
+  while(!myWindow.m_quit && !myControls.m_quit)
   {
-    myWindow.m_timing.newFrame(0, myWindow.m_controls.m_pause);
+    myWindow.SDLEvent_newFrame();
+    myControls.newFrame();
+    myTimings.newFrame(0, myControls.m_pause);
 
     // event actions + updates --------
 
     const glm::mat4 mPV(myWindow.m_matProjection3D * mView);
-
-    myWindow.m_controls.newFrame();
 
     cubeGizmo.updateCameraInfo(myWindow.m_matProjection3D, mView, myWindow.m_resolutioncurrent);
     uiManager.updateCameraInfo(myWindow.m_resolutioncurrent, myWindow.m_matProjection2D, myWindow.m_matProjection3D, mView);
@@ -765,11 +767,11 @@ int main(int argc, char **argv)
         continue;
       if (cubeGizmo.acceptEvent(event))
         continue;
-      if (myWindow.m_controls.treatSDLEvent(event))
+      if (myControls.treatSDLEvent(event))
         continue;
     }
 
-    uiManager.animate(glm::min(myWindow.m_timing.frametime, 0.033f));
+    uiManager.animate(glm::min(myTimings.frametime, 0.033f));
 
     // display ----------------------
     glViewport(0, 0, myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
@@ -815,7 +817,7 @@ int main(int argc, char **argv)
   }
 
   TRE_LOG("Main loop exited");
-  TRE_LOG("Average CPU-frame: " << int(myWindow.m_timing.frametime_average * 1000) << " ms");
+  TRE_LOG("Average CPU-frame: " << int(myTimings.frametime_average * 1000) << " ms");
 
   // Finalize
 

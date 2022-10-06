@@ -1,7 +1,7 @@
 
 #include <vector>
 
-#include "utils.h"
+#include "tre_utils.h"
 
 namespace tre {
   class  shader;

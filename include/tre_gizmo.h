@@ -1,9 +1,7 @@
 #ifndef GIZMO_H
 #define GIZMO_H
 
-#include "openglinclude.h"
-
-#include "model.h"
+#include "tre_model.h"
 
 #include <vector>
 

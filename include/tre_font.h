@@ -1,8 +1,8 @@
 #ifndef FONT_H
 #define FONT_H
 
-#include "utils.h"
-#include "texture.h"
+#include "tre_utils.h"
+#include "tre_texture.h"
 
 #include <vector>
 #include <array>

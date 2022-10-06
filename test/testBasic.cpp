@@ -1,10 +1,10 @@
 
-#include "shader.h"
-#include "rendertarget.h"
-#include "model.h"
-#include "font.h"
-#include "textgenerator.h"
-#include "windowHelper.h"
+#include "tre_shader.h"
+#include "tre_rendertarget.h"
+#include "tre_model.h"
+#include "tre_font.h"
+#include "tre_textgenerator.h"
+#include "tre_windowContext.h"
 
 #ifdef TRE_EMSCRIPTEN
 #include <emscripten.h>
@@ -26,7 +26,10 @@
 
 // =============================================================================
 
-static tre::windowHelper myWindow;
+static tre::windowContext myWindow;
+static tre::windowContext::s_controls myControls;
+static tre::windowContext::s_timer myTimings;
+static tre::windowContext::s_view3D myView3D(&myWindow);
 
 static tre::modelStaticIndexed3D    meshCube(tre::modelStaticIndexed3D::VB_NORMAL);
 static tre::modelInstancedBillboard meshParticleBB(tre::modelInstanced::VI_COLOR | tre::modelInstanced::VI_ROTATION);
@@ -227,11 +230,11 @@ static int app_init()
   tre::checkLayoutMatch_Shader_Model(&shaderShadow, &meshCube);
 #endif
 
-  myWindow.m_view3D.m_matView[3] = glm::vec4(0.f, 0.f, -2.f, 1.f);
-  myWindow.m_view3D.setScreenBoundsMotion(false);
-  myWindow.m_view3D.setKeyBinding(true);
+  myView3D.m_matView[3] = glm::vec4(0.f, 0.f, -2.f, 1.f);
+  myView3D.setScreenBoundsMotion(false);
+  myView3D.setKeyBinding(true);
 
-  myWindow.m_timing.initialize();
+  myTimings.initialize();
 
   TRE_LOG("app_init: ok.");
   return 0;
@@ -241,38 +244,39 @@ static int app_init()
 
 static void app_update()
 {
-  const float dt = myWindow.m_timing.frametime;
+  const float dt = myTimings.frametime;
 
   SDL_Event event;
 
   // event actions + updates -------
 
   {
-    myWindow.m_controls.newFrame();
-    myWindow.m_timing.newFrame(0, myWindow.m_controls.m_pause);
+    myWindow.SDLEvent_newFrame();
+    myControls.newFrame();
+    myTimings.newFrame(0, myControls.m_pause);
 
     while(SDL_PollEvent(&event) == 1)
     {
       myWindow.SDLEvent_onWindow(event);
-      myWindow.m_controls.treatSDLEvent(event);
+      myControls.treatSDLEvent(event);
     }
 
-    if (myWindow.m_controls.m_hasFocus)
-      myWindow.m_view3D.treatControlEvent(myWindow.m_controls, myWindow.m_timing.frametime);
+    if (myWindow.m_hasFocus)
+      myView3D.treatControlEvent(myControls, myTimings.frametime);
 
-    if (myWindow.m_controls.m_mouseRIGHT & myWindow.m_controls.MASK_BUTTON_RELEASED)
-      myWindow.m_view3D.setMouseBinding(!myWindow.m_view3D.m_mouseBound);
+    if (myControls.m_mouseRIGHT & myControls.MASK_BUTTON_RELEASED)
+      myView3D.setMouseBinding(!myView3D.m_mouseBound);
 
-    if (myWindow.m_controls.m_viewportResized)
+    if (myWindow.m_viewportResized)
     {
     }
   } // end events
 
   // world simulation -------------------
 
-  const glm::mat4 mModelCube = glm::rotate(glm::mat4(1.f),0.1f + myWindow.m_timing.scenetime * 6.28f*0.2f,glm::vec3(0.8f,0.f,0.6f));
+  const glm::mat4 mModelCube = glm::rotate(glm::mat4(1.f),0.1f + myTimings.scenetime * 6.28f*0.2f,glm::vec3(0.8f,0.f,0.6f));
 
-  if (!myWindow.m_controls.m_pause)
+  if (!myControls.m_pause)
   {
     particleBatch.update(dt);
 
@@ -340,7 +344,7 @@ static void app_update()
     glBindTexture(GL_TEXTURE_CUBE_MAP,textureSkyBox.m_handle);
     glUniform1i(shaderSkyBox.getUniformLocation(tre::shader::TexCube),3);
 
-    glm::mat4 MViewBox(myWindow.m_view3D.m_matView);
+    glm::mat4 MViewBox(myView3D.m_matView);
     MViewBox[3] = glm::vec4(0.f,0.f,0.f,1.f); // no translation
 
     shaderSkyBox.setUniformMatrix(myWindow.m_matProjection3D * MViewBox, glm::mat4(1.f), MViewBox);
@@ -353,7 +357,7 @@ static void app_update()
 
   // opaque render pass ----------------
 
-  const glm::mat4 mPV = myWindow.m_matProjection3D * myWindow.m_view3D.m_matView;
+  const glm::mat4 mPV = myWindow.m_matProjection3D * myView3D.m_matView;
 
   {
     glDepthMask(GL_TRUE);
@@ -373,7 +377,7 @@ static void app_update()
     glUniform1i(shaderMesh3D.getUniformLocation(tre::shader::TexShadowSun0),2);
 #endif
 
-    shaderMesh3D.setUniformMatrix(mPV * mModelCube, mModelCube, myWindow.m_view3D.m_matView);
+    shaderMesh3D.setUniformMatrix(mPV * mModelCube, mModelCube, myView3D.m_matView);
 
     glUniform2f(shaderMesh3D.getUniformLocation(tre::shader::uniBRDF), 0.1f, 0.7f);
 
@@ -429,9 +433,9 @@ static void app_update()
     {
       char txtFPS[128];
       snprintf(txtFPS, 127, "%03d fps (Work-elapsed = %03d ms, Swap-latency = %03d ms)",
-               int(1.f/myWindow.m_timing.frametime),
-               int(myWindow.m_timing.worktime * 1000),
-               int((myWindow.m_timing.frametime - myWindow.m_timing.worktime) * 1000));
+               int(1.f/myTimings.frametime),
+               int(myTimings.worktime * 1000),
+               int((myTimings.frametime - myTimings.worktime) * 1000));
       tre::textgenerator::s_textInfo tInfo;
       tInfo.setupBasic(&font, 0.05f, txtFPS);
       meshFps.resizePart(0, tre::textgenerator::geometry_VertexCount(tInfo.m_text));
@@ -458,7 +462,7 @@ static void app_update()
 
   // present -----------------
 
-  myWindow.m_timing.endFrame_beforeGPUPresent();
+  myTimings.endFrame_beforeGPUPresent();
 
   SDL_GL_SwapWindow( myWindow.m_window );
 }
@@ -468,8 +472,8 @@ static void app_update()
 static void app_quit()
 {
   TRE_LOG("Main loop exited");
-  TRE_LOG("Average work elapsed-time needed for each frame: " << myWindow.m_timing.worktime_average * 1000 << " ms");
-  TRE_LOG("Average frame elapsed-time needed for each frame (Vsync enabled): " << myWindow.m_timing.frametime_average * 1000 << " ms");
+  TRE_LOG("Average work elapsed-time needed for each frame: " << myTimings.worktime_average * 1000 << " ms");
+  TRE_LOG("Average frame elapsed-time needed for each frame (Vsync enabled): " << myTimings.frametime_average * 1000 << " ms");
 
   // Finalize
   meshCube.clearGPU();
@@ -522,7 +526,7 @@ int main(int argc, char **argv)
   // emscripten_set_fullscreenchange_callback
   // emscripten_set_canvas_element_size
 #else
-  while(!myWindow.m_controls.m_quit)
+  while(!myWindow.m_quit && !myControls.m_quit)
   {
     app_update();
   }

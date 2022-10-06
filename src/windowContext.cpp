@@ -1,4 +1,4 @@
-#include "windowHelper.h"
+#include "tre_windowContext.h"
 
 #include <iostream>
 
@@ -6,7 +6,7 @@ namespace tre {
 
 // Root =======================================================================
 
-bool windowHelper::SDLInit(Uint32 sdl_init_flags, const char * windowname, Uint32 sdl_window_flags, int gl_depth_bits)
+bool windowContext::SDLInit(Uint32 sdl_init_flags, const char * windowname, Uint32 sdl_window_flags, int gl_depth_bits)
 {
   // Init SDL2
   if(SDL_Init(sdl_init_flags) < 0)
@@ -60,7 +60,7 @@ bool windowHelper::SDLInit(Uint32 sdl_init_flags, const char * windowname, Uint3
 
 // ----------------------------------------------------------------------------
 
-bool windowHelper::SDLEvent_onWindow(const SDL_Event & event)
+bool windowContext::SDLEvent_onWindow(const SDL_Event & event)
 {
   switch(event.type)
   {
@@ -76,7 +76,7 @@ bool windowHelper::SDLEvent_onWindow(const SDL_Event & event)
     // if (win == (SDL_Window*)data) ...
     if      (event.window.event == SDL_WINDOWEVENT_CLOSE)
     {
-      m_controls.m_quit = true;
+      m_quit = true;
       return true;
     }
     else if (event.window.event == SDL_WINDOWEVENT_RESIZED)
@@ -92,11 +92,11 @@ bool windowHelper::SDLEvent_onWindow(const SDL_Event & event)
     }
     else if (event.window.event == SDL_WINDOWEVENT_FOCUS_LOST)
     {
-      m_controls.m_hasFocus = false;
+      m_hasFocus = false;
     }
     else if (event.window.event == SDL_WINDOWEVENT_FOCUS_GAINED)
     {
-      m_controls.m_hasFocus = true;
+      m_hasFocus = true;
     }
     break;
   }
@@ -105,7 +105,7 @@ bool windowHelper::SDLEvent_onWindow(const SDL_Event & event)
 
 // ----------------------------------------------------------------------------
 
-void windowHelper::SDLToggleFullScreen()
+void windowContext::SDLToggleFullScreen()
 {
   if (m_window_isfullscreen==true)
   {
@@ -127,7 +127,7 @@ void windowHelper::SDLToggleFullScreen()
 
 // ----------------------------------------------------------------------------
 
-void windowHelper::SDLQuit()
+void windowContext::SDLQuit()
 {
   const char * mysdlerror = SDL_GetError();
    if (*mysdlerror != '\0') { TRE_LOG(mysdlerror); }
@@ -140,7 +140,7 @@ void windowHelper::SDLQuit()
 
 // ----------------------------------------------------------------------------
 
-bool windowHelper::SDLImageInit(int sdl_image_flags)
+bool windowContext::SDLImageInit(int sdl_image_flags)
 {
 #ifdef TRE_WITH_SDL2_IMAGE
   if (IMG_Init(sdl_image_flags) == sdl_image_flags)
@@ -156,7 +156,7 @@ bool windowHelper::SDLImageInit(int sdl_image_flags)
 
 // ----------------------------------------------------------------------------
 
-void windowHelper::SDLImageQuit()
+void windowContext::SDLImageQuit()
 {
 #ifdef TRE_WITH_SDL2_IMAGE
   IMG_Quit();
@@ -165,7 +165,7 @@ void windowHelper::SDLImageQuit()
 
 // ----------------------------------------------------------------------------
 
-bool windowHelper::OpenGLInit()
+bool windowContext::OpenGLInit()
 {
   m_glContext = SDL_GL_CreateContext(m_window);
   if (!m_glContext)
@@ -212,7 +212,7 @@ bool windowHelper::OpenGLInit()
 
 // ----------------------------------------------------------------------------
 
-void windowHelper::OpenGLCamera(float near, float far, float fov)
+void windowContext::OpenGLCamera(float near, float far, float fov)
 {
   m_far = far;
   m_near = near;
@@ -225,7 +225,7 @@ void windowHelper::OpenGLCamera(float near, float far, float fov)
 
 // ----------------------------------------------------------------------------
 
-void windowHelper::OpenGLResize(const int width, const int height)
+void windowContext::OpenGLResize(const int width, const int height)
 {
   m_resolutioncurrent.x = width;
   m_resolutioncurrent.y = height;
@@ -240,12 +240,12 @@ void windowHelper::OpenGLResize(const int width, const int height)
   tre::compute3DFrustumProjection(m_matProjection3D, invratio, m_fov * float(M_PI / 180.), m_near, m_far);
   tre::compute2DOrthoProjection(m_matProjection2D, invratio);
 
-  m_controls.m_viewportResized = true;
+  m_viewportResized = true;
 }
 
 // ----------------------------------------------------------------------------
 
-void windowHelper::OpenGLQuit()
+void windowContext::OpenGLQuit()
 {
   tre::IsOpenGLok("On quit");
   if (m_glContext) SDL_GL_DeleteContext(m_glContext);
@@ -254,7 +254,7 @@ void windowHelper::OpenGLQuit()
 
 // Controls ===================================================================
 
-bool windowHelper::s_controls::treatSDLEvent(const SDL_Event & event)
+bool windowContext::s_controls::treatSDLEvent(const SDL_Event & event)
 {
   switch(event.type)
   {
@@ -327,7 +327,7 @@ bool windowHelper::s_controls::treatSDLEvent(const SDL_Event & event)
 
 // Timings ====================================================================
 
-void windowHelper::s_timer::initialize()
+void windowContext::s_timer::initialize()
 {
   worktime_average = 0.f;
   scenetime = 0.f;
@@ -338,7 +338,7 @@ void windowHelper::s_timer::initialize()
 
 // ----------------------------------------------------------------------------
 
-void windowHelper::s_timer::newFrame(const uint waitForFPS /* = 0 means no wait */, const bool isSimPaused)
+void windowContext::s_timer::newFrame(const uint waitForFPS /* = 0 means no wait */, const bool isSimPaused)
 {
   const Uint32 newtime = SDL_GetTicks();
   const Uint32 dtms = newtime - oldtime;
@@ -366,7 +366,7 @@ void windowHelper::s_timer::newFrame(const uint waitForFPS /* = 0 means no wait 
 
 // ----------------------------------------------------------------------------
 
-void  windowHelper::s_timer::endFrame_beforeGPUPresent()
+void  windowContext::s_timer::endFrame_beforeGPUPresent()
 {
   const Uint32 newtime = SDL_GetTicks();
   worktime = float(newtime - oldtime) * 1.e-3f;
@@ -375,7 +375,7 @@ void  windowHelper::s_timer::endFrame_beforeGPUPresent()
 
 // Camera =====================================================================
 
-void windowHelper::s_view2D::treatControlEvent(const s_controls &control, const float dt)
+void windowContext::s_view2D::treatControlEvent(const s_controls &control, const float dt)
 {
   const glm::vec2 mouseCurr_clipSpace = glm::vec2(-1.f + 2.f * float(control.m_mouse.x) / float(m_parentWindow->m_resolutioncurrent.x),
                                                    1.f - 2.f * float(control.m_mouse.y) / float(m_parentWindow->m_resolutioncurrent.y));
@@ -466,7 +466,7 @@ void windowHelper::s_view2D::treatControlEvent(const s_controls &control, const 
 
 // ----------------------------------------------------------------------------
 
-void windowHelper::s_view3D::treatControlEvent(const s_controls &control, const float dt)
+void windowContext::s_view3D::treatControlEvent(const s_controls &control, const float dt)
 {
   const glm::vec2 mouseCurr_clipSpace = glm::vec2(-1.f + 2.f * float(control.m_mouse.x) / float(m_parentWindow->m_resolutioncurrent.x),
                                                    1.f - 2.f * float(control.m_mouse.y) / float(m_parentWindow->m_resolutioncurrent.y));

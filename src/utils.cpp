@@ -1,7 +1,7 @@
-#include "utils.h"
+#include "tre_utils.h"
 
-#include "model.h"
-#include "shader.h"
+#include "tre_model.h"
+#include "tre_shader.h"
 
 #include <glm/gtx/extended_min_max.hpp>
 
@@ -278,7 +278,7 @@ void tetrahedronQuality(const glm::vec3 &vA, const glm::vec3 &vB, const glm::vec
     {
       // tetraQualityInv = R / r, where R is the radius of the circumscribed circle, r is the radius of the inscribed circle.
       // tetraQualityInv is in range [3, +inf[, 3 is reached for a regular tetrahedron.
-      // R = sqrt( ( lAD * lBC  + lBD * lAC + lCD * lAB) * (lAD * lBC  + lBD * lAC - lCD * lAB) * 
+      // R = sqrt( ( lAD * lBC  + lBD * lAC + lCD * lAB) * (lAD * lBC  + lBD * lAC - lCD * lAB) *
       //           (-lAD * lBC  + lBD * lAC + lCD * lAB) * (lAD * lBC  - lBD * lAC + lCD * lAB) ) / (24 volume) where lAB is the lenght of edge AB, ...
       // r = 3 volume / (W1 + W2 + W3 + W4) where Wi is the area of face 'i'.
 

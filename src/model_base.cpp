@@ -1,6 +1,5 @@
-#include "model.h"
-
-#include "model_tools.h"
+#include "tre_model.h"
+#include "tre_model_tools.h"
 
 #include <map>
 #include <fstream>

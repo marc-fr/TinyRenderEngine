@@ -1,10 +1,8 @@
 #ifndef SHADER_H
 #define SHADER_H
 
-#include "openglinclude.h"
-
-#include "utils.h"
-#include "shadergenerator.h"
+#include "tre_utils.h"
+#include "tre_shadergenerator.h"
 
 #include <vector>
 #include <string>

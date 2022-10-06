@@ -1,7 +1,7 @@
-#include "gizmo.h"
+#include "tre_gizmo.h"
 
-#include "model.h"
-#include "shader.h"
+#include "tre_model.h"
+#include "tre_shader.h"
 
 namespace tre {
 

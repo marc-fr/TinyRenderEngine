@@ -1,4 +1,4 @@
-#include "rendertarget.h"
+#include "tre_rendertarget.h"
 
 #ifdef TRE_PRINTS
 #include <iostream>

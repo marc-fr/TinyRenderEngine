@@ -1,10 +1,8 @@
 #ifndef MODEL_TOOLS_H
 #define MODEL_TOOLS_H
 
-#include "openglinclude.h"
-
-#include "model.h"
-#include "utils.h"
+#include "tre_utils.h"
+#include "tre_model.h"
 
 #include <vector>
 #include <functional>

@@ -1,11 +1,9 @@
 #ifndef UI_H
 #define UI_H
 
-#include "openglinclude.h"
-
-#include "utils.h"
-#include "model.h"
-#include "texture.h"
+#include "tre_utils.h"
+#include "tre_model.h"
+#include "tre_texture.h"
 
 #include <vector>
 #include <string>

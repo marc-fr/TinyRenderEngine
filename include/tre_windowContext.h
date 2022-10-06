@@ -1,13 +1,12 @@
 #ifndef WINDOWHELPER_DEFINED
 #define WINDOWHELPER_DEFINED
 
-#include "openglinclude.h"
-#include "utils.h"
+#include "tre_utils.h"
 
 namespace tre {
 
 /**
- * @brief The windowHelper class
+ * @brief The windowContext class
  *
  * This is a collection of helpers, related to common I/O control of a SDL application.
  * It provides:
@@ -17,11 +16,11 @@ namespace tre {
  * - event wrapper on views (camera events with the mouse or the keyboard, either 2D and 3D)
  *
  */
-class windowHelper
+class windowContext
 {
 public:
-  windowHelper() : m_view2D(this), m_view3D(this) {}
-  ~windowHelper() { TRE_ASSERT(m_window == nullptr); TRE_ASSERT(m_glContext == nullptr); }
+  windowContext() {}
+  ~windowContext() { TRE_ASSERT(m_window == nullptr); TRE_ASSERT(m_glContext == nullptr); }
 
   // SDL
 
@@ -30,6 +29,8 @@ public:
   bool            m_window_isfullscreen = false;
 
   bool SDLInit(Uint32 sdl_init_flags, const char * windowname, Uint32 sdl_window_flags = 0, int gl_depth_bits = 24);
+
+  void SDLEvent_newFrame() { m_viewportResized = false; }
 
   bool SDLEvent_onWindow(const SDL_Event &event); ///< Process events
 
@@ -45,7 +46,7 @@ public:
 
   // OpenGL
 
-  SDL_GLContext m_glContext = nullptr;
+  SDL_GLContext   m_glContext = nullptr;
   glm::ivec2      m_resolutioncurrent = glm::ivec2(1);
   glm::vec2       m_resolutioncurrentInv = glm::vec2(1.f);
   float           m_near = 0.01f;
@@ -53,6 +54,9 @@ public:
   float           m_fov = 70.f;
   glm::mat3       m_matProjection2D;
   glm::mat4       m_matProjection3D;
+  bool            m_hasFocus = true;
+  bool            m_quit = false;
+  bool            m_viewportResized = false;
 
   bool OpenGLInit();
 
@@ -77,21 +81,16 @@ public:
     bool m_keySHIFT = false, m_keyCTRL = false, m_keyALT = false;
     bool m_keyUP = false, m_keyDOWN = false, m_keyLEFT = false, m_keyRIGHT = false;
     bool m_pause = false, m_quit = false, m_home = false;
-    bool m_viewportResized = false;               ///< automatically set to true in OpenGLResize() for "m_controls"
-    bool m_hasFocus = true;                       ///< automatically updated by SDLEvent_onWindow() for "m_controls"
 
     void newFrame()
     {
       m_mouse.z = 0;
       m_mouseLEFT  &= ~s_controls::MASK_BUTTON_RELEASED;
       m_mouseRIGHT &= ~s_controls::MASK_BUTTON_RELEASED;
-      m_viewportResized = false;
     }
 
     bool treatSDLEvent(const SDL_Event &event);
   };
-
-  s_controls m_controls;
 
   // Basic timer
 
@@ -116,8 +115,6 @@ public:
     void endFrame_beforeGPUPresent(); // optionnal (needed to distinguish the work-time and the frame-time)
   };
 
-  s_timer m_timing;
-
   // Views (cameras)
 
   /**
@@ -128,7 +125,7 @@ public:
     glm::mat3   m_matView = glm::mat3(1.f);
     glm::mat3   m_matViewPrev;
 
-    windowHelper *m_parentWindow = nullptr;
+    windowContext *m_parentWindow = nullptr;
 
     bool        m_keyBound = false;      ///< the view reacts on keyboard actions.
     glm::vec3   m_keySensitivity = glm::vec3(0.2f);
@@ -139,7 +136,7 @@ public:
 
     glm::vec2   m_mousePrev = glm::vec2(0.f); ///< (x,y)_viewSpace
 
-    s_view2D(windowHelper *parentWindow) : m_parentWindow(parentWindow) { TRE_ASSERT(m_parentWindow != nullptr); }
+    s_view2D(windowContext *parentWindow) : m_parentWindow(parentWindow) { TRE_ASSERT(m_parentWindow != nullptr); }
 
     void setKeyBinding(bool withKeyboard) { m_keyBound = withKeyboard; }
     void setMouseBinding(bool isBound) { m_mouseBound = isBound; }
@@ -147,8 +144,6 @@ public:
 
     void treatControlEvent(const s_controls &control, const float dt);
   };
-
-  s_view2D m_view2D;
 
   /**
    * @brief The s_view3D struct
@@ -158,7 +153,7 @@ public:
     glm::mat4   m_matView = glm::mat4(1.f);
     glm::mat4   m_matViewPrev;
 
-    windowHelper *m_parentWindow = nullptr;
+    windowContext *m_parentWindow = nullptr;
 
     bool        m_keyBound = false;      ///< the view reacts on keyboard actions.
     glm::vec3   m_keySensitivity = glm::vec3(4.f);
@@ -169,7 +164,7 @@ public:
 
     glm::vec2   m_mousePrev = glm::vec2(0.f); ///< (x,y)_clipSpace
 
-    s_view3D(windowHelper *parentWindow) : m_parentWindow(parentWindow) { TRE_ASSERT(m_parentWindow != nullptr); }
+    s_view3D(windowContext *parentWindow) : m_parentWindow(parentWindow) { TRE_ASSERT(m_parentWindow != nullptr); }
 
     void setKeyBinding(bool withKeyboard) { m_keyBound = withKeyboard; }
     void setMouseBinding(bool isBound) { m_mouseBound = isBound; }
@@ -180,7 +175,6 @@ public:
     void treatControlEvent(const s_controls &control, const float dt);
   };
 
-  s_view3D m_view3D;
 };
 
 } // namespace

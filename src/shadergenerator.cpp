@@ -1,6 +1,6 @@
-#include "shadergenerator.h"
+#include "tre_shadergenerator.h"
 
-#include "utils.h"
+#include "tre_utils.h"
 
 namespace tre {
 

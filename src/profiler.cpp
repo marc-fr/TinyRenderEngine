@@ -1,11 +1,11 @@
-#include "profiler.h"
+#include "tre_profiler.h"
 
 #ifdef TRE_PROFILE
 
-#include "shader.h"
-#include "texture.h"
-#include "font.h"
-#include "textgenerator.h"
+#include "tre_shader.h"
+#include "tre_texture.h"
+#include "tre_font.h"
+#include "tre_textgenerator.h"
 
 namespace tre {
 

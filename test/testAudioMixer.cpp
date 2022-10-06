@@ -3,11 +3,11 @@
 #include <sstream>
 #include <array>
 
-#include "windowHelper.h"
-#include "ui.h"
-#include "font.h"
+#include "tre_windowContext.h"
+#include "tre_ui.h"
+#include "tre_font.h"
 
-#include "audio.h"
+#include "tre_audio.h"
 
 #ifdef TRE_EMSCRIPTEN
 #include <emscripten.h>
@@ -133,7 +133,10 @@ public:
 
 // =============================================================================
 
-static tre::windowHelper windowCtx;
+static tre::windowContext myWindow;
+static tre::windowContext::s_controls myControls;
+static tre::windowContext::s_timer myTimings;
+
 static tre::font         font;
 static tre::baseUI2D     baseUI;
 static tre::ui::window   *windowMain = nullptr;
@@ -173,10 +176,10 @@ static int app_init()
 {
   // - Init
 
-  if(!windowCtx.SDLInit(SDL_INIT_VIDEO | SDL_INIT_AUDIO, "test Sound", SDL_WINDOW_RESIZABLE))
+  if(!myWindow.SDLInit(SDL_INIT_VIDEO | SDL_INIT_AUDIO, "test Sound", SDL_WINDOW_RESIZABLE))
     return -1;
 
-  if(!windowCtx.OpenGLInit())
+  if(!myWindow.OpenGLInit())
     return -1;
 
   // -> Set pipeline state and clear the window
@@ -187,7 +190,7 @@ static int app_init()
   glClearColor(0.f,0.f,0.f,0.f);
   glClear(GL_COLOR_BUFFER_BIT);
 
-  SDL_GL_SwapWindow(windowCtx.m_window);
+  SDL_GL_SwapWindow(myWindow.m_window);
 
   // -> Load other resources
 
@@ -272,7 +275,7 @@ static int app_init()
   if (withGUI)
   {
     baseUI.set_defaultFont(&font);
-    baseUI.updateCameraInfo(windowCtx.m_matProjection2D, windowCtx.m_resolutioncurrent);
+    baseUI.updateCameraInfo(myWindow.m_matProjection2D, myWindow.m_resolutioncurrent);
 
     windowMain->set_fontSize(tre::ui::s_size(18,tre::ui::SIZE_PIXEL));
     windowMain->set_alignMask(tre::ui::ALIGN_MASK_CENTERED);
@@ -507,7 +510,7 @@ static int app_init()
     baseUI.loadIntoGPU();
   }
 
-  windowCtx.m_timing.initialize();
+  myTimings.initialize();
 
   return 0;
 }
@@ -516,22 +519,22 @@ static int app_init()
 
 static void app_update()
 {
-
-  windowCtx.m_controls.newFrame();
-  windowCtx.m_timing.newFrame(0, false);
+  myWindow.SDLEvent_newFrame();
+  myControls.newFrame();
+  myTimings.newFrame(0, false);
 
   // Event
   SDL_Event rawEvent;
   while(SDL_PollEvent(&rawEvent) == 1)
   {
-    windowCtx.SDLEvent_onWindow(rawEvent);
-    windowCtx.m_controls.treatSDLEvent(rawEvent);
+    myWindow.SDLEvent_onWindow(rawEvent);
+    myControls.treatSDLEvent(rawEvent);
     baseUI.acceptEvent(rawEvent);
   }
 
-  if (windowCtx.m_controls.m_viewportResized)
+  if (myWindow.m_viewportResized)
   {
-    baseUI.updateCameraInfo(windowCtx.m_matProjection2D, windowCtx.m_resolutioncurrent);
+    baseUI.updateCameraInfo(myWindow.m_matProjection2D, myWindow.m_resolutioncurrent);
   }
 
   // Audio update
@@ -543,17 +546,17 @@ static void app_update()
 
   // Video update
 
-  glViewport(0, 0, windowCtx.m_resolutioncurrent.x,windowCtx.m_resolutioncurrent.y);
+  glViewport(0, 0, myWindow.m_resolutioncurrent.x,myWindow.m_resolutioncurrent.y);
   glClear(GL_COLOR_BUFFER_BIT);
 
   if (withGUI)
   {
-    baseUI.animate(windowCtx.m_timing.frametime);
+    baseUI.animate(myTimings.frametime);
     baseUI.updateIntoGPU();
     baseUI.draw();
   }
 
-  SDL_GL_SwapWindow(windowCtx.m_window); // let the v-sync do the job ...
+  SDL_GL_SwapWindow(myWindow.m_window); // let the v-sync do the job ...
 }
 
 // =============================================================================
@@ -571,8 +574,8 @@ static void app_quit()
 
   textureWaveforms.clear();
 
-  windowCtx.OpenGLQuit();
-  windowCtx.SDLQuit();
+  myWindow.OpenGLQuit();
+  myWindow.SDLQuit();
 
   TRE_LOG("End.");
 }
@@ -595,7 +598,7 @@ int main(int argc, char **argv)
   // emscripten_set_fullscreenchange_callback
   // emscripten_set_canvas_element_size
 #else
-  while(!windowCtx.m_controls.m_quit)
+  while(!myWindow.m_quit && !myControls.m_quit)
   {
     app_update();
   }

@@ -1,14 +1,11 @@
 #ifndef PROFILER_H
 #define PROFILER_H
 
-#include "openglinclude.h"
-
-#include "textgenerator.h"
+#include "tre_utils.h"
 
 #ifdef TRE_PROFILE
 
-#include "model.h"
-#include "utils.h"
+#include "tre_model.h"
 
 #include <array>
 #include <vector>
@@ -227,28 +224,29 @@ inline void profiler_clearShader() { profilerRoot.clearShader(); }
 
 namespace tre {
 
-class texture;       // foward decl.
 class shader;        // foward decl.
+class font;          // foward decl.
+
 
 inline void profiler_initThread() {}
 
 inline void profiler_newFrame() {}
 inline void profiler_endframe() {}
-inline void profiler_pause(bool paused) {}
+inline void profiler_pause(bool ) {}
 inline bool profiler_isPaused() { return true; }
-inline void profiler_enable(bool enable) {}
+inline void profiler_enable(bool ) {}
 inline bool profiler_isEnabled() { return false; }
 
-inline void profiler_updateCameraInfo(const glm::mat3 &mProjView, const glm::vec2 &screenSize) {}
-inline void profiler_updateModelMatrix(const glm::mat3 &mModel) {}
-inline bool profiler_acceptEvent(const SDL_Event &event) { return true; }
-inline void profiler_acceptEvent(const glm::ivec2 &mousePosition) {}
+inline void profiler_updateCameraInfo(const glm::mat3 &, const glm::vec2 &) {}
+inline void profiler_updateModelMatrix(const glm::mat3 &) {}
+inline bool profiler_acceptEvent(const SDL_Event &) { return true; }
+inline void profiler_acceptEvent(const glm::ivec2 &) {}
 
 inline void profiler_draw() {}
-inline bool profiler_loadIntoGPU(font *fontToUse) { return true; }
+inline bool profiler_loadIntoGPU(font *) { return true; }
 inline void profiler_updateIntoGPU() {}
 inline void profiler_clearGPU() {}
-inline bool profiler_loadShader(shader *shaderToUse = nullptr) { return true; }
+inline bool profiler_loadShader(shader * = nullptr) { return true; }
 inline void profiler_clearShader() {}
 
 } // namespace

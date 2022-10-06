@@ -1,9 +1,7 @@
 #ifndef MODEL_H
 #define MODEL_H
 
-#include "openglinclude.h"
-
-#include "utils.h"
+#include "tre_utils.h"
 
 #include <vector>
 #include <string>

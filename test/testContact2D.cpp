@@ -1,14 +1,12 @@
-
 #include "testContact2D.h"
 
 #include <iostream> // std::cout std::endl
 
-#include "utils.h"
-#include "model.h"
-#include "model_tools.h"
-#include "shader.h"
-#include "contact_2D.h"
-#include "windowHelper.h"
+#include "tre_model.h"
+#include "tre_model_tools.h"
+#include "tre_shader.h"
+#include "tre_contact_2D.h"
+#include "tre_windowContext.h"
 
 #ifndef TESTIMPORTPATH
 #define TESTIMPORTPATH ""
@@ -251,7 +249,9 @@ bool sceneObjectRay::isContactWith(const sceneObjectBase &other, tre::s_contact2
 
 int main(int argc, char **argv)
 {
-  tre::windowHelper myWindow;
+  tre::windowContext myWindow;
+  tre::windowContext::s_controls myControls;
+  tre::windowContext::s_view2D myView2D(&myWindow);
 
   if (!myWindow.SDLInit(SDL_INIT_VIDEO, "test Contact 2D", SDL_WINDOW_RESIZABLE))
     return -1;
@@ -338,36 +338,37 @@ int main(int argc, char **argv)
   SDL_Event rawEvent;
   bool hasSelection(false);
 
-  myWindow.m_view2D.setKeyBinding(true);
-  myWindow.m_view2D.setScreenBoundsMotion(true);
+  myView2D.setKeyBinding(true);
+  myView2D.setScreenBoundsMotion(true);
 
   std::cout << "Start main loop ..." << std::endl;
 
-  while (!myWindow.m_controls.m_quit)
+  while (!myWindow.m_quit && !myControls.m_quit)
   {
-    myWindow.m_controls.newFrame();
+    myWindow.SDLEvent_newFrame();
+    myControls.newFrame();
     // Event
     while(SDL_PollEvent(&rawEvent) == 1)
     {
       myWindow.SDLEvent_onWindow(rawEvent); // window resize ...
-      myWindow.m_controls.treatSDLEvent(rawEvent); // record mouse and keyboard events
+      myControls.treatSDLEvent(rawEvent); // record mouse and keyboard events
     }
 
-    if (myWindow.m_controls.m_hasFocus)
-      myWindow.m_view2D.treatControlEvent(myWindow.m_controls, 0.17f /* about 60 fps*/);
+    if (myWindow.m_hasFocus)
+      myView2D.treatControlEvent(myControls, 0.17f /* about 60 fps*/);
 
-    if (myWindow.m_controls.m_mouseRIGHT & tre::windowHelper::s_controls::MASK_BUTTON_RELEASED)
-      myWindow.m_view2D.setMouseBinding(!myWindow.m_view2D.m_mouseBound);
+    if (myControls.m_mouseRIGHT & tre::windowContext::s_controls::MASK_BUTTON_RELEASED)
+      myView2D.setMouseBinding(!myView2D.m_mouseBound);
 
-    const glm::mat3 matPV = myWindow.m_matProjection2D * myWindow.m_view2D.m_matView;
+    const glm::mat3 matPV = myWindow.m_matProjection2D * myView2D.m_matView;
 
-    const glm::vec2 mouseClipSpace = glm::vec2(myWindow.m_controls.m_mouse) * myWindow.m_resolutioncurrentInv * glm::vec2(2.f, -2.f) + glm::vec2(-1.f, 1.f);
+    const glm::vec2 mouseClipSpace = glm::vec2(myControls.m_mouse) * myWindow.m_resolutioncurrentInv * glm::vec2(2.f, -2.f) + glm::vec2(-1.f, 1.f);
 
     const glm::vec2 mouseWordSpace = glm::inverse(matPV) * glm::vec3(mouseClipSpace, 1.f);
 
     // Event treatment
     for (sceneObjectBase *oBase : sceneObjects)
-      oBase->treatEvent(mouseWordSpace, myWindow.m_controls.m_mouseLEFT & tre::windowHelper::s_controls::MASK_BUTTON_PRESSED, hasSelection);
+      oBase->treatEvent(mouseWordSpace, myControls.m_mouseLEFT & tre::windowContext::s_controls::MASK_BUTTON_PRESSED, hasSelection);
 
     // Compute contact ...
     std::vector<tre::s_contact2D> cntsList;

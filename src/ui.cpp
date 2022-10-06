@@ -1,7 +1,7 @@
-#include "ui.h"
+#include "tre_ui.h"
 
-#include "shader.h"
-#include "font.h"
+#include "tre_shader.h"
+#include "tre_font.h"
 
 namespace tre {
 

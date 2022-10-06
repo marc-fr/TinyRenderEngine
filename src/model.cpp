@@ -1,4 +1,4 @@
-#include "model.h"
+#include "tre_model.h"
 
 namespace tre {
 

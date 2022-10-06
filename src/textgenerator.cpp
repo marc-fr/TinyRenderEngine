@@ -1,7 +1,7 @@
-#include "textgenerator.h"
+#include "tre_textgenerator.h"
 
-#include "model.h"
-#include "font.h"
+#include "tre_model.h"
+#include "tre_font.h"
 
 namespace tre {
 

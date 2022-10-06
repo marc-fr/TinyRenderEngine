@@ -1,6 +1,6 @@
-#include "contact_2D.h"
+#include "tre_contact_2D.h"
 
-#include "utils.h"
+#include "tre_utils.h"
 
 #include <math.h>
 

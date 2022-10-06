@@ -1,7 +1,6 @@
-#include "textureSampler.h"
+#include "tre_textureSampler.h"
 
-#include "openglinclude.h"
-#include "utils.h"
+#include "tre_utils.h"
 
 #ifdef TRE_WITH_LIBTIFF
 #include "tiffio.h"

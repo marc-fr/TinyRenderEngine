@@ -4,10 +4,9 @@
 #define TRE_PRINTS // force prints
 #endif
 
-#include "utils.h"
-#include "model.h"
-#include "model_tools.h"
-#include "contact_2D.h"
+#include "tre_model.h"
+#include "tre_model_tools.h"
+#include "tre_contact_2D.h"
 
 #include <chrono>
 #include <functional>
