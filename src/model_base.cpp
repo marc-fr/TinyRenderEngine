@@ -716,41 +716,60 @@ bool model::loadfromWavefront(const std::string & objfile, const std::string & m
     }
     else if (line.substr(0,2) == "f ")
     {
-      // TODO: use "std::stoi" (much better error handling)
-      uint pi = 0, pj = 0, pk = 0;
-      uint ni = 0, nj = 0, nk = 0;
-      uint ti = 0, tj = 0, tk = 0;
-      if (nnormals != 0 && nuvs != 0)
-        sscanf(line.substr(2).data(),"%d/%d/%d %d/%d/%d %d/%d/%d",
-                                      &pi,&ti,&ni,&pj,&tj,&nj,&pk,&tk,&nk);
-      else if (nnormals != 0)
-        sscanf(line.substr(2).data(),"%d//%d %d//%d %d//%d",
-                                      &pi,&ni,&pj,&nj,&pk,&nk);
-      else if (nuvs != 0)
-        sscanf(line.substr(2).data(),"%d/%d %d/%d %d/%d",
-                                      &pi,&ti,&pj,&tj,&pk,&tk);
-      else
-        sscanf(line.substr(2).data(),"%d %d %d",
-                                      &pi,&pj,&pk);
-
+      std::array<int, 9> readBuffer;
+      uint readCount = 0;
+      for (std::size_t is = 2, iprev = 2, stop = line.size(); is < stop; ++is)
+      {
+        if (line[is] == '/' || line[is] == ' ' || is + 1 == stop)
+        {
+          if (is + 1 == stop) is = stop;
+          TRE_ASSERT(readCount < 9);
+          readBuffer[readCount++] = (iprev != is) ? std::stoi(line.substr(iprev, is - iprev)) : 0;
+          iprev = is + 1;
+        }
+      }
+      TRE_ASSERT(readCount % 3 == 0);
+      //
+      int pi = 0, pj = 0, pk = 0;
+      int ni = 0, nj = 0, nk = 0;
+      int ti = 0, tj = 0, tk = 0;
+      if (readCount == 3)
+      {
+        pi = readBuffer[0];
+        pj = readBuffer[1];
+        pk = readBuffer[2];
+      }
+      else if (readCount == 6)
+      {
+        pi = readBuffer[0]; ti = readBuffer[1];
+        pj = readBuffer[2]; tj = readBuffer[3];
+        pk = readBuffer[4]; tk = readBuffer[5];
+      }
+      else // (readCount == 9)
+      {
+        pi = readBuffer[0]; ti = readBuffer[1]; ni = readBuffer[2];
+        pj = readBuffer[3]; tj = readBuffer[4]; nj = readBuffer[5];
+        pk = readBuffer[6]; tk = readBuffer[7]; nk = readBuffer[8];
+      }
       TRE_ASSERT(pi !=0 && pj != 0 && pk != 0);
-      TRE_ASSERT(nnormals == 0 || (ni !=0 && nj != 0 && nk != 0));
-      TRE_ASSERT(nuvs == 0 || (ti !=0 && tj != 0 && tk != 0));
-      pi = (static_cast<int>(pi) < 0) ? uint(nvertices) + pi : pi - 1;
-      pj = (static_cast<int>(pj) < 0) ? uint(nvertices) + pj : pj - 1;
-      pk = (static_cast<int>(pk) < 0) ? uint(nvertices) + pk : pk - 1;
-      ni = (static_cast<int>(ni) < 0) ? uint(nnormals) + ni  : ni - 1;
-      nj = (static_cast<int>(nj) < 0) ? uint(nnormals) + nj  : nj - 1;
-      nk = (static_cast<int>(nk) < 0) ? uint(nnormals) + nk  : nk - 1;
-      ti = (static_cast<int>(ti) < 0) ? uint(nuvs) + ti      : ti - 1;
-      tj = (static_cast<int>(tj) < 0) ? uint(nuvs) + tj      : tj - 1;
-      tk = (static_cast<int>(tk) < 0) ? uint(nuvs) + tk      : tk - 1;
 
-      // A same vertex position could be used multiple times. So we need to "duplicate" it if its attributes might differ.
+      // A same vertex "position" could be used multiple times. So we need to duplicate it if the "normal" or "uv" differ.
 
-      const uint ki = ((pi+1) & 0xFFFF) | ((ni & 0xFFF) << 16) | ((ti & 0xF) << 28);
-      const uint kj = ((pj+1) & 0xFFFF) | ((nj & 0xFFF) << 16) | ((tj & 0xF) << 28);
-      const uint kk = ((pk+1) & 0xFFFF) | ((nk & 0xFFF) << 16) | ((tk & 0xF) << 28);
+      const uint ki = (pi & 0xFFFF) | ((ni & 0xFFF) << 16) | ((ti & 0xF) << 28);
+      const uint kj = (pj & 0xFFFF) | ((nj & 0xFFF) << 16) | ((tj & 0xF) << 28);
+      const uint kk = (pk & 0xFFFF) | ((nk & 0xFFF) << 16) | ((tk & 0xF) << 28);
+
+      pi = (pi < 0) ? uint(nvertices) + pi : pi - 1;
+      pj = (pj < 0) ? uint(nvertices) + pj : pj - 1;
+      pk = (pk < 0) ? uint(nvertices) + pk : pk - 1;
+
+      ni = (ni < 0) ? uint(nnormals) + ni  : ni - 1;
+      nj = (nj < 0) ? uint(nnormals) + nj  : nj - 1;
+      nk = (nk < 0) ? uint(nnormals) + nk  : nk - 1;
+
+      ti = (ti < 0) ? uint(nuvs) + ti      : ti - 1;
+      tj = (tj < 0) ? uint(nuvs) + tj      : tj - 1;
+      tk = (tk < 0) ? uint(nuvs) + tk      : tk - 1;
 
       uint i = iVertex + pi;
       uint j = iVertex + pj;
@@ -766,8 +785,8 @@ bool model::loadfromWavefront(const std::string & objfile, const std::string & m
         }
         vertexKey[i] = ki;
         m_layout.m_positions.get<glm::vec3>(i) = positionsRead[pi];
-        if (m_layout.m_normals.m_size == 3) m_layout.m_normals.get<glm::vec3>(i) = (nnormals != 0) ? normalsRead[ni] : glm::vec3(0.f);
-        if (m_layout.m_uvs.m_size == 2) m_layout.m_uvs.get<glm::vec2>(i) = (nuvs != 0) ? uvsRead[ti] : glm::vec2(0.f);
+        if (m_layout.m_normals.m_size == 3) m_layout.m_normals.get<glm::vec3>(i) = (nnormals != 0 && ni != -1) ? normalsRead[ni] : glm::vec3(0.f);
+        if (m_layout.m_uvs.m_size == 2) m_layout.m_uvs.get<glm::vec2>(i) = (nuvs != 0 && ti != -1) ? uvsRead[ti] : glm::vec2(0.f);
       }
 
       if (vertexKey[j] != kj)
@@ -780,8 +799,8 @@ bool model::loadfromWavefront(const std::string & objfile, const std::string & m
         }
         vertexKey[j] = kj;
         m_layout.m_positions.get<glm::vec3>(j) = positionsRead[pj];
-        if (m_layout.m_normals.m_size == 3) m_layout.m_normals.get<glm::vec3>(j) = (nnormals != 0) ? normalsRead[nj] : glm::vec3(0.f);
-        if (m_layout.m_uvs.m_size == 2) m_layout.m_uvs.get<glm::vec2>(j) = (nuvs != 0) ? uvsRead[tj] : glm::vec2(0.f);
+        if (m_layout.m_normals.m_size == 3) m_layout.m_normals.get<glm::vec3>(j) = (nnormals != 0 && nj != -1) ? normalsRead[nj] : glm::vec3(0.f);
+        if (m_layout.m_uvs.m_size == 2) m_layout.m_uvs.get<glm::vec2>(j) = (nuvs != 0 && tj != -1) ? uvsRead[tj] : glm::vec2(0.f);
       }
 
       if (vertexKey[k] != kk)
@@ -794,8 +813,8 @@ bool model::loadfromWavefront(const std::string & objfile, const std::string & m
         }
         vertexKey[k] = kk;
         m_layout.m_positions.get<glm::vec3>(k) = positionsRead[pk];
-        if (m_layout.m_normals.m_size == 3) m_layout.m_normals.get<glm::vec3>(k) = (nnormals != 0) ? normalsRead[nk] : glm::vec3(0.f);
-        if (m_layout.m_uvs.m_size == 2) m_layout.m_uvs.get<glm::vec2>(k) = (nuvs != 0) ? uvsRead[tk] : glm::vec2(0.f);
+        if (m_layout.m_normals.m_size == 3) m_layout.m_normals.get<glm::vec3>(k) = (nnormals != 0 && nk != -1) ? normalsRead[nk] : glm::vec3(0.f);
+        if (m_layout.m_uvs.m_size == 2) m_layout.m_uvs.get<glm::vec2>(k) = (nuvs != 0 && tk != -1) ? uvsRead[tk] : glm::vec2(0.f);
       }
 
       m_layout.m_index[iIndex + 0] = i;
