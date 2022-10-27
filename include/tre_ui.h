@@ -198,7 +198,7 @@ protected:
 public:
   bool getIsOverPosition(const glm::vec3 & position) const; ///< Return true if the position is under the m_zone. Ignore position.z value.
   glm::vec4 resolve_color() const;
-  widget* set_colorAlpha(float alpha) { m_isUpdateNeededData |= (alpha == wcolor.a); wcolor.a = alpha; return this; }
+  widget* set_colorAlpha(float alpha) { m_isUpdateNeededData |= (alpha != wcolor.a); wcolor.a = alpha; return this; }
   /// @}
 
   /// @name intern helpers
