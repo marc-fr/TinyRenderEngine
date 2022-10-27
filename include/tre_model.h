@@ -385,13 +385,13 @@ public:
   static const int VI_ROTATION      = 0x2000; // note: scalar
 
   modelInstanced(const int flags = 0) : m_flagsInstanced(flags | VI_POSITION) {} ///< VI_POSITION is forced, no need to specify it
-  virtual ~modelInstanced() { TRE_ASSERT(m_IBufferHandle == 0); }
+  virtual ~modelInstanced() { TRE_ASSERT(m_InstBufferHandle == 0); }
 
   std::size_t sizeInstance() const { return const_cast<modelInstanced*>(this)->_layout().m_instanceCount; }
   void        resizeInstance(std::size_t newsize);
   void        reserveInstance(std::size_t newsize) { if (sizeInstance() < newsize) resizeInstance(newsize); }
 
-  float    *bufferInstanced() { return m_IBuffer.data(); } ///< Fill directly the buffer, without any checks.
+  float    *bufferInstanced() { return m_InstBuffer.data(); } ///< Fill directly the buffer, without any checks.
 
 public:
   virtual bool read(std::istream & inbuffer);
@@ -405,8 +405,8 @@ protected:
 protected:
   virtual s_modelDataLayout &_layout() = 0; // scaffolding
   int m_flagsInstanced;
-  std::vector<GLfloat> m_IBuffer; ///< per-Instance Buffer
-  GLuint m_IBufferHandle = 0;
+  std::vector<GLfloat> m_InstBuffer; ///< per-Instance Buffer
+  GLuint m_InstBufferHandle = 0;
 };
 
 //=============================================================================

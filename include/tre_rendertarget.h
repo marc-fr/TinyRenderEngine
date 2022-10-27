@@ -194,6 +194,8 @@ public:
   void resolveBlur(GLuint inputTextureHandle, const int outwidth, const int outheigth);
   void resolveBlur(GLuint inputTextureHandle, renderTarget & targetFBO);
 
+  void bypass(GLuint inputTextureHandle, const int outwidth, const int outheigth);
+
   void set_threshold(const float newThreshold) { m_paramBrightPass.x = newThreshold; }
   void set_multiplier(const float newMul) { m_paramBrightPass.y = newMul; }
 

@@ -4,7 +4,7 @@ namespace tre {
 
 // Helper
 
-static void _bind_vertexAttribPointer_float(const s_modelDataLayout::s_vertexData &vertexData, GLuint argShader, float *bufferOrigin)
+static void _bind_vertexAttribPointer_float(const s_modelDataLayout::s_vertexData &vertexData, GLuint argShader, const float *bufferOrigin)
 {
   TRE_ASSERT(vertexData.m_size <= 4);
   if (vertexData.m_size > 0)
@@ -20,7 +20,7 @@ static void _bind_vertexAttribPointer_float(const s_modelDataLayout::s_vertexDat
   }
 }
 
-static void _bind_instancedAttribPointer_float(const s_modelDataLayout::s_instanceData &instancedData, GLuint argShader, float *bufferOrigin)
+static void _bind_instancedAttribPointer_float(const s_modelDataLayout::s_instanceData &instancedData, GLuint argShader, const float *bufferOrigin)
 {
   if (instancedData.m_size == 12)
   {
@@ -793,11 +793,11 @@ void modelInstanced::resizeInstance(std::size_t count)
   if (m_flagsInstanced & VI_ORIENTATION) sumSize += layout.m_instancedOrientations.m_size = 12;
   if (m_flagsInstanced & VI_ROTATION) sumSize += layout.m_instancedRotations.m_size = 1;
 
-  TRE_ASSERT(layout.m_instanceCount * sumSize == m_IBuffer.size() || m_IBuffer.empty());
+  TRE_ASSERT(layout.m_instanceCount * sumSize == m_InstBuffer.size() || m_InstBuffer.empty());
 
   layout.m_instanceCount = count;
 
-  m_IBuffer.resize(count * sumSize);
+  m_InstBuffer.resize(count * sumSize);
 
   // set layout with data pointers -> interleaved
 
@@ -807,7 +807,7 @@ void modelInstanced::resizeInstance(std::size_t count)
   if (m_flagsInstanced & _flag) \
   { \
     _vdata.m_stride = sumSize; \
-    _vdata.m_data = m_IBuffer.data() + dataOffset; \
+    _vdata.m_data = m_InstBuffer.data() + dataOffset; \
     dataOffset += _vdata.m_size; \
   }
 
@@ -846,24 +846,24 @@ bool modelInstanced::write(std::ostream &outbuffer) const
 
 void modelInstanced::loadIntoGPU_InstancedBuffer(const bool clearCPUbuffer)
 {
-  TRE_ASSERT(m_IBufferHandle == 0);
-  TRE_ASSERT(!m_IBuffer.empty());
+  TRE_ASSERT(m_InstBufferHandle == 0);
+  TRE_ASSERT(!m_InstBuffer.empty());
 
-  glGenBuffers(1, &m_IBufferHandle);
-  glBindBuffer(GL_ARRAY_BUFFER, m_IBufferHandle);
-  glBufferData(GL_ARRAY_BUFFER, m_IBuffer.size() * sizeof(GLfloat), m_IBuffer.data(), GL_STREAM_DRAW);
+  glGenBuffers(1, &m_InstBufferHandle);
+  glBindBuffer(GL_ARRAY_BUFFER, m_InstBufferHandle);
+  glBufferData(GL_ARRAY_BUFFER, m_InstBuffer.size() * sizeof(GLfloat), m_InstBuffer.data(), GL_STREAM_DRAW);
 
-  _bind_instancedAttribPointer_float(_layout().m_instancedPositions   , 5, m_IBuffer.data());
-  _bind_instancedAttribPointer_float(_layout().m_instancedColors      , 6, m_IBuffer.data());
-  _bind_instancedAttribPointer_float(_layout().m_instancedAtlasBlends , 7, m_IBuffer.data());
-  _bind_instancedAttribPointer_float(_layout().m_instancedOrientations, 8, m_IBuffer.data()); // 9 and 10
-  _bind_instancedAttribPointer_float(_layout().m_instancedRotations   ,11, m_IBuffer.data());
+  _bind_instancedAttribPointer_float(_layout().m_instancedPositions   , 5, m_InstBuffer.data());
+  _bind_instancedAttribPointer_float(_layout().m_instancedColors      , 6, m_InstBuffer.data());
+  _bind_instancedAttribPointer_float(_layout().m_instancedAtlasBlends , 7, m_InstBuffer.data());
+  _bind_instancedAttribPointer_float(_layout().m_instancedOrientations, 8, m_InstBuffer.data()); // 9 and 10
+  _bind_instancedAttribPointer_float(_layout().m_instancedRotations   ,11, m_InstBuffer.data());
 
   IsOpenGLok("modelSemiDynamic3D::loadIntoGPU");
 
   if (clearCPUbuffer)
   {
-    m_IBuffer.clear();
+    m_InstBuffer.clear();
     _layout().m_instancedPositions.m_data    = nullptr;
     _layout().m_instancedColors.m_data       = nullptr;
     _layout().m_instancedAtlasBlends.m_data  = nullptr;
@@ -874,7 +874,7 @@ void modelInstanced::loadIntoGPU_InstancedBuffer(const bool clearCPUbuffer)
 
 void modelInstanced::updateIntoGPU_InstancedBuffer()
 {
-  if (m_IBuffer.empty())
+  if (m_InstBuffer.empty())
   {
     TRE_ASSERT(_layout().m_instanceCount == 0);
     return;
@@ -882,9 +882,9 @@ void modelInstanced::updateIntoGPU_InstancedBuffer()
 
   glBindVertexArray(0);
 
-  TRE_ASSERT(m_IBufferHandle != 0);
-  glBindBuffer(GL_ARRAY_BUFFER, m_IBufferHandle);
-  glBufferData(GL_ARRAY_BUFFER, m_IBuffer.size() * sizeof(GLfloat), m_IBuffer.data(), GL_STREAM_DRAW);
+  TRE_ASSERT(m_InstBufferHandle != 0);
+  glBindBuffer(GL_ARRAY_BUFFER, m_InstBufferHandle);
+  glBufferData(GL_ARRAY_BUFFER, m_InstBuffer.size() * sizeof(GLfloat), m_InstBuffer.data(), GL_STREAM_DRAW);
 
   glBindBuffer(GL_ARRAY_BUFFER, 0);
 
@@ -893,12 +893,12 @@ void modelInstanced::updateIntoGPU_InstancedBuffer()
 
 void modelInstanced::clearGPU_InstancedBuffer(const bool restoreCPUbuffer)
 {
-  if (m_IBufferHandle !=0 ) glDeleteBuffers(1, &m_IBufferHandle);
-  m_IBufferHandle = 0;
+  if (m_InstBufferHandle !=0 ) glDeleteBuffers(1, &m_InstBufferHandle);
+  m_InstBufferHandle = 0;
 
   if (restoreCPUbuffer)
   {
-    m_IBuffer.resize(0);
+    m_InstBuffer.resize(0);
     const std::size_t countSave = _layout().m_instanceCount;
     _layout().m_instanceCount = 0;
     modelInstanced::resizeInstance(countSave);
@@ -963,7 +963,33 @@ void modelInstancedBillboard::drawInstanced(std::size_t ipart, std::size_t insta
   TRE_ASSERT(instancedOffset + instancedCount <= m_layout.m_instanceCount);
 
 #ifdef TRE_OPENGL_ES
-  TRE_ASSERT(instancedOffset == 0);
+  glBindBuffer(GL_ARRAY_BUFFER, m_InstBufferHandle);
+  {
+    s_modelDataLayout::s_instanceData localInst = m_layout.m_instancedPositions;
+    localInst.m_data = localInst.m_data + localInst.m_stride * instancedOffset;
+    _bind_instancedAttribPointer_float(localInst, 5, m_InstBuffer.data());
+  }
+  {
+    s_modelDataLayout::s_instanceData localInst = m_layout.m_instancedColors;
+    localInst.m_data = localInst.m_data + localInst.m_stride * instancedOffset;
+    _bind_instancedAttribPointer_float(localInst, 6, m_InstBuffer.data());
+  }
+  {
+    s_modelDataLayout::s_instanceData localInst = m_layout.m_instancedAtlasBlends;
+    localInst.m_data = localInst.m_data + localInst.m_stride * instancedOffset;
+    _bind_instancedAttribPointer_float(localInst, 7, m_InstBuffer.data());
+  }
+  {
+    s_modelDataLayout::s_instanceData localInst = m_layout.m_instancedOrientations;
+    localInst.m_data = localInst.m_data + localInst.m_stride * instancedOffset;
+    _bind_instancedAttribPointer_float(localInst, 8, m_InstBuffer.data()); // 9 and 10
+  }
+  {
+    s_modelDataLayout::s_instanceData localInst = m_layout.m_instancedRotations;
+    localInst.m_data = localInst.m_data + localInst.m_stride * instancedOffset;
+    _bind_instancedAttribPointer_float(localInst, 11, m_InstBuffer.data());
+  }
+
   glDrawArraysInstanced(mode, m_partInfo[ipart].m_offset, m_partInfo[ipart].m_size, instancedCount);
 #else
   glDrawArraysInstancedBaseInstance(mode, m_partInfo[ipart].m_offset, m_partInfo[ipart].m_size, instancedCount, instancedOffset);
@@ -1002,7 +1028,33 @@ void modelInstancedMesh::drawInstanced(std::size_t ipart, std::size_t instancedO
   TRE_ASSERT(instancedOffset + instancedCount <= m_layout.m_instanceCount);
 
 #ifdef TRE_OPENGL_ES
-  TRE_ASSERT(instancedOffset == 0);
+  glBindBuffer(GL_ARRAY_BUFFER, m_InstBufferHandle);
+  {
+    s_modelDataLayout::s_instanceData localInst = m_layout.m_instancedPositions;
+    localInst.m_data = localInst.m_data + localInst.m_stride * instancedOffset;
+    _bind_instancedAttribPointer_float(localInst, 5, m_InstBuffer.data());
+  }
+  {
+    s_modelDataLayout::s_instanceData localInst = m_layout.m_instancedColors;
+    localInst.m_data = localInst.m_data + localInst.m_stride * instancedOffset;
+    _bind_instancedAttribPointer_float(localInst, 6, m_InstBuffer.data());
+  }
+  {
+    s_modelDataLayout::s_instanceData localInst = m_layout.m_instancedAtlasBlends;
+    localInst.m_data = localInst.m_data + localInst.m_stride * instancedOffset;
+    _bind_instancedAttribPointer_float(localInst, 7, m_InstBuffer.data());
+  }
+  {
+    s_modelDataLayout::s_instanceData localInst = m_layout.m_instancedOrientations;
+    localInst.m_data = localInst.m_data + localInst.m_stride * instancedOffset;
+    _bind_instancedAttribPointer_float(localInst, 8, m_InstBuffer.data()); // 9 and 10
+  }
+  {
+    s_modelDataLayout::s_instanceData localInst = m_layout.m_instancedRotations;
+    localInst.m_data = localInst.m_data + localInst.m_stride * instancedOffset;
+    _bind_instancedAttribPointer_float(localInst, 11, m_InstBuffer.data());
+  }
+
   glDrawElementsInstanced(mode, m_partInfo[ipart].m_size, GL_UNSIGNED_INT, reinterpret_cast<void*>(m_partInfo[ipart].m_offset * sizeof(GLfloat)), GLsizei(instancedCount));
 #else
   glDrawElementsInstancedBaseInstance(mode, m_partInfo[ipart].m_size, GL_UNSIGNED_INT, reinterpret_cast<void*>(m_partInfo[ipart].m_offset * sizeof(GLfloat)), GLsizei(instancedCount), GLuint(instancedOffset));

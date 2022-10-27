@@ -156,23 +156,28 @@ int main(int argc, char **argv)
 
   tre::modelInstancedMesh worldParticlesMesh(tre::modelInstanced::VI_ORIENTATION | tre::modelInstanced::VI_COLOR | tre::modelInstancedMesh::VB_NORMAL);
   worldParticlesMesh.createPartFromPrimitive_box(glm::mat4(1.f), 0.5f);
+  worldParticlesMesh.createPartFromPrimitive_uvtrisphere(glm::mat4(1.f), 0.5f, 6, 6);
   worldParticlesMesh.loadIntoGPU();
 
   tre::texture  worldParticlesTex;
-  worldParticlesTex.load(tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/quad.bmp"), 0, true);
+  worldParticlesTex.load(tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/quad.bmp"), tre::texture::MMASK_MIPMAP | tre::texture::MMASK_FORCE_NO_ALPHA, true);
 
   struct s_particleStream
   {
-    std::vector<glm::vec4> m_pos;   // pos(x,y,z) + size(w)
-    std::vector<glm::vec4> m_vel;   // dpos(x,y,z) + dsize(w)
-    std::vector<glm::vec2> m_life;  // life + invLifeRatio
-    std::vector<glm::vec4> m_rot;   // scalar rotation or quaternion
-    std::vector<glm::vec4> m_color; // color
+    std::vector<glm::vec4> m_pos;    // pos(x,y,z) + size(w)
+    std::vector<glm::vec4> m_vel;    // dpos(x,y,z) + dsize(w)
+    std::vector<glm::vec2> m_life;   // life + invLifeRatio
+    std::vector<glm::vec4> m_rot;    // scalar rotation or quaternion
+    std::vector<glm::vec4> m_color;  // color
+    std::vector<unsigned>  m_meshId; // mesh-id (in [0,1])
+
+    std::array<unsigned, 2> m_countPerMeshId; // only 2 meshes supported.
 
     const bool m_withRotation;
     const bool m_withColor;
+    const bool m_withMeshId;
 
-    s_particleStream(bool withRotation, bool withColor) : m_withRotation(withRotation), m_withColor(withColor) {}
+    s_particleStream(bool withRotation, bool withColor, bool withMeshId) : m_withRotation(withRotation), m_withColor(withColor), m_withMeshId(withMeshId) {}
 
     inline std::size_t size() const { return m_pos.size(); }
 
@@ -181,17 +186,16 @@ int main(int argc, char **argv)
       m_pos.resize(count);
       m_vel.resize(count);
       m_life.resize(count, glm::vec2(2.f, 1.f));
-      if (m_withRotation)
-        m_rot.resize(count);
-      if (m_withColor)
-        m_color.resize(count);
+      if (m_withRotation) m_rot.resize(count);
+      if (m_withColor) m_color.resize(count);
+      if (m_withMeshId) m_meshId.resize(count);
     }
   };
 
-  s_particleStream worldParticlesBBStream(true, false);
+  s_particleStream worldParticlesBBStream(true, false, false);
   worldParticlesBBStream.resize(1024);
 
-  s_particleStream worldParticlesMeshStream(true, true);
+  s_particleStream worldParticlesMeshStream(true, true, true);
   worldParticlesMeshStream.resize(512);
 
   tre::font          worldHUDFont;
@@ -528,6 +532,7 @@ int main(int argc, char **argv)
             worldParticlesMeshStream.m_rot[ip] = glm::vec4(cosf(rand0) * cosf(rand1), sinf(rand0) * cosf(rand1), 0.f, sinf(rand1));
             worldParticlesMeshStream.m_life[ip] = glm::vec2(0.f, 1.f / randL);
             worldParticlesMeshStream.m_color[ip] = glm::vec4(rand1, 1.f - rand0, 1.f - rand1, 1.f);
+            worldParticlesMeshStream.m_meshId[ip] = (rand() & 0x1);
           }
         }
       }
@@ -560,25 +565,33 @@ int main(int argc, char **argv)
         {
           const std::size_t nParticleToDraw = worldParticlesMeshStream.size();
           worldParticlesMesh.reserveInstance(nParticleToDraw); // or resize ??
+          worldParticlesMeshStream.m_countPerMeshId.fill(0u); // reset count
           glm::vec4 * bufferX4 = reinterpret_cast<glm::vec4*>(worldParticlesMesh.bufferInstanced()); // unsafe ...
           TRE_ASSERT(worldParticlesMesh.layout().m_instancedPositions.isMatching(4, 20));
           TRE_ASSERT(worldParticlesMesh.layout().m_instancedColors.isMatching(4, 20));
           TRE_ASSERT(worldParticlesMesh.layout().m_instancedOrientations.isMatching(12, 20));
+          // -> count
           for (std::size_t ip = 0; ip < nParticleToDraw; ++ip)
           {
+            ++worldParticlesMeshStream.m_countPerMeshId[worldParticlesMeshStream.m_meshId[ip]];
+          }
+          // -> fill
+          for (std::size_t ip = 0, ip0 = 0, ip1 = worldParticlesMeshStream.m_countPerMeshId[0]; ip < nParticleToDraw; ++ip)
+          {
+            glm::vec4 *localBufferX4 = (worldParticlesMeshStream.m_meshId[ip] == 0) ? bufferX4 + (5 * ip0++) : bufferX4 + (5 * ip1++);
             // pos
-            *bufferX4++ = worldParticlesMeshStream.m_pos[ip];
+            *localBufferX4++ = worldParticlesMeshStream.m_pos[ip];
             // color
-            *bufferX4++ = worldParticlesMeshStream.m_color[ip];
+            *localBufferX4++ = worldParticlesMeshStream.m_color[ip];
             // orientation
             const glm::vec4 qq2 = 2.f * worldParticlesMeshStream.m_rot[ip] * worldParticlesMeshStream.m_rot[ip];
             const glm::vec4 qw2 = 2.f * worldParticlesMeshStream.m_rot[ip] * worldParticlesMeshStream.m_rot[ip].w;
             const float     qxy2 = 2.f * worldParticlesMeshStream.m_rot[ip].x * worldParticlesMeshStream.m_rot[ip].y;
             const float     qxz2 = 2.f * worldParticlesMeshStream.m_rot[ip].x * worldParticlesMeshStream.m_rot[ip].z;
             const float     qyz2 = 2.f * worldParticlesMeshStream.m_rot[ip].y * worldParticlesMeshStream.m_rot[ip].z;
-            *bufferX4++ = glm::vec4(1.f - qq2.y - qq2.z, qxy2 - qw2.z       , qxz2 + qw2.y       , 0.f);
-            *bufferX4++ = glm::vec4(qxy2 + qw2.z       , 1.f - qq2.x - qq2.z, qyz2 - qw2.x       , 0.f);
-            *bufferX4++ = glm::vec4(qxz2 - qw2.y       , qyz2 + qw2.x       , 1.f - qq2.x - qq2.y, 0.f);
+            *localBufferX4++ = glm::vec4(1.f - qq2.y - qq2.z, qxy2 - qw2.z       , qxz2 + qw2.y       , 0.f);
+            *localBufferX4++ = glm::vec4(qxy2 + qw2.z       , 1.f - qq2.x - qq2.z, qyz2 - qw2.x       , 0.f);
+            *localBufferX4++ = glm::vec4(qxz2 - qw2.y       , qyz2 + qw2.x       , 1.f - qq2.x - qq2.y, 0.f);
           }
           {
             TRE_PROFILEDSCOPE("upload", upload);
@@ -800,9 +813,8 @@ int main(int argc, char **argv)
 
       shaderInstancedMesh.setUniformMatrix(mPV);
 
-      const std::size_t nParticleToDraw = worldParticlesMeshStream.size();
-      worldParticlesMesh.drawInstanced(0, 0, nParticleToDraw);
-
+      worldParticlesMesh.drawInstanced(0, 0, worldParticlesMeshStream.m_countPerMeshId[0], true);
+      worldParticlesMesh.drawInstanced(1, worldParticlesMeshStream.m_countPerMeshId[0], worldParticlesMeshStream.m_countPerMeshId[1], false);
       tre::IsOpenGLok("opaque render pass - draw Particle Mesh");
     }
 

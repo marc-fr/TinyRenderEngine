@@ -79,12 +79,18 @@ static void createDepthAttachment(int w, int h, bool highPrecision, bool isMulti
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);
 
+#ifndef TRE_OPENGL_ES
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
     float borderColor[] = { 1.0f, 1.0f, 1.0f, 1.0f };
     glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
+#else // no border on OpenGL ES
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+#endif
 
     glBindTexture(GL_TEXTURE_2D,0);
+
     //bind
     glFramebufferTexture2D(GL_FRAMEBUFFER,GL_DEPTH_ATTACHMENT,GL_TEXTURE_2D,outTextureHandle,0);
   }
@@ -173,6 +179,7 @@ bool renderTarget::resize(const int pwidth, const int pheigth)
     const GLenum drawBufs[1] = {GL_NONE};
     glDrawBuffers(1, drawBufs);
     //glReadBuffer(GL_NONE);
+    IsOpenGLok("createColorAttachment (no color)");
   }
 
   // depth-attachment point
@@ -185,6 +192,7 @@ bool renderTarget::resize(const int pwidth, const int pheigth)
   else
   {
     // nothing
+    IsOpenGLok("createDepthAttachment (no depth)");
   }
 
   // check
@@ -258,6 +266,10 @@ void renderTarget::resolve(const int outwidth, const int outheigth) const
   glBindFramebuffer(GL_READ_FRAMEBUFFER, m_drawFBO);
 
   const GLbitfield blitMask = (hasColor() ? GL_COLOR_BUFFER_BIT : 0) | (hasDepth() ? GL_DEPTH_BUFFER_BIT : 0);
+
+#ifdef TRE_OPENGL_ES
+  TRE_ASSERT(!hasDepth()); // undefined behavior: the depth format must be identical, but we cannot insure the format of the default "screen" FBO.
+#endif
 
   glBlitFramebuffer(0, 0, m_w, m_h, 0, 0, outwidth, outheigth, blitMask, GL_NEAREST);
   IsOpenGLok("renderTarget::resolve to screen");
@@ -791,6 +803,28 @@ void postFX_Blur::resolveBlur(GLuint inputTextureHandle, renderTarget &targetFBO
 
     m_quadFullScreen.drawcallAll(false);
   }
+}
+
+// ----------------------------------------------------------------------------
+
+void postFX_Blur::bypass(GLuint inputTextureHandle, const int outwidth, const int outheigth)
+{
+  glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+  glViewport(0, 0, outwidth, outheigth);
+
+  glDisable(GL_DEPTH_TEST);
+
+  glUseProgram(m_shaderCombine.m_drawProgram);
+  glUniform1i(m_shaderCombine.getUniformLocation(tre::shader::TexDiffuse),0);
+  glUniform1i(m_shaderCombine.getUniformLocation(tre::shader::TexDiffuseB),1);
+
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D,inputTextureHandle);
+
+  glActiveTexture(GL_TEXTURE1);
+  glBindTexture(GL_TEXTURE_2D,0);
+
+  m_quadFullScreen.drawcallAll();
 }
 
 // ----------------------------------------------------------------------------
