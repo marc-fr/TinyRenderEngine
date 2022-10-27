@@ -175,7 +175,7 @@ bool texture::load(SDL_Surface *surface, int modemask, const bool freeSurface)
 
   s_SurfaceTemp surfLocal = s_SurfaceTemp(surface);
 
-  if (m_components == 1)
+  if (m_components == 1 && surface->format->BytesPerPixel != 1)
   {
     if (!freeSurface) surfLocal.copyToOwnBuffer();
     // WebGL does not support texture swizzle.
@@ -190,14 +190,19 @@ bool texture::load(SDL_Surface *surface, int modemask, const bool freeSurface)
     externalformat = GL_RED;
 #endif
   }
-#ifdef TRE_OPENGL_ES
-  if (m_components == 2)
+  if (m_components == 2 && surface->format->BytesPerPixel != 2) // not need, but try to keep same code between the load and write
   {
     if (!freeSurface) surfLocal.copyToOwnBuffer();
     _rawPack_RG8(surfLocal);
     externalformat = GL_RG;
   }
-#endif
+  if (m_components == 3  && surface->format->BytesPerPixel != 3) // not need, but try to keep same code between the load and write
+  {
+    if (!freeSurface) surfLocal.copyToOwnBuffer();
+    _rawPack_RemoveAlpha8(surfLocal);
+    TRE_ASSERT(externalformat == GL_BGRA || externalformat == GL_RGBA);
+    externalformat = (externalformat == GL_BGRA) ? GL_BGR : GL_RGB;
+  }
   if (externalformat == GL_BGR || externalformat == GL_BGRA)
   {
     if (!freeSurface) surfLocal.copyToOwnBuffer();
@@ -428,17 +433,24 @@ bool texture::write(std::ostream &outbuffer, SDL_Surface *surface, int modemask,
   s_SurfaceTemp surfLocal = s_SurfaceTemp(surface);
 
   // transform data
-  if (components == 1)
+  if (components == 1 && surface->format->BytesPerPixel != 1)
   {
     if (!freeSurface) surfLocal.copyToOwnBuffer();
     _rawPack_A8(surfLocal);
     sourceformat = GL_RED;
   }
-  if (components == 2)
+  if (components == 2 && surface->format->BytesPerPixel != 2)
   {
     if (!freeSurface) surfLocal.copyToOwnBuffer();
     _rawPack_RG8(surfLocal);
     sourceformat = GL_RG;
+  }
+  if (components == 3  && surface->format->BytesPerPixel != 3)
+  {
+    if (!freeSurface) surfLocal.copyToOwnBuffer();
+    _rawPack_RemoveAlpha8(surfLocal);
+    TRE_ASSERT(sourceformat == GL_BGRA || sourceformat == GL_RGBA);
+    sourceformat = (sourceformat == GL_BGRA) ? GL_BGR : GL_RGB;
   }
   if (sourceformat == GL_BGR || sourceformat == GL_BGRA)
   {
@@ -473,9 +485,9 @@ bool texture::writeCube(std::ostream &outbuffer, const std::array<SDL_Surface *,
                         (cubeFaces[3] != nullptr) & (cubeFaces[4] != nullptr) & (cubeFaces[5] != nullptr));
 
   uint components = isValid ? cubeFaces[0]->format->BytesPerPixel : 4u /*whatever*/;
-  if (modemask & MMASK_FORCE_NO_ALPHA) components = 3;
-  if (modemask & MMASK_RG_ONLY) components = 2;
-  if (modemask & MMASK_ALPHA_ONLY) components = 1;
+  TRE_ASSERT((modemask & MMASK_ALPHA_ONLY) == 0); // alpha-only modifier not supported for cubemaps
+  TRE_ASSERT((modemask & MMASK_FORCE_NO_ALPHA) == 0); // no-alpha modifier not supported for cubemaps
+  TRE_ASSERT((modemask & MMASK_RG_ONLY) == 0); // 2-chanels modifier not supported for cubemaps
 
   // header
   uint tinfo[8];
@@ -811,6 +823,30 @@ void texture::_rawPack_RG8(s_SurfaceTemp &surf)
   {
     TRE_FATAL("texture::_rawPack_to_RG8: Invalid input format")
   }
+}
+
+//-----------------------------------------------------------------------------
+
+void texture::_rawPack_RemoveAlpha8(s_SurfaceTemp &surf)
+{
+  TRE_ASSERT(surf.pxByteSize == 4);
+  TRE_ASSERT(surf.pitch == surf.pxByteSize * surf.w);
+
+  const uint npixels = surf.w * surf.h;
+  const uint8_t * pixelsIn = surf.pixels;
+  uint8_t * pixelsOut = surf.pixels;
+
+  for (uint ip=0;ip<npixels;++ip)
+  {
+    pixelsOut[0] = pixelsIn[0] & 0xFF;
+    pixelsOut[1] = pixelsIn[1] & 0xFF;
+    pixelsOut[2] = pixelsIn[2] & 0xFF;
+    pixelsOut += 3;
+    pixelsIn += 4;
+  }
+
+  surf.pxByteSize = 3;
+  surf.pitch = 3 * surf.w;
 }
 
 //-----------------------------------------------------------------------------

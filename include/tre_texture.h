@@ -99,6 +99,7 @@ private:
   static void _rawConvert_BRG_to_RGB(const s_SurfaceTemp &surf);
   static void _rawPack_A8(s_SurfaceTemp &surf);
   static void _rawPack_RG8(s_SurfaceTemp &surf);
+  static void _rawPack_RemoveAlpha8(s_SurfaceTemp &surf);
   static void _rawUnpack_A8_to_RGBA8(std::vector<char> &pixelData);
   static uint _rawCompress(const s_SurfaceTemp &surf, GLenum targetFormat); ///< compress textures on CPU (inplace, erase the surface's pixels). Returns the buffer byte-size, or zero on failure.
 };
