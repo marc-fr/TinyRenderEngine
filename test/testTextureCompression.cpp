@@ -66,9 +66,15 @@ static int app_init(int argc, char **argv)
   if (!myWindow.OpenGLInit())
     return -2;
 
+#ifdef TRE_OPENGL_ES
+  TRE_LOG("extensions: " << reinterpret_cast<const char*>(glGetString(GL_EXTENSIONS)));
+#endif
+
   // Arguments
 
+#ifndef TRE_EMSCRIPTEN
   if (argc > 1) texturePathFromArg = argv[1];
+#endif
 
   // GPU resources
 
@@ -309,7 +315,7 @@ int main(int argc, char **argv)
   // emscripten_set_fullscreenchange_callback
   // emscripten_set_canvas_element_size
 #else
-  while(!myWindow.m_quit && !myWindow.m_quit)
+  while(!myWindow.m_quit && !myControls.m_quit)
   {
     app_update();
   }

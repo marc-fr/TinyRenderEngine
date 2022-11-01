@@ -30,6 +30,18 @@ struct s_compressionReport
   uint  m_modeDIFFcount = 0;
   float m_errorL2 = 0.f;
   float m_errorInf = 0.f;
+
+  void print() const
+  {
+#ifdef TRE_PRINTS
+    const uint countTotal = m_modeDIFFcount + m_modeINDIVcount;
+    const float errL2 = sqrtf(m_errorL2 / countTotal);
+    TRE_LOG("report of conversion to ETC2: " <<
+            "modeINDI = " << m_modeINDIVcount << " (" << int(m_modeINDIVcount * 100.f / countTotal) << " %), " <<
+            "modeDIFF = " << m_modeDIFFcount << " (" << int(m_modeDIFFcount * 100.f / countTotal) << " %), " <<
+            "maxError = " << m_errorInf << ", L2error = " << errL2);
+#endif
+  }
 };
 
 static void _encodeColorZone_ETC(glm::ivec3 &colorZone0, glm::ivec3 &colorZone1, uint &bufferEncoded_HIGH)
@@ -100,7 +112,7 @@ static int _encodeTable_EAC(const uint pxid, const uint tid, const int alpha, co
   return glm::clamp(alphaBase + multiplier * pxModifier, 0, 255);
 }
 
-static void _rawCompress4x4_RGB8_ETC2(const uint8_t *pixelsIn, uint pxByteSize, uint pitch, uint8_t* __restrict compressed, s_compressionReport *report = nullptr)
+static void _rawCompress4x4_RGB8_ETC2(const uint8_t *pixelsIn, uint pxByteSize, uint pitch, uint8_t* __restrict compressed, s_compressionReport &report)
 {
   TRE_ASSERT(pxByteSize >= 3);
 
@@ -253,17 +265,16 @@ static void _rawCompress4x4_RGB8_ETC2(const uint8_t *pixelsIn, uint pxByteSize, 
   *reinterpret_cast<uint*>(&compressed[0]) = (((bestTablesFlip & 0x01000000) == 0) ? rgbEncodedFlip0 : rgbEncodedFlip1) | bestTablesFlip;
   *reinterpret_cast<uint*>(&compressed[4]) = bestPixelModifiers;
 
-  if (report)
   {
-    if (compressed[3] & 0x02) ++report->m_modeDIFFcount;
-    else                      ++report->m_modeINDIVcount;
+    if (compressed[3] & 0x02) ++report.m_modeDIFFcount;
+    else                      ++report.m_modeINDIVcount;
     bestError /= 8.f;
-    report->m_errorL2 += bestError;
-    report->m_errorInf = glm::max(report->m_errorInf, sqrtf(bestError));
+    report.m_errorL2 += bestError;
+    report.m_errorInf = glm::max(report.m_errorInf, sqrtf(bestError));
   }
 }
 
-static void _rawCompress4x4_ALPHA_EAC(const uint8_t *pixelsIn, uint pxByteSize, uint pitch, uint8_t* __restrict compressed, s_compressionReport *report = nullptr)
+static void _rawCompress4x4_ALPHA_EAC(const uint8_t *pixelsIn, uint pxByteSize, uint pitch, uint8_t* __restrict compressed, s_compressionReport &report)
 {
   TRE_ASSERT(pxByteSize >= 4);
 
@@ -367,6 +378,18 @@ struct s_compressionReport
   uint  m_modeLOWERcount = 0;
   float m_errorL2 = 0.f;
   float m_errorInf = 0.f;
+
+  void print() const
+  {
+#ifdef TRE_PRINTS
+    const uint countTotal = m_modeLOWERcount + m_modeHIGHERcount;
+    const float errL2 = sqrtf(m_errorL2 / countTotal);
+    TRE_LOG("report of conversion to S3TC: " <<
+            "modeLOWER = " << m_modeLOWERcount << " (" << int(m_modeLOWERcount * 100.f / countTotal) << " %), " <<
+            "modeHIGHER = " << m_modeHIGHERcount << " (" << int(m_modeHIGHERcount * 100.f / countTotal) << " %), " <<
+            "maxError = " << m_errorInf << ", L2error = " << errL2);
+#endif
+  }
 };
 
 static bool _compareColor_S3TC_0greaterthan1(const glm::ivec3 &color0, const glm::ivec3 &color1)
@@ -403,7 +426,7 @@ static void _encodeColorBase_S3TC(glm::ivec3 &color0, glm::ivec3 &color1, uint &
   color1.b = (color1.b << 3);
 }
 
-static void _rawCompress4x4_RGB8_S3TC(const uint8_t *pixelsIn, uint pxByteSize, uint pitch, uint8_t* __restrict compressed, s_compressionReport *report = nullptr)
+static void _rawCompress4x4_RGB8_S3TC(const uint8_t *pixelsIn, uint pxByteSize, uint pitch, uint8_t* __restrict compressed, s_compressionReport &report)
 {
   TRE_ASSERT(pxByteSize >= 3);
 
@@ -477,10 +500,7 @@ static void _rawCompress4x4_RGB8_S3TC(const uint8_t *pixelsIn, uint pxByteSize, 
           _encodeColorBase_S3TC(color0, color1, *reinterpret_cast<uint*>(compressed));
           *reinterpret_cast<uint*>(&compressed[4]) = 0u;
           // (report)
-          if (report != nullptr)
-          {
-            report->m_modeLOWERcount += 1;
-          }
+          report.m_modeLOWERcount += 1;
           return;
         }
       }
@@ -619,14 +639,11 @@ static void _rawCompress4x4_RGB8_S3TC(const uint8_t *pixelsIn, uint pxByteSize, 
     // -> END
     *reinterpret_cast<uint*>(&compressed[4]) = table;
     // (report)
-    if (report != nullptr)
-    {
-      report->m_modeHIGHERcount += 1;
-    }
+    report.m_modeHIGHERcount += 1;
   }
 }
 
-static void _rawCompress4x4_ALPHA_DXT3(const uint8_t *pixelsIn, uint pxByteSize, uint pitch, uint8_t* __restrict compressed, s_compressionReport *report = nullptr)
+static void _rawCompress4x4_ALPHA_DXT3(const uint8_t *pixelsIn, uint pxByteSize, uint pitch, uint8_t* __restrict compressed, s_compressionReport &report)
 {
   TRE_ASSERT(pxByteSize >= 4);
   (void)report;
@@ -667,115 +684,82 @@ uint texture::_rawCompress(const s_SurfaceTemp &surf, GLenum targetFormat)
   uint8_t       *outBuffer = surf.pixels;
   static_assert (sizeof(uint64_t) == 8, "bad size of uint64_t");
 
-#ifdef TRE_OPENGL_ES
-
-#if defined(TRE_DEBUG) || defined(TRE_PRINTS)
-  formatETC::s_compressionReport report;
-  formatETC::s_compressionReport *reportPtr = &report;
-#else
-  formatETC::s_compressionReport *reportPtr =nullptr;
-#endif
-
-  if (targetFormat == GL_COMPRESSED_RGB8_ETC2)
-  {
-    for (uint ih = 0; ih < surf.h; ih += 4)
-    {
-      for (uint iw = 0; iw < surf.w; iw += 4)
-      {
-        formatETC::_rawCompress4x4_RGB8_ETC2(inPixels + surf.pitch * ih + surf.pxByteSize * iw, surf.pxByteSize, surf.pitch, outBuffer, reportPtr);
-        outBuffer += 8;
-      }
-    }
-  }
-  else if (targetFormat == GL_COMPRESSED_RGBA8_ETC2_EAC)
-  {
-    TRE_ASSERT(surf.pxByteSize == 4);
-    for (uint ih = 0; ih < surf.h; ih += 4)
-    {
-      for (uint iw = 0; iw < surf.w; iw += 4)
-      {
-        uint64_t out1 = 0;
-        formatETC::_rawCompress4x4_ALPHA_EAC(inPixels + surf.pitch * ih + 4 * iw, 4, surf.pitch, reinterpret_cast<uint8_t*>(&out1), reportPtr);
-        uint64_t out2 = 0;
-        formatETC::_rawCompress4x4_RGB8_ETC2(inPixels + surf.pitch * ih + 4 * iw, 4, surf.pitch, reinterpret_cast<uint8_t*>(&out2), reportPtr);
-        memcpy(outBuffer, &out1, 8);
-        outBuffer += 8;
-        memcpy(outBuffer, &out2, 8);
-        outBuffer += 8;
-      }
-    }
-  }
-  else
-  {
-    TRE_FATAL("_rawCompress: format not supported");
-  }
-
-  if (reportPtr != nullptr)
-  {
-    const uint countTotal = reportPtr->m_modeDIFFcount + reportPtr->m_modeINDIVcount;
-    TRE_ASSERT(int(countTotal) == (surf.h / 4) * (surf.w / 4));
-    reportPtr->m_errorL2 = sqrtf(reportPtr->m_errorL2 / countTotal);
-    TRE_LOG("report of conversion to ETC2: " <<
-            "modeINDI = " << reportPtr->m_modeINDIVcount << " (" << int(reportPtr->m_modeINDIVcount * 100.f / countTotal) << " %), " <<
-            "modeDIFF = " << reportPtr->m_modeDIFFcount << " (" << int(reportPtr->m_modeDIFFcount * 100.f / countTotal) << " %), " <<
-            "maxError = " << reportPtr->m_errorInf << ", L2error = " << reportPtr->m_errorL2);
-  }
-
-#else // TRE_OPENGL_ES
-
-#if defined(TRE_DEBUG) || defined(TRE_PRINTS)
-  formatS3TC::s_compressionReport report;
-  formatS3TC::s_compressionReport *reportPtr = &report;
-#else
-  formatS3TC::s_compressionReport *reportPtr =nullptr;
-#endif
-
   if (targetFormat == GL_COMPRESSED_RGB_S3TC_DXT1_EXT)
   {
+    formatS3TC::s_compressionReport report;
     for (uint ih = 0; ih < surf.h; ih += 4)
     {
       for (uint iw = 0; iw < surf.w; iw += 4)
       {
-        formatS3TC::_rawCompress4x4_RGB8_S3TC(inPixels + surf.pitch * ih + surf.pxByteSize * iw, surf.pxByteSize, surf.pitch, outBuffer, reportPtr);
+        formatS3TC::_rawCompress4x4_RGB8_S3TC(inPixels + surf.pitch * ih + surf.pxByteSize * iw, surf.pxByteSize, surf.pitch, outBuffer, report);
         outBuffer += 8;
       }
     }
+    report.print();
   }
   else if (targetFormat == GL_COMPRESSED_RGBA_S3TC_DXT3_EXT)
   {
+    formatS3TC::s_compressionReport report;
     TRE_ASSERT(surf.pxByteSize == 4);
     for (uint ih = 0; ih < surf.h; ih += 4)
     {
       for (uint iw = 0; iw < surf.w; iw += 4)
       {
         uint64_t out1 = 0;
-        formatS3TC::_rawCompress4x4_ALPHA_DXT3(inPixels + surf.pitch * ih + 4 * iw, 4, surf.pitch, reinterpret_cast<uint8_t*>(&out1), reportPtr);
+        formatS3TC::_rawCompress4x4_ALPHA_DXT3(inPixels + surf.pitch * ih + 4 * iw, 4, surf.pitch, reinterpret_cast<uint8_t*>(&out1), report);
         uint64_t out2 = 0;
-        formatS3TC::_rawCompress4x4_RGB8_S3TC(inPixels + surf.pitch * ih + 4 * iw, 4, surf.pitch, reinterpret_cast<uint8_t*>(&out2), reportPtr);
+        formatS3TC::_rawCompress4x4_RGB8_S3TC(inPixels + surf.pitch * ih + 4 * iw, 4, surf.pitch, reinterpret_cast<uint8_t*>(&out2), report);
         memcpy(outBuffer, &out1, 8);
         outBuffer += 8;
         memcpy(outBuffer, &out2, 8);
         outBuffer += 8;
       }
     }
+    report.print();
   }
+
+#ifdef TRE_OPENGL_ES
+
+  else if (targetFormat == GL_COMPRESSED_RGB8_ETC2)
+  {
+    formatETC::s_compressionReport report;
+    for (uint ih = 0; ih < surf.h; ih += 4)
+    {
+      for (uint iw = 0; iw < surf.w; iw += 4)
+      {
+        formatETC::_rawCompress4x4_RGB8_ETC2(inPixels + surf.pitch * ih + surf.pxByteSize * iw, surf.pxByteSize, surf.pitch, outBuffer, report);
+        outBuffer += 8;
+      }
+    }
+    report.print();
+  }
+  else if (targetFormat == GL_COMPRESSED_RGBA8_ETC2_EAC)
+  {
+    formatETC::s_compressionReport report;
+    TRE_ASSERT(surf.pxByteSize == 4);
+    for (uint ih = 0; ih < surf.h; ih += 4)
+    {
+      for (uint iw = 0; iw < surf.w; iw += 4)
+      {
+        uint64_t out1 = 0;
+        formatETC::_rawCompress4x4_ALPHA_EAC(inPixels + surf.pitch * ih + 4 * iw, 4, surf.pitch, reinterpret_cast<uint8_t*>(&out1), report);
+        uint64_t out2 = 0;
+        formatETC::_rawCompress4x4_RGB8_ETC2(inPixels + surf.pitch * ih + 4 * iw, 4, surf.pitch, reinterpret_cast<uint8_t*>(&out2), report);
+        memcpy(outBuffer, &out1, 8);
+        outBuffer += 8;
+        memcpy(outBuffer, &out2, 8);
+        outBuffer += 8;
+      }
+    }
+    report.print();
+  }
+
+#endif // TRE_OPENGL_ES
+
   else
   {
     TRE_FATAL("_rawCompress: format not supported");
   }
-
-  if (reportPtr != nullptr)
-  {
-    const uint countTotal = reportPtr->m_modeLOWERcount + reportPtr->m_modeHIGHERcount;
-    TRE_ASSERT(int(countTotal) == (surf.h / 4) * (surf.w / 4));
-    reportPtr->m_errorL2 = sqrtf(reportPtr->m_errorL2 / countTotal);
-    TRE_LOG("report of conversion to ETC2: " <<
-            "modeLOWER = " << reportPtr->m_modeLOWERcount << " (" << int(reportPtr->m_modeLOWERcount * 100.f / countTotal) << " %), " <<
-            "modeHIGHER = " << reportPtr->m_modeHIGHERcount << " (" << int(reportPtr->m_modeHIGHERcount * 100.f / countTotal) << " %), " <<
-            "maxError = " << reportPtr->m_errorInf << ", L2error = " << reportPtr->m_errorL2);
-  }
-
-#endif // TRE_OPENGL_ES
 
   return static_cast<uint>(outBuffer - inPixels);
 }

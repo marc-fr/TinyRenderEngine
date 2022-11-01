@@ -22,7 +22,8 @@ static GLenum getTexInternalFormat(uint nbComponants, bool isCompressed)
   TRE_ASSERT(nbComponants > 0 && nbComponants <= 4);
 #ifdef TRE_OPENGL_ES
   static const GLenum formats[4] = { GL_R8, GL_RG8, GL_RGB8, GL_RGBA8 };
-  static const GLenum formatsCompressed[4] = { GL_COMPRESSED_R11_EAC, GL_COMPRESSED_RG11_EAC, GL_COMPRESSED_RGB8_ETC2, GL_COMPRESSED_RGBA8_ETC2_EAC };
+  // (ETC) static const GLenum formatsCompressed[4] = { GL_COMPRESSED_R11_EAC, GL_COMPRESSED_RG11_EAC, GL_COMPRESSED_RGB8_ETC2, GL_COMPRESSED_RGBA8_ETC2_EAC };
+  static const GLenum formatsCompressed[4] = { GL_COMPRESSED_RED_RGTC1, GL_COMPRESSED_RG_RGTC2, GL_COMPRESSED_RGB_S3TC_DXT1_EXT, GL_COMPRESSED_RGBA_S3TC_DXT3_EXT };
 #else
   static const GLenum formats[4] = { GL_RED, GL_RG, GL_RGB, GL_RGBA };
   static const GLenum formatsCompressed[4] = { GL_COMPRESSED_RED_RGTC1, GL_COMPRESSED_RG_RGTC2, GL_COMPRESSED_RGB_S3TC_DXT1_EXT, GL_COMPRESSED_RGBA_S3TC_DXT3_EXT };
@@ -221,7 +222,7 @@ bool texture::load(SDL_Surface *surface, int modemask, const bool freeSurface)
 
   if (m_useCompress)
   {
-#if defined(TRE_OPENGL_ES) || true // use the CPU-compressor
+#if 1 // always use the CPU-compressor
     if (!freeSurface) surfLocal.copyToOwnBuffer();
     const uint  bufferByteSize = _rawCompress(surfLocal, internalformat); // in-place
     if (bufferByteSize == 0)
@@ -337,7 +338,7 @@ bool texture::loadCube(const std::array<SDL_Surface *, 6> &cubeFaces, int modema
 
     if (m_useCompress)
     {
-#if defined(TRE_OPENGL_ES) || true // use the CPU-compressor
+#if 1 // always use the CPU-compressor
       const uint  bufferByteSize = _rawCompress(surfLocal, internalformat); // inplace compression
       if (bufferByteSize == 0)
       {
