@@ -12,7 +12,11 @@ namespace tre {
 class model;
 class texture;
 class font;
-class soundData;
+namespace soundData
+{
+  struct s_RawSDL;
+  struct s_Opus;
+}
 
 /**
  * @brief The baker class
@@ -41,8 +45,12 @@ public:
 
   bool readBlock(font *f); ///< Shortcut for getBlockReadAndAdvance and read a font from it
 
-  bool writeBlock(const soundData *s, int bitrate = 0); ///< Shortcut for getBlockWriteAndAdvance and bake a sound-data
-  bool readBlock(soundData *s); ///< Shortcut for getBlockReadAndAdvance and read a sound-data from it
+  bool writeBlock(const soundData::s_RawSDL *s); ///< Shortcut for getBlockWriteAndAdvance and bake a sound-data
+  bool readBlock(soundData::s_RawSDL *s); ///< Shortcut for getBlockReadAndAdvance and read a sound-data from it
+
+  bool writeBlock(const soundData::s_Opus *s); ///< Shortcut for getBlockWriteAndAdvance and bake a sound-data
+  bool readBlock(soundData::s_Opus *s); ///< Shortcut for getBlockReadAndAdvance and read a sound-data from it
+
 
   void flushAndCloseFile(); ///< flush data and close of the files.
 

@@ -95,7 +95,7 @@ public:
     objsolid.fillDataLine(adPart, adOffset, pA, pB, glm::vec4(0.3f, 1.f, 0.3f, 1.f));
   }
 
-  static void genWaveForm(const tre::soundData &s, SDL_Surface *tex, uint y0, uint y1)
+  static void genWaveForm(const tre::soundData::s_RawSDL &data, SDL_Surface *tex, uint y0, uint y1)
   {
     TRE_ASSERT(tex->format->BytesPerPixel == 4);
     const uint halfHeight_px = (y1 - y0 - 1) / 2;
@@ -103,27 +103,37 @@ public:
     const uint width = tex->w;
     uint32_t * __restrict pixels = reinterpret_cast<uint32_t*>(tex->pixels);
 
-    const uint samples = s.size();
+    const uint samples = data.m_nSamples;
     const uint samplesPerPixel = std::max(1u, samples / width);
     std::vector<float> buffer;
-    buffer.resize(samplesPerPixel);
+    buffer.resize(samplesPerPixel * 2);
+
+    tre::soundSampler::s_sampler_Raw sampler;
+    tre::soundSampler::s_noControl   samplerControl;
+
+    sampler.m_repet = false;
 
     for (uint x = 0; x < width; ++x)
     {
-      const uint cursorStart = (x * samples) / width;
-      float valuePeak = 0.f;
-      float valueRMS = 0.f;
-      s.extractData_Float(0, cursorStart, samplesPerPixel, buffer.data());
-      //
-      for (uint i = 0; i < samplesPerPixel; ++i)
-      {
-        valuePeak = std::max(valuePeak, std::abs(buffer[i]));
-        valueRMS += buffer[i] * buffer[i];
-      }
-      valueRMS = std::sqrt(valueRMS / samplesPerPixel);
-      //
+      sampler.m_cursor = (x * samples) / width;
+      sampler.m_valuePeak = 0.f;
+      sampler.m_valueRMS = 0.f;
+
+      memset(buffer.data(), 0, samplesPerPixel * 2 * sizeof(float));
+
+      if (data.m_format == AUDIO_S16)
+        sampler.sample<tre::soundSampler::s_noControl, int16_t>(data, samplerControl, samplerControl, buffer.data(), samplesPerPixel, data.m_freq);
+      else if (data.m_format == AUDIO_S32)
+        sampler.sample<tre::soundSampler::s_noControl, int32_t>(data, samplerControl, samplerControl, buffer.data(), samplesPerPixel, data.m_freq);
+
+      float valuePeak = sampler.m_valuePeak;
+      float valueRMS = sampler.m_valueRMS;
+
+      valuePeak = (std::max(20.f * std::log(valuePeak / 1.f), -80.f) + 80.f) / 80.f; // dB scale, clamped between [-80, 0]
+      valueRMS  = (std::max(20.f * std::log(valueRMS  / 1.f), -80.f) + 80.f) / 80.f; // dB scale, clamped between [-80, 0]
+
       const uint valuePeak_px = valuePeak * halfHeight_px;
-      const uint valueRMS_px = valuePeak * halfHeight_px;
+      const uint valueRMS_px = valueRMS * halfHeight_px;
 
       for (uint y = zeroLine_px - valuePeak_px, yE = zeroLine_px + 1 + valuePeak_px; y < yE; ++y) pixels[x + width * y] = 0xFF000080;
       for (uint y = zeroLine_px - valueRMS_px , yE = zeroLine_px + 1 + valueRMS_px ; y < yE; ++y) pixels[x + width * y] = 0xFF4040FF;
@@ -148,27 +158,34 @@ static const std::string                nameClick = "music-click.wav";
 static const std::string                nameWave = "sin440Hz.wav";
 static const std::array<std::string, 4> nameTracks = { "music-base.wav", "music-clav.wav", "music-strings.wav", "music-piano.wav" };
 
+std::array<tre::soundData::s_RawSDL, 6> audioDataRaw;
+
 struct s_music
 {
-  std::array<tre::soundData, 4> m_audio;
-  std::array<tre::sound2D, 4>   m_tracks;
-  std::string                   m_name;
-  unsigned                      m_compression;
+  std::array<tre::soundData::s_Opus, 4> m_audioDataCompressed;
+  std::array<tre::sound2D, 4>           m_tracks;
+  std::string                           m_name;
+  unsigned                              m_compression;
+
+  s_music(const std::string &name, tre::soundData::s_RawSDL *data) : m_name(name), m_compression(0)
+  {
+    m_tracks[0].setAudioData(data);
+  }
 
   s_music(const std::string &name, unsigned compression) : m_name(name), m_compression(compression)
   {
-    for (std::size_t i = 0; i < m_audio.size(); ++i)
-      m_tracks[i].setAudioData(&m_audio[i]);
+    for (std::size_t i = 0; i < m_tracks.size(); ++i)
+      m_tracks[i].setAudioData(&m_audioDataCompressed[i]);
   }
 };
 
-static std::array<s_music, 2> listSound = { s_music("click", 0), s_music("sin440Hz", 0) }; // only the first track is used here.
-static std::array<s_music, 5> listMusic = { s_music("origin", 0), s_music("no-compression", 0), s_music("compression 64kb", 64000), s_music("compression 32kb", 32000), s_music("compression 16kb", 16000) };
+static std::array<s_music, 2> listSound = { s_music("click", &audioDataRaw[0]), s_music("sin440Hz", &audioDataRaw[1]) }; // only the first track is used here.
+static std::array<s_music, 4> listMusic = { s_music("origin", 0U), s_music("compression 64kb", 64000U), s_music("compression 32kb", 32000U), s_music("compression 16kb", 16000U) };
 
 static tre::audioContext audioCtx;
 
 static tre::texture textureWaveforms;
-static const unsigned textureWaveformMaxCount = 32;
+static const unsigned textureWaveformMaxCount = 16;
 
 // =============================================================================
 
@@ -224,36 +241,39 @@ static int app_init()
   withAudio &= audioCtx.startSystem(nullptr);
 #endif
 
-  // -> Draw loading screen
-
-  // TODO ...
-
   // -> Load music
 
   if (withAudio)
   {
-    withAudio &= listSound[0].m_audio[0].loadFromWAVfile((TESTIMPORTPATH "resources/") + nameClick);
-    withAudio &= listSound[1].m_audio[0].loadFromWAVfile((TESTIMPORTPATH "resources/") + nameWave);
+    withAudio &= audioDataRaw[0].loadSoundFromWAV((TESTIMPORTPATH "resources/") + nameClick);
+    withAudio &= audioDataRaw[1].loadSoundFromWAV((TESTIMPORTPATH "resources/") + nameWave);
 
     for (std::size_t i = 0; i < nameTracks.size(); ++i)
-      withAudio &= listMusic[0].m_audio[i].loadFromWAVfile((TESTIMPORTPATH "resources/") + nameTracks[i]);
+      withAudio &= audioDataRaw[2 + i].loadSoundFromWAV((TESTIMPORTPATH "resources/") + nameTracks[i]);
+  }
 
-    std::stringstream tmpBuffer(std::ios_base::binary | std::ios_base::in | std::ios_base::out);
-    TRE_ASSERT(!(!tmpBuffer));
+  if (withAudio)
+  {
+    // music-origin
+    for (std::size_t i = 0; i < nameTracks.size(); ++i)
+    {
+      listMusic[0].m_tracks[i].setAudioData((tre::soundData::s_Opus*)nullptr); // unset from constructor
+      listMusic[0].m_tracks[i].setAudioData(&audioDataRaw[2 + i]);
+    }
 
+    // perform compression
     for (std::size_t k = 1; k < listMusic.size(); ++k)
     {
-      for (std::size_t i = 0; i < nameTracks.size(); ++i) listMusic[0].m_audio[i].write(tmpBuffer, listMusic[k].m_compression);
-      for (std::size_t i = 0; i < nameTracks.size(); ++i) withAudio &= listMusic[k].m_audio[i].read(tmpBuffer);
-      tmpBuffer.seekg(0);
-      tmpBuffer.seekp(0);
+      for (std::size_t i = 0; i < nameTracks.size(); ++i)
+      {
+        withAudio &= listMusic[k].m_audioDataCompressed[i].compress(audioDataRaw[2 + i], listMusic[k].m_compression);
+      }
     }
   }
 
   if (withAudio)
   {
-    withAudio &= listSound[0].m_audio[0].convertTo(audioCtx.getAudioSpec()->freq, audioCtx.getAudioSpec()->format);
-    withAudio &= listSound[1].m_audio[0].convertTo(audioCtx.getAudioSpec()->freq, audioCtx.getAudioSpec()->format);
+    // add all to the sound-context
 
     audioCtx.addSound(&listSound[0].m_tracks[0]);
     audioCtx.addSound(&listSound[1].m_tracks[0]);
@@ -262,7 +282,6 @@ static int app_init()
     {
       for (std::size_t i = 0; i < nameTracks.size(); ++i)
       {
-        withAudio &= listMusic[k].m_audio[i].convertTo(audioCtx.getAudioSpec()->freq, audioCtx.getAudioSpec()->format);
         audioCtx.addSound(&listMusic[k].m_tracks[i]);
       }
     }
@@ -277,7 +296,7 @@ static int app_init()
     baseUI.set_defaultFont(&font);
     baseUI.updateCameraInfo(myWindow.m_matProjection2D, myWindow.m_resolutioncurrent);
 
-    windowMain->set_fontSize(tre::ui::s_size(18,tre::ui::SIZE_PIXEL));
+    windowMain->set_fontSize(tre::ui::s_size(20,tre::ui::SIZE_PIXEL));
     windowMain->set_alignMask(tre::ui::ALIGN_MASK_CENTERED);
     windowMain->set_color(glm::vec4(0.f));
     windowMain->set_mat3(glm::mat3(1.f));
@@ -298,15 +317,21 @@ static int app_init()
     unsigned iRaw = 1;
 
     const unsigned textureWaveformSlot = baseUI.addTexture(&textureWaveforms);
-    SDL_Surface *textureWaveformLoading = SDL_CreateRGBSurface(0, 128, 32 * textureWaveformMaxCount, 32, 0, 0, 0, 0);
-    unsigned iWaveform = 0;
 
+    SDL_Surface *textureWaveformLoading = SDL_CreateRGBSurface(0, 128, 32 * textureWaveformMaxCount, 32, 0, 0, 0, 0);
+    // compute WAV-form
+    for (unsigned iRawAudio = 0; iRawAudio < audioDataRaw.size(); ++iRawAudio)
+    {
+      widgetWaveform::genWaveForm(audioDataRaw[iRawAudio], textureWaveformLoading, 0 + 32 * iRawAudio, 32 + 32 * iRawAudio);
+    }
+
+    unsigned isound = 0;
     for (auto &s : listSound)
     {
       // main row for music.
       {
         char txtBuf[32];
-        std::snprintf(txtBuf, 32,"sound: %s", s.m_audio[0].getName().c_str());
+        std::snprintf(txtBuf, 32,"sound: %s", s.m_name.c_str());
         windowMain->create_widgetText(iRaw, 0)->set_text(txtBuf);
 
         windowMain->create_widgetBoxCheck(iRaw, 1)->set_value(false)->set_isactive(true)->set_iseditable(true)
@@ -355,30 +380,30 @@ static int app_init()
           widgetUVmeter *wM = static_cast<widgetUVmeter*>(w);
           if (s.m_tracks[0].feedback().m_playedSampleCount == 0 && --localCountdown != 0) return;
           localCountdown = 10;
-          const float aP = (s.m_tracks[0].feedback().m_playedLevelPeak > wM->wvalue.m_peak) ? 1.f : 1.f - expf(-dt/0.020f);
-          const float aR = (s.m_tracks[0].feedback().m_playedLevelRMS  > wM->wvalue.m_RMS ) ? 1.f : 1.f - expf(-dt/0.100f);
-          wM->wvalue.m_peak = (1.f - aP) * wM->wvalue.m_peak + aP * s.m_tracks[0].feedback().m_playedLevelPeak;
-          wM->wvalue.m_RMS  = (1.f - aR) * wM->wvalue.m_RMS  + aR * s.m_tracks[0].feedback().m_playedLevelRMS;
+          const float valuePeak = (std::max(20.f * std::log(s.m_tracks[0].feedback().m_playedLevelPeak / 1.f), -80.f) + 80.f) / 80.f; // dB scale, clamped between [-80, 0]
+          const float valueRMS  = (std::max(20.f * std::log(s.m_tracks[0].feedback().m_playedLevelRMS  / 1.f), -80.f) + 80.f) / 80.f; // dB scale, clamped between [-80, 0]
+          const float aP = (valuePeak > wM->wvalue.m_peak) ? 1.f : 1.f - expf(-dt/0.020f);
+          const float aR = (valueRMS  > wM->wvalue.m_RMS ) ? 1.f : 1.f - expf(-dt/0.100f);
+          wM->wvalue.m_peak = (1.f - aP) * wM->wvalue.m_peak + aP * valuePeak;
+          wM->wvalue.m_RMS  = (1.f - aR) * wM->wvalue.m_RMS  + aR * valueRMS ;
           wM->setValueModified();
         };
         windowMain->set_widget(wUVmeter, iRaw, 6);
 
         auto  *wWaveform = new widgetWaveform();
-        {
-          TRE_ASSERT(iWaveform < textureWaveformMaxCount);
-          widgetWaveform::genWaveForm(s.m_audio[0], textureWaveformLoading, 0 + 32 * iWaveform, 32 + 32 * iWaveform);
-          wWaveform->set_texId(textureWaveformSlot)->set_texUV(glm::vec4(0.f, iWaveform * 1.f / textureWaveformMaxCount, 1.f, (iWaveform + 1.f) / textureWaveformMaxCount));
-          ++iWaveform;
-        }
-        wWaveform->wcb_animate = [&s](tre::ui::widget *w, float )
+
+        wWaveform->set_texId(textureWaveformSlot)->set_texUV(glm::vec4(0.f, isound * 1.f / textureWaveformMaxCount, 1.f, (isound + 1.f) / textureWaveformMaxCount));
+
+        wWaveform->wcb_animate = [&s, isound](tre::ui::widget *w, float )
         {
           widgetWaveform *wW = static_cast<widgetWaveform*>(w);
-          wW->setCursor(float(s.m_tracks[0].feedback().m_playedSampleCursor)/float(s.m_audio[0].size()));
+          wW->setCursor(float(s.m_tracks[0].feedback().m_playedSampleCursor)/float(audioDataRaw[isound].m_nSamples));
         };
         windowMain->set_widget(wWaveform, iRaw, 7);
 
       }
       ++iRaw;
+      ++isound;
     }
 
     // tracks of the music
@@ -423,9 +448,10 @@ static int app_init()
       ++iRaw;
 
       // track control
+      unsigned itrack = 0;
       for (tre::sound2D &s : m.m_tracks)
       {
-        windowMain->create_widgetText(iRaw, 0)->set_text("- track " + s.audioData()->getName())->set_color(glm::vec4(0.6f, 0.6f, 0.8f, 1.f));
+        windowMain->create_widgetText(iRaw, 0)->set_text("- track " + nameTracks[itrack])->set_color(glm::vec4(0.6f, 0.6f, 0.8f, 1.f));
 
         windowMain->create_widgetBoxCheck(iRaw, 4)->set_value(false)->set_isactive(true)->set_iseditable(true)->set_color(glm::vec4(0.6f, 0.6f, 0.8f, 1.f));
         windowMain->create_widgetBar(iRaw, 5)->set_value(0.5f)->set_isactive(true)->set_iseditable(true)->set_color(glm::vec4(0.6f, 0.6f, 0.8f, 1.f));
@@ -457,34 +483,34 @@ static int app_init()
           widgetUVmeter *wM = static_cast<widgetUVmeter*>(w);
           if (s.feedback().m_playedSampleCount == 0 && --localCountdown != 0) return;
           localCountdown = 10;
-          const float aP = (s.feedback().m_playedLevelPeak > wM->wvalue.m_peak) ? 1.f : 1.f - expf(-dt/0.020f);
-          const float aR = (s.feedback().m_playedLevelRMS  > wM->wvalue.m_RMS ) ? 1.f : 1.f - expf(-dt/0.100f);
-          wM->wvalue.m_peak = (1.f - aP) * wM->wvalue.m_peak + aP * s.feedback().m_playedLevelPeak;
-          wM->wvalue.m_RMS  = (1.f - aR) * wM->wvalue.m_RMS  + aR * s.feedback().m_playedLevelRMS;
+          const float valuePeak = (std::max(20.f * std::log(s.feedback().m_playedLevelPeak / 1.f), -80.f) + 80.f) / 80.f; // dB scale, clamped between [-80, 0]
+          const float valueRMS  = (std::max(20.f * std::log(s.feedback().m_playedLevelRMS  / 1.f), -80.f) + 80.f) / 80.f; // dB scale, clamped between [-80, 0]
+          const float aP = (valuePeak> wM->wvalue.m_peak) ? 1.f : 1.f - expf(-dt/0.020f);
+          const float aR = (valueRMS > wM->wvalue.m_RMS ) ? 1.f : 1.f - expf(-dt/0.100f);
+          wM->wvalue.m_peak = (1.f - aP) * wM->wvalue.m_peak + aP * valuePeak;
+          wM->wvalue.m_RMS  = (1.f - aR) * wM->wvalue.m_RMS  + aR * valueRMS ;
           wM->setValueModified();
         };
         windowMain->set_widget(wUVmeter, iRaw, 6);
 
         auto  *wWaveform = new widgetWaveform();
-        {
-          TRE_ASSERT(iWaveform < textureWaveformMaxCount);
-          widgetWaveform::genWaveForm(*s.audioData(), textureWaveformLoading, 0 + 32 * iWaveform, 32 + 32 * iWaveform);
-          wWaveform->set_texId(textureWaveformSlot)->set_texUV(glm::vec4(0.f, iWaveform * 1.f / textureWaveformMaxCount, 1.f, (iWaveform + 1.f) / textureWaveformMaxCount));
-          ++iWaveform;
-        }
-        wWaveform->wcb_animate = [&s](tre::ui::widget *w, float )
+
+        wWaveform->set_texId(textureWaveformSlot)->set_texUV(glm::vec4(0.f, (2 + itrack) * 1.f / textureWaveformMaxCount, 1.f, (2 + itrack + 1.f) / textureWaveformMaxCount));
+
+        wWaveform->wcb_animate = [&s, itrack](tre::ui::widget *w, float )
         {
           widgetWaveform *wW = static_cast<widgetWaveform*>(w);
-          wW->setCursor(float(s.feedback().m_playedSampleCursor)/float(s.audioData()->size()));
+          wW->setCursor(float(s.feedback().m_playedSampleCursor)/float(audioDataRaw[2 + itrack].m_nSamples));
         };
         windowMain->set_widget(wWaveform, iRaw, 7);
 
         ++iRaw;
+        ++itrack;
       }
     }
 
     {
-      windowMain->create_widgetText(iRaw, 0)->set_text("reset all time-cursors")
+      windowMain->create_widgetText(iRaw, 0, 1, 8)->set_text("reset all time-cursors")
                 ->set_withborder(true)->set_isactive(true)
                 ->wcb_clicked_left = [](tre::ui::widget *)
       {
@@ -502,6 +528,23 @@ static int app_init()
     }
 
     textureWaveforms.load(textureWaveformLoading, 0, true);
+
+    {
+      float avgTimeMSSmooth = 0.f;
+      windowMain->create_widgetText(iRaw, 0, 1, 8)->wcb_animate = [avgTimeMSSmooth](tre::ui::widget *w, float ) mutable
+      {
+        if (audioCtx.getPerfTime_nbrCall() == 0) return;
+        tre::ui::widgetText *wText = static_cast<tre::ui::widgetText*>(w);
+        char txt[128];
+        const float avgTimeMS = audioCtx.getPerfTime_nbrCall() == 0 ? 0.f : audioCtx.getPerfTime_Total() / audioCtx.getPerfTime_nbrCall() * 1000.f;
+        avgTimeMSSmooth = 0.95f * avgTimeMSSmooth + 0.05f * avgTimeMS;
+        const unsigned avgSample = audioCtx.getPerfTime_nbrCall() == 0 ? 0 : audioCtx.getPerfTime_nbrSample() / audioCtx.getPerfTime_nbrCall();
+        const float    avgSampleTimeMS = float(avgSample) / float(audioCtx.getAudioSpec()->freq) * 1000.f;
+        std::snprintf(txt, 127, "perf[audio-callback]: time = %0.1f ms per call, samples = %d (%.1f ms)", avgTimeMSSmooth, avgSample, avgSampleTimeMS);
+        wText->set_text(txt);
+      };
+      ++iRaw;
+    }
   }
 
   if (withGUI)

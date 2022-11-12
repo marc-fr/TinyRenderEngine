@@ -1,15 +1,22 @@
 #ifndef AUDIO_H
 #define AUDIO_H
 
+#include <tre_utils.h> // ASSERT
+
 #include <string>
 #include <fstream>
 #include <vector>
 #include <math.h>
+#include <limits>
 
 // foward decl of the SDL
 struct SDL_AudioSpec;
 typedef uint32_t SDL_AudioDeviceID;
 typedef uint16_t SDL_AudioFormat;
+
+// foward decl of Opus
+struct OpusDecoder;
+
 
 namespace tre
 {
@@ -17,51 +24,60 @@ namespace tre
 // ============================================================================
 
 /**
- * @brief The soundData class holds the sound data, and it supports the baking into binary file (using Opus compression if available)
+ * The soundData namespace holds default implemented audio data handlers.
+ * The audio data can be baked into binary stream (and so binary files).
  */
-class soundData
+namespace soundData
 {
-public:
-  soundData() {}
-  virtual ~soundData() {}
 
-  bool loadFromWAVfile(const std::string &wavFile);
-  bool loadFromSDLAudio(unsigned samples, int freq, SDL_AudioFormat format, uint8_t channels, uint8_t *audioBuffer, const std::string &name = std::string());
-
-  bool write(std::ostream &stream, unsigned bitrate = 0) const; ///< Write baked-file (with compression if bitrate != 0)
-  bool read(std::istream &stream); ///< Load baked-file
-
-  bool convertTo(int freq, SDL_AudioFormat format);
-
-  // meta-data
-  unsigned           size() const { return m_Nsamples; }
-  int                freq() const { return m_freq; }
-  SDL_AudioFormat    format() const { return m_format; }
-  float              length() const { return float(m_Nsamples) / m_freq; } ///< returns duration in seconds
-  unsigned           channels() const { return m_Nchannels; }
-  const std::string  &getName() const { return m_name; }
-  void               setName(const std::string &name) { m_name = name; }
-
-  // data
-   void              extractData_I32(unsigned channelIdx, unsigned sampleOffset, unsigned sampleCount, int * __restrict outData) const;
-   void              extractData_Float(unsigned channelIdx, unsigned sampleOffset, unsigned sampleCount, float * __restrict outData) const;
-
-protected:
-
-  // meta-data
-  unsigned        m_Nsamples = 0;
+/**
+ * @brief The s_RawSDL struct
+ */
+struct s_RawSDL
+{
+  unsigned        m_nSamples = 0;
   int             m_freq = 0;
   SDL_AudioFormat m_format = 0;
-  uint8_t         m_Nchannels = 0;
-  std::string     m_name;
+  bool            m_stereo; ///< mono (1 channel) / stereo (2 channels)
 
-  // data
   typedef uint32_t audio_t;
   std::vector<audio_t> m_rawData; ///< audio data (re-interpreted as 'audio_t')
 
-public:
-  const std::vector<audio_t> &rawData() const { return m_rawData; }
+  bool loadSoundFromWAV(const std::string & filename); ///< Load from a WAV file and create a new sound-data.
+  bool loadFromSDLAudio(unsigned samples, int freq, SDL_AudioFormat format, bool stereo, uint8_t *audioBuffer); ///< Load from SDL audio data (it performs a deep copy).
+
+  bool write(std::ostream &stream) const; ///< Write baked-file (with compression if bitrate != 0)
+  bool read(std::istream &stream); ///< Load baked-file
+
+  bool convertTo(int freq, SDL_AudioFormat format);
 };
+
+/**
+ * @brief The s_Opus struct
+ * format is 16-bit signed integers.
+ */
+struct s_Opus
+{
+  static const int k_freq = 48000;
+  unsigned        m_nSamples = 0;
+  bool            m_stereo; ///< mono (1 channel) / stereo (2 channels)
+
+  static const unsigned k_blockSampleCount = 2880;
+
+  struct s_block
+  {
+    unsigned             m_sampleStart;
+    std::vector<uint8_t> m_data;
+  };
+  std::vector<s_block> m_blokcs;
+
+  bool compress(s_RawSDL &rawData, unsigned bitrate); ///< Compress from a sound-raw. It may convert the rawData for compression purpose.
+
+  bool write(std::ostream &stream) const; ///< Write baked-file (with compression if bitrate != 0)
+  bool read(std::istream &stream); ///< Load baked-file
+};
+
+} // namespace "soundData"
 
 // ============================================================================
 
@@ -71,16 +87,12 @@ public:
 class soundInterface
 {
 public:
-
-  /**
-   * @brief freq
-   * @return the sampling-frequency (in Hz) of the sound
-   */
-  virtual int freq() = 0;
+  soundInterface() {}
+  virtual ~soundInterface() {}
 
   /**
    * @brief synchronization point
-   * Called outside of the sound-thread, to exchange safely data between data used in the audio-thread and other threads.
+   * Called outside of the sound-thread, to exchange safely data between the audio-thread and other threads.
    */
   virtual void sync() = 0;
 
@@ -89,8 +101,9 @@ public:
    * Called inside the sound-thread, when the audio-thread requires stereo-data (LR, LR, LR, ...)
    * @param outBufferAdd audio buffer (data must be 'added')
    * @param sampleCount (number of samples (1 sample is 2 floats, representing the left and right chanel data)
+   * @param sampleFraq (frequency required for the out buffer
    */
-  virtual void sample(float *outBufferAdd, unsigned sampleCount) = 0;
+  virtual void sample(float* __restrict outBufferAdd, unsigned sampleCount, int sampleFreq) = 0;
 };
 
 // ============================================================================
@@ -131,6 +144,22 @@ protected:
 
   std::vector<soundInterface*> m_listSounds;
 
+#ifdef TRE_PROFILE
+protected:
+  float    m_perftime_total = 0.f;
+  unsigned m_perftime_nbrCall = 0;
+  unsigned m_perftime_nbrSample = 0;
+public:
+  float    getPerfTime_Total() const { return m_perftime_total; }
+  unsigned getPerfTime_nbrCall() const { return m_perftime_nbrCall; }
+  unsigned getPerfTime_nbrSample() const { return m_perftime_nbrSample; }
+#else
+public:
+  float    getPerfTime_Total() const { return 0.f; }
+  unsigned getPerfTime_nbrCall() const { return 0; }
+  unsigned getPerfTime_nbrSample() const { return 0; }
+#endif
+
 public:
   static void getDevicesName(std::vector<std::string> &devices); ///< Helper, that gets the list of detected devices
 
@@ -141,6 +170,11 @@ private:
     std::vector<float>           ac_bufferF32;
     int                          ac_freq = 0;
     unsigned                     ac_channels = 0;
+#ifdef TRE_PROFILE
+  float                          ac_perftime_total = 0.f;
+  unsigned                       ac_perftime_nbrCall = 0;
+  unsigned                       ac_perftime_nbrSample = 0;
+#endif
 
     void run(uint8_t* stream, int len);
   };
@@ -155,79 +189,261 @@ private:
 
 // ============================================================================
 
-enum e_equalizerMode
-{
-  equalizer_None,
-};
-struct s_equalizerControl
-{
-  e_equalizerMode m_mode;
-  float           m_freqRoot; ///< ]0, +inf[
-  float           m_power;    ///< [0, +inf[
-};
-
-// ============================================================================
-
 /**
- * Basic 2D-sampler of sound, to be used in the template parameter of the "sound" class.
- * It can sample mono or stereo audio, with a volume and panning modifiers.
+ * The namespace "soundSampler" is a simple implementation of sound sampling,
+ * using audio data from the soundData namespace.
  */
-struct s_sound2Dsampler
+namespace soundSampler
 {
-  float m_volume = 0.f; ///< [0, +inf[
-  float m_pan = 0.f;    ///< [-1, 1]
 
-  static s_sound2Dsampler mix(const s_sound2Dsampler &infoStart, const s_sound2Dsampler &infoEnd, float cursor);
+// Controls: ---
 
-  static void sample(const soundData &sound, unsigned sampleStart, unsigned sampleCount,
-                     const s_sound2Dsampler &infoStart, const s_sound2Dsampler &infoEnd,
-                     float * __restrict outBufferAdd, float &outValuePeak, float &outValueRMS);
+struct s_noControl
+{
+  s_noControl() {}
+
+  static s_noControl mix(const s_noControl &, const s_noControl &, const float) { return s_noControl(); }
+
+  void apply(float &valueL, float &valueR) const { (void)valueL; (void)valueR; }
 };
+
+struct s_stereoControl
+{
+  s_stereoControl(const float vol = 0.f, const float pan = 0.f) : m_volume(vol), m_pan(pan) {}
+
+  float        m_volume; ///< [0, +inf[
+  float        m_pan;    ///< [-1, 1]
+
+  static s_stereoControl mix(const s_stereoControl &a, const s_stereoControl &b, const float t)
+  {
+    const float ta = 1.f - t;
+    return s_stereoControl(a.m_volume * ta + b.m_volume * t, a.m_pan * ta + b.m_pan * t);
+  }
+
+  void apply(float &valueL, float &valueR) const
+  {
+    const float pL = 1.f - std::max(m_pan, 0.f);
+    const float pR = 1.f + std::min(m_pan, 0.f);
+    valueL *= m_volume * pL;
+    valueR *= m_volume * pR;
+  }
+};
+
+//---
+
+struct s_sampler_Raw
+{
+  float    m_cursor = 0.f;
+  bool     m_repet = false;
+
+  float   m_valuePeak = 0.f; ///< [out]
+  float   m_valueRMS = 0.f;  ///< [out]
+
+  /// "sample" returns stereo float audio stream, at "sampleFreq" Hz.
+  template<class _controls, typename _rawType>
+  void sample(const soundData::s_RawSDL &data, const _controls &controlsStart, const _controls &controlsEnd,
+              float * __restrict outBufferAdd, unsigned sampleCount, int sampleFreq)
+  {
+    TRE_ASSERT(SDL_AUDIO_BITSIZE(data.m_format) / 8 == sizeof(_rawType));
+
+    const float                 freqRatio = float(data.m_freq) / float(sampleFreq);
+    const unsigned              dataSampleCount = data.m_nSamples;
+    const int                   dataSampleCountM2 = int(dataSampleCount) - 2;
+    const _rawType * __restrict dataRawTyped = reinterpret_cast<const _rawType*>(data.m_rawData.data());
+    unsigned                    curSample = 0;
+    const float                 invSampleCountM1 = 1.f / (sampleCount - 1);
+    static const float          valueNormalizer = 1.f / float(std::numeric_limits<_rawType>::max());
+    const _rawType              mV = std::numeric_limits<_rawType>::max();
+
+    TRE_ASSERT(dataSampleCount != 0);
+    if (m_repet)
+    {
+      while (m_cursor >= dataSampleCount) m_cursor -= dataSampleCount;
+    }
+
+    m_valuePeak = 0.f;
+    m_valueRMS = 0.f;
+
+    while (m_cursor < dataSampleCount && curSample < sampleCount)
+    {
+      if (data.m_stereo)
+      {
+        unsigned isample = 0;
+        float    localCursor = m_cursor;
+        while (localCursor < dataSampleCount && curSample < sampleCount)
+        {
+          const int localCursorInt = std::min(int(localCursor), dataSampleCountM2);
+          const float valueL_0 = float(dataRawTyped[2 * localCursorInt + 0]) * valueNormalizer;
+          const float valueR_0 = float(dataRawTyped[2 * localCursorInt + 1]) * valueNormalizer;
+          const float valueL_1 = float(dataRawTyped[2 * localCursorInt + 2]) * valueNormalizer;
+          const float valueR_1 = float(dataRawTyped[2 * localCursorInt + 3]) * valueNormalizer;
+          const float w_1 = localCursor - localCursorInt;
+          const float w_0 = 1.f - w_1;
+          float valueL = w_0 * valueL_0 + w_1 * valueL_1;
+          float valueR = w_0 * valueR_0 + w_1 * valueR_1;
+          _controls::mix(controlsStart, controlsEnd, curSample * invSampleCountM1).apply(valueL, valueR);
+          ++curSample;
+          *outBufferAdd++ += valueL;
+          *outBufferAdd++ += valueR;
+          m_valuePeak = std::max(m_valuePeak, std::max(std::abs(valueL), std::abs(valueR)));
+          m_valueRMS += 0.5f * (valueL * valueL + valueR * valueR);
+          localCursor = m_cursor + (++isample) * freqRatio;
+        }
+        m_cursor = localCursor;
+      }
+      else
+      {
+        unsigned isample = 0;
+        float    localCursor = m_cursor;
+        while (localCursor < dataSampleCount && curSample < sampleCount)
+        {
+          const int localCursorInt = std::min(int(localCursor), dataSampleCountM2);
+          const float value_0 = float(dataRawTyped[localCursorInt + 0]) * valueNormalizer;
+          const float value_1 = float(dataRawTyped[localCursorInt + 1]) * valueNormalizer;
+          const float w_1 = localCursor - localCursorInt;
+          const float w_0 = 1.f - w_1;
+          float valueL = w_0 * value_0 + w_1 * value_1;
+          float valueR = valueL;
+          _controls::mix(controlsStart, controlsEnd, curSample * invSampleCountM1).apply(valueL, valueR);
+          ++curSample;
+          *outBufferAdd++ += valueL;
+          *outBufferAdd++ += valueR;
+          m_valuePeak = std::max(m_valuePeak, std::max(std::abs(valueL), std::abs(valueR)));
+          m_valueRMS += 0.5f * (valueL * valueL + valueR * valueR);
+          localCursor = m_cursor + (++isample) * freqRatio;
+        }
+        m_cursor = localCursor;
+      }
+
+      if (m_repet)
+      {
+        if (m_cursor >= dataSampleCount) m_cursor -= dataSampleCount;
+      }
+    }
+
+    m_valueRMS = std::sqrt(m_valueRMS / sampleCount);
+  }
+};
+
+struct s_sampler_Opus
+{
+  s_sampler_Opus();
+  ~s_sampler_Opus();
+
+  float    m_cursor = 0.f;
+  bool     m_repet = false;
+
+  OpusDecoder                                                         *m_decoder = nullptr;
+  unsigned                                                            m_decompressedSlot = unsigned(-1);
+  std::array<int16_t, soundData::s_Opus::k_blockSampleCount * 2 + 16> m_decompressedBuffer; ///< decompressed data (extra data to handle linear-interpolation on the last element)
+
+  float   m_valuePeak = 0.f; ///< [out]
+  float   m_valueRMS = 0.f;  ///< [out]
+
+  bool decodeSlot(const soundData::s_Opus &data, unsigned slot);
+
+  /// "sample" returns stereo float audio stream, at "sampleFreq" Hz.
+  template<class _controls>
+  void sample(const soundData::s_Opus &data, const _controls &controlsStart, const _controls &controlsEnd,
+              float * __restrict outBufferAdd, unsigned sampleCount, int sampleFreq)
+  {
+    const float        freqRatio = float(soundData::s_Opus::k_freq) / float(sampleFreq);
+    const unsigned     dataSampleCount = data.m_nSamples;
+    unsigned           curSample = 0;
+    const float        invSampleCountM1 = 1.f / (sampleCount - 1);
+    static const float valueNormalizer = 1.f / float(0x7FFF);
+
+    TRE_ASSERT(dataSampleCount != 0);
+    if (m_repet)
+    {
+      while (m_cursor >= dataSampleCount) m_cursor -= dataSampleCount;
+    }
+
+    m_valuePeak = 0.f;
+    m_valueRMS = 0.f;
+
+    while (m_cursor < dataSampleCount && curSample < sampleCount)
+    {
+      const unsigned cursorInt = int(m_cursor);
+      const bool decodeStatus = decodeSlot(data, cursorInt / soundData::s_Opus::k_blockSampleCount);
+      (void)decodeStatus;
+      TRE_ASSERT(decodeStatus);
+      TRE_ASSERT(m_decompressedSlot == cursorInt / soundData::s_Opus::k_blockSampleCount);
+
+      const int      dataDecodedSampleOffset = m_decompressedSlot * soundData::s_Opus::k_blockSampleCount;
+      const unsigned dataDecodedSampleCount = std::min(soundData::s_Opus::k_blockSampleCount, dataSampleCount - dataDecodedSampleOffset);
+
+      unsigned isample = 0;
+      float    localCursorOffset = m_cursor - dataDecodedSampleOffset;
+      float    localCursor = localCursorOffset;
+      while (localCursor < dataDecodedSampleCount && curSample < sampleCount)
+      {
+        const int localCursorInt = localCursor; // implicit std::trunc + float-to-int
+        const float valueL_0 = float(m_decompressedBuffer[2 * localCursorInt + 0]) * valueNormalizer;
+        const float valueR_0 = float(m_decompressedBuffer[2 * localCursorInt + 1]) * valueNormalizer;
+        const float valueL_1 = float(m_decompressedBuffer[2 * localCursorInt + 2]) * valueNormalizer;
+        const float valueR_1 = float(m_decompressedBuffer[2 * localCursorInt + 3]) * valueNormalizer;
+        const float w_1 = localCursor - localCursorInt;
+        const float w_0 = 1.f - w_1;
+        float valueL = w_0 * valueL_0 + w_1 * valueL_1;
+        float valueR = w_0 * valueR_0 + w_1 * valueR_1;
+        _controls::mix(controlsStart, controlsEnd, curSample * invSampleCountM1).apply(valueL, valueR);
+        ++curSample;
+        *outBufferAdd++ += valueL;
+        *outBufferAdd++ += valueR;
+        m_valuePeak = std::max(m_valuePeak, std::max(std::abs(valueL), std::abs(valueR)));
+        m_valueRMS += 0.5f * (valueL * valueL + valueR * valueR);
+        localCursor = localCursorOffset + (++isample) * freqRatio;
+      }
+      m_cursor += (localCursor - localCursorOffset);
+
+      if (m_repet)
+      {
+        if (m_cursor >= dataSampleCount) m_cursor -= dataSampleCount;
+      }
+    }
+
+    m_valueRMS = std::sqrt(m_valueRMS / sampleCount);
+  }
+};
+
+} // namespace "soundSampler"
 
 // ============================================================================
 
 /**
-* Basic 3D-sampler of sound, to be used in the template parameter of the "sound" class.
-* TODO ...
-*/
-struct s_sound3Dsampler
-{
-  // TODO ...
-
-  static s_sound3Dsampler mix(const s_sound3Dsampler &infoStart, const s_sound3Dsampler &infoEnd, float cursor);
-
-  static void sample(const soundData &sound, unsigned sampleStart, unsigned sampleCount,
-                     const s_sound3Dsampler &infoStart, const s_sound3Dsampler &infoEnd,
-                     float * __restrict outBufferAdd, float &outValuePeak, float &outValueRMS);
-};
-
-// ============================================================================
-
-template <class _sampler>
+ * Class "sound" is a simple implementation of sound stereo sampling,
+ * using audio data from the soundData namespace.
+ * It is used the class "sound" that inherits from soundInterface.
+ */
+template <class _controls>
 class sound : public soundInterface
 {
 public:
-  sound(const soundData *audioData = nullptr) : m_audioData(audioData) { ac_control.m_cursor = 0; }
+  sound() {}
   virtual ~sound() {}
 
   // audio-data
 public:
-  void setAudioData(const soundData *audioD) { m_audioData = audioD; } // warning: unsafe. Don't use it while the sound is playing in the audioContext.
-  const soundData *audioData() const { return m_audioData; }
+  void setAudioData(const soundData::s_RawSDL *audioD) { m_audioDataRaw = audioD; } ///< warning: unsafe. Don't use it while the sound is playing in the audioContext.
+  void setAudioData(const soundData::s_Opus *audioD) { m_audioDataOpus = audioD; } ///< warning: unsafe. Don't use it while the sound is playing in the audioContext.
+  const soundData::s_RawSDL *audioDataRaw() const { return m_audioDataRaw; }
+  const soundData::s_Opus   *audioDataOpus() const { return m_audioDataOpus; }
 protected:
-  const soundData *m_audioData;
+  const soundData::s_RawSDL *m_audioDataRaw = nullptr;
+  const soundData::s_Opus   *m_audioDataOpus = nullptr;
 
   // control
 public:
   struct s_control
   {
-    _sampler  m_target;
+    _controls m_target;
     float     m_targetDelay = -1.f;
     unsigned  m_cursor = unsigned(-1);
     bool      m_isPlaying = false;
     bool      m_isRepeating = false;
 
-    void     setTarget(const _sampler &s, float delay = 0.f) { m_target = s; m_targetDelay = delay; }
+    void     setTarget(const _controls &s, float delay = 0.f) { m_target = s; m_targetDelay = delay; }
     void     setCursor(unsigned pos) { m_cursor = pos; }
   };
 protected:
@@ -240,8 +456,8 @@ public:
 public:
   struct s_feedback
   {
-    _sampler  m_playedSampler;
-    unsigned  m_playedSampleCursor = 0; ///< Warning: the precision is limited by the audio-thread frequency.
+    _controls m_playedControls; ///< last control values
+    unsigned  m_playedSampleCursor = 0;
     unsigned  m_playedSampleCount = 0; ///< Sample count since the last 'sync'
     float     m_playedLevelPeak = 0.f;
     float     m_playedLevelRMS = 0.f;
@@ -253,22 +469,21 @@ public:
 
   // safe data for the audio-callback. Resync them with 'sync' method.
 protected:
-  mutable s_control  ac_control;
-  mutable s_feedback ac_feedback;
+  s_control                      ac_control;
+  s_feedback                     ac_feedback;
+  soundSampler::s_sampler_Raw    ac_samplerRaw; // sampler local data
+  soundSampler::s_sampler_Opus   ac_samplerOpus; // sampler local data
 
   // interface
 public:
-
-  virtual int freq() override
-  {
-    return (m_audioData != nullptr) ? m_audioData->freq() : 0;
-  }
 
   virtual void sync() override
   {
     // send
     ac_control.m_isPlaying = m_control.m_isPlaying;
     ac_control.m_isRepeating = m_control.m_isRepeating;
+    ac_samplerRaw.m_repet = m_control.m_isRepeating;
+    ac_samplerOpus.m_repet = m_control.m_isRepeating;
 
     if (m_control.m_targetDelay >= 0.f)
     {
@@ -279,6 +494,8 @@ public:
     if (m_control.m_cursor != unsigned(-1))
     {
       ac_control.m_cursor = m_control.m_cursor;
+      ac_samplerRaw.m_cursor = m_control.m_cursor;
+      ac_samplerOpus.m_cursor = m_control.m_cursor;
       m_control.m_cursor = unsigned(-1);
     }
 
@@ -292,70 +509,71 @@ public:
   }
 
   /// sampling with float and stereo, called from the audio-callback
-  virtual void sample(float *outBufferAdd, unsigned sampleCount) override
+  virtual void sample(float * __restrict outBufferAdd, unsigned sampleCount, int sampleFreq) override
   {
-    if (m_audioData == nullptr) return;
-
-    const unsigned audioSamples = m_audioData->size();
-    const int      audioFreq = m_audioData->freq();
-
     if (!ac_control.m_isPlaying) return;
-    if (ac_control.m_isRepeating) ac_control.m_cursor = ac_control.m_cursor % audioSamples;
 
-    unsigned       sampleStart = ac_control.m_cursor;
-    const unsigned sampleCountSave = sampleCount;
-
-    if (sampleStart >= audioSamples && !ac_control.m_isRepeating) return;
-
-    float levelPeak = 0.f, levelRMS = 0.f;
-
-    for (unsigned iPass = 0; iPass < 3; ++iPass)
+    _controls endControls;
+    if (ac_control.m_targetDelay > 0.f)
     {
-      const bool     isTransitionActive = (ac_control.m_targetDelay != 0.f);
-      const unsigned sampleCountBeforeTargetDelay = ac_control.m_targetDelay * audioFreq;
-      const unsigned sampleCountCut = isTransitionActive ? sampleCountBeforeTargetDelay : sampleCount;
-
-      const unsigned sampleStartPass = sampleStart % audioSamples;
-      const unsigned sampleCountPass = std::min(sampleCount, std::min(audioSamples - sampleStartPass, sampleCountCut));
-
-      if (isTransitionActive)
-      {
-        _sampler tmpSampler = _sampler::mix(ac_feedback.m_playedSampler, ac_control.m_target, float(sampleCountPass)/float(sampleCountBeforeTargetDelay));
-
-        _sampler::sample(*m_audioData, sampleStartPass, sampleCountPass,
-                         ac_feedback.m_playedSampler, tmpSampler,
-                         outBufferAdd, levelPeak, levelRMS);
-
-        ac_feedback.m_playedSampler = tmpSampler;
-
-        if (ac_control.m_targetDelay != 0.f)
-          ac_control.m_targetDelay = std::max(0.f, float(sampleCountBeforeTargetDelay - sampleCountPass)/audioFreq);
-      }
-      else
-      {
-        ac_feedback.m_playedSampler = ac_control.m_target;
-        _sampler::sample(*m_audioData, sampleStartPass, sampleCountPass,
-                         ac_control.m_target, ac_control.m_target,
-                         outBufferAdd, levelPeak, levelRMS);
-      }
-
-      sampleCount -= sampleCountPass;
-      sampleStart += sampleCountPass;
-      outBufferAdd += sampleCountPass * 2;
-      if (sampleCount == 0 || (sampleStart >= audioSamples && !ac_control.m_isRepeating)) break;
+      const float dt = float(sampleCount) / float(sampleFreq);
+      const float cursor = std::min(1.f, dt / ac_control.m_targetDelay);
+      endControls = _controls::mix(ac_feedback.m_playedControls, ac_control.m_target, cursor); // note: it won't behave as expected if the "mix" is not linear.
+      ac_control.m_targetDelay -= dt;
+    }
+    else
+    {
+      endControls = ac_feedback.m_playedControls;
+      ac_control.m_targetDelay = -1.f;
     }
 
-    ac_feedback.m_playedSampleCursor = ac_control.m_cursor = sampleStart;
-    ac_feedback.m_playedLevelPeak = std::max(ac_feedback.m_playedLevelPeak, levelPeak);
-    ac_feedback.m_playedLevelRMS  = std::sqrt((ac_feedback.m_playedLevelRMS * ac_feedback.m_playedLevelRMS * ac_feedback.m_playedSampleCount + levelRMS) / (ac_feedback.m_playedSampleCount + sampleCountSave));
-    ac_feedback.m_playedSampleCount += sampleCountSave;
+#ifdef TRE_WITH_OPUS
+    if (m_audioDataOpus != nullptr)
+    {
+      ac_samplerOpus.sample(*m_audioDataOpus, ac_feedback.m_playedControls, endControls, outBufferAdd, sampleCount, sampleFreq);
+
+      ac_feedback.m_playedControls = endControls;
+      ac_feedback.m_playedLevelPeak = std::max(ac_feedback.m_playedLevelPeak, ac_samplerOpus.m_valuePeak);
+      ac_feedback.m_playedLevelRMS  = std::sqrt((ac_feedback.m_playedLevelRMS * ac_feedback.m_playedLevelRMS * ac_feedback.m_playedSampleCount +
+                                                 ac_samplerOpus.m_valueRMS    * ac_samplerOpus.m_valueRMS    * sampleCount                      ) /
+                                                (ac_feedback.m_playedSampleCount + sampleCount));
+      ac_feedback.m_playedSampleCount += sampleCount;
+      ac_feedback.m_playedSampleCursor = ac_samplerOpus.m_cursor;
+
+      return;
+    }
+#endif
+
+    if (m_audioDataRaw != nullptr)
+    {
+      if (m_audioDataRaw->m_format == AUDIO_S16)
+        ac_samplerRaw.sample<_controls, int16_t>(*m_audioDataRaw, ac_feedback.m_playedControls, endControls, outBufferAdd, sampleCount, sampleFreq);
+      else if (m_audioDataRaw->m_format == AUDIO_S32)
+        ac_samplerRaw.sample<_controls, int32_t>(*m_audioDataRaw, ac_feedback.m_playedControls, endControls, outBufferAdd, sampleCount, sampleFreq);
+      else
+      {
+        TRE_FATAL("audio::sample: unsupported audio format");
+      }
+
+      ac_feedback.m_playedControls = endControls;
+      ac_feedback.m_playedLevelPeak = std::max(ac_feedback.m_playedLevelPeak, ac_samplerRaw.m_valuePeak);
+      ac_feedback.m_playedLevelRMS  = std::sqrt((ac_feedback.m_playedLevelRMS * ac_feedback.m_playedLevelRMS * ac_feedback.m_playedSampleCount +
+                                                 ac_samplerRaw.m_valueRMS     * ac_samplerRaw.m_valueRMS     * sampleCount                      ) /
+                                                (ac_feedback.m_playedSampleCount + sampleCount));
+      ac_feedback.m_playedSampleCount += sampleCount;
+      ac_feedback.m_playedSampleCursor = ac_samplerRaw.m_cursor;
+
+      return;
+    }
+
+    TRE_FATAL("audio::sample: unsupported audio data");
   }
 };
 
 // ============================================================================
 
-typedef sound<s_sound2Dsampler> sound2D;
-typedef sound<s_sound3Dsampler> sound3D;
+typedef sound<soundSampler::s_noControl>     soundBasic;
+typedef sound<soundSampler::s_stereoControl> sound2D;
 
 // ============================================================================
 

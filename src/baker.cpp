@@ -198,12 +198,22 @@ bool baker::readBlock(font *f)
   return true;
 }
 
-bool baker::writeBlock(const soundData *s, int bitrate)
+bool baker::writeBlock(const soundData::s_RawSDL *s)
 {
-  return s->write(getBlockWriteAndAdvance(), bitrate);
+  return s->write(getBlockWriteAndAdvance());
 }
 
-bool baker::readBlock(soundData *s)
+bool baker::readBlock(soundData::s_RawSDL *s)
+{
+  return s->read(getBlockReadAndAdvance());
+}
+
+bool baker::writeBlock(const soundData::s_Opus *s)
+{
+  return s->write(getBlockWriteAndAdvance());
+}
+
+bool baker::readBlock(soundData::s_Opus *s)
 {
   return s->read(getBlockReadAndAdvance());
 }
