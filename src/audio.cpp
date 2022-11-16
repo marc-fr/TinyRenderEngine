@@ -108,7 +108,7 @@ bool soundData::s_RawSDL::read(std::istream &stream)
 {
   // header
   uint header[8];
-  stream.read(reinterpret_cast<char*>(header), sizeof(header));
+  stream.read(reinterpret_cast<char*>(&header), sizeof(header));
   TRE_ASSERT(header[0] == SOUND_BIN_VERSION);
   TRE_ASSERT(header[3] == 0);
 
@@ -272,10 +272,10 @@ bool soundData::s_Opus::write(std::ostream &stream) const
   // data
   for (const s_block &b : m_blokcs)
   {
-    stream.write(reinterpret_cast<const char*>(b.m_sampleStart), sizeof(unsigned));
+    stream.write(reinterpret_cast<const char*>(&b.m_sampleStart), sizeof(unsigned));
     unsigned dsize = b.m_data.size();
     TRE_ASSERT(dsize != 0);
-    stream.write(reinterpret_cast<const char*>(dsize), sizeof(unsigned));
+    stream.write(reinterpret_cast<const char*>(&dsize), sizeof(unsigned));
     stream.write(reinterpret_cast<const char*>(b.m_data.data()), dsize);
   }
 
@@ -288,7 +288,7 @@ bool soundData::s_Opus::read(std::istream &stream)
 {
   // header
   uint header[8];
-  stream.read(reinterpret_cast<char*>(header), sizeof(header));
+  stream.read(reinterpret_cast<char*>(&header), sizeof(header));
   TRE_ASSERT(header[0] == SOUND_BIN_VERSION);
   TRE_ASSERT(header[3] == 1);
 
@@ -300,9 +300,9 @@ bool soundData::s_Opus::read(std::istream &stream)
   // data
   for (s_block &b : m_blokcs)
   {
-    stream.read(reinterpret_cast<char*>(b.m_sampleStart), sizeof(unsigned));
+    stream.read(reinterpret_cast<char*>(&b.m_sampleStart), sizeof(unsigned));
     unsigned dsize = 0;
-    stream.read(reinterpret_cast<char*>(dsize), sizeof(unsigned));
+    stream.read(reinterpret_cast<char*>(&dsize), sizeof(unsigned));
     TRE_ASSERT(dsize != 0);
     b.m_data.resize(dsize);
     stream.read(reinterpret_cast<char*>(b.m_data.data()), dsize);
