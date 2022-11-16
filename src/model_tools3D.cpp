@@ -15,6 +15,59 @@ namespace modelTools {
 
 // ============================================================================
 
+glm::vec4 computeBarycenter3D(const s_modelDataLayout &layout, const s_partInfo &part)
+{
+  TRE_ASSERT(layout.m_vertexCount > 0);
+  TRE_ASSERT(layout.m_positions.m_size == 3);
+
+  const std::size_t count = part.m_size;
+  if (count == 0) return glm::vec4(0.f);
+  TRE_ASSERT(count % 3 == 0);
+  const std::size_t offset = part.m_offset;
+  const std::size_t end = offset + count;
+
+  glm::vec3 pt = glm::vec3(0.f);
+  float     volume = 0.f;
+
+  // Sum of the signed volume of all tetrahedrons formed by each (oriented) surface and the origin: (Origin, PA_Surf, PB_Surf, PC_Surf).
+
+  if (layout.m_indexCount == 0)
+  {
+    for (std::size_t ipt = offset; ipt < end; ipt += 3)
+    {
+      const glm::vec3 ptA = layout.m_positions.get<glm::vec3>(ipt + 0);
+      const glm::vec3 ptB = layout.m_positions.get<glm::vec3>(ipt + 1);
+      const glm::vec3 ptC = layout.m_positions.get<glm::vec3>(ipt + 2);
+
+      const float v = glm::dot(glm::cross(ptB, ptC), ptA);
+      volume += v;
+      pt += v * (ptA + ptB + ptC) / 4.f;
+    }
+  }
+  else
+  {
+    for (std::size_t ipt = offset; ipt < end; ipt += 3)
+    {
+      const glm::vec3 ptA = layout.m_positions.get<glm::vec3>(layout.m_index[ipt + 0]);
+      const glm::vec3 ptB = layout.m_positions.get<glm::vec3>(layout.m_index[ipt + 1]);
+      const glm::vec3 ptC = layout.m_positions.get<glm::vec3>(layout.m_index[ipt + 2]);
+
+      const float v = glm::dot(glm::cross(ptB, ptC), ptA);
+      volume += v;
+      pt += v * (ptA + ptB + ptC) / 4.f;
+    }
+  }
+
+  if (fabsf(volume) < 1.e-10f) return glm::vec4(0.f);
+
+  pt /= volume;
+  volume = fabsf(volume);
+
+  return glm::vec4(pt, volume);
+}
+
+// ============================================================================
+
 void computeConvexeSkin3D(const s_modelDataLayout &layout, const s_partInfo &part, const glm::mat4 &transform, const float threshold, std::vector<glm::vec3> &outSkinTri)
 {
   TRE_ASSERT(layout.m_vertexCount > 0);

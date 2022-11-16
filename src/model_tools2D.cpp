@@ -8,6 +8,36 @@ namespace modelTools {
 
 // ============================================================================
 
+glm::vec3 computeBarycenter2D(const std::vector<glm::vec2> &inEnvelop)
+{
+  TRE_ASSERT(inEnvelop.size() > 1);
+  const std::size_t end = inEnvelop.size();
+
+  glm::vec2 pt = glm::vec2(0.f, 0.f);
+  float     surf = 0.f;
+
+  // Sum of the signed surface of all triangles formed by each (oriented) edges and the origin: (Origin, P1_edge, P2_edge).
+
+  glm::vec2 ptPrev = inEnvelop[end - 1];
+  for (std::size_t ipt = 0; ipt < end; ++ipt)
+  {
+    const glm::vec2 ptCurr = inEnvelop[ipt];
+    const float     s = 0.5f * (ptCurr.y * ptPrev.x - ptCurr.x * ptPrev.y);
+    surf += s;
+    pt += s * (ptPrev + ptCurr) / 3.f;
+    ptPrev = ptCurr;
+  }
+
+  if (fabsf(surf) < 1.e-10f) return glm::vec3(0.f);
+
+  pt /= surf;
+  surf = fabsf(surf);
+
+  return glm::vec3(pt, surf);
+}
+
+// ============================================================================
+
 void computeConvexeEnvelop2D_XY(const s_modelDataLayout &layout, const s_partInfo &part, const glm::mat4 &transform, const float threshold, std::vector<glm::vec2> &outEnvelop)
 {
   TRE_ASSERT(layout.m_vertexCount > 0);

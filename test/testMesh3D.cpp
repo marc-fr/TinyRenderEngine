@@ -32,12 +32,14 @@ struct s_taskMeshProcessingContext
   // Raw-results
   std::vector<glm::vec2> m_envelop2D;
   std::vector<uint>      m_tetrahedrons;
+  glm::vec4              m_centerAndVolume;
 
   // Debug mesh
   tre::modelIndexed  *m_meshDebug = nullptr;  //[input]
   std::size_t         m_partDebug_Slot1 = 0;
   std::size_t         m_partDebug_Slot2 = 0;
   std::size_t         m_partDebug_Slot3 = 0;
+  std::size_t         m_partDebug_Lines = 0;
 
   // Status
   bool   m_completed = false;
@@ -68,6 +70,8 @@ struct s_taskMeshProcessingContext
 
     systemtick frameEndTick = systemclock::now();
 
+    m_centerAndVolume = tre::modelTools::computeBarycenter3D(m_mesh->layout(), m_mesh->partInfo((m_part)));
+
     // upload the envelop
     m_partEnvelop2D = m_mesh2D->createPart(m_envelop2D.size() * 2);
     const glm::vec4 envColor = glm::vec4(1.f, 0.f, 0.f, 1.f);
@@ -79,6 +83,19 @@ struct s_taskMeshProcessingContext
     m_partDebug_Slot1 = computeMeshDebugDiff(*m_meshDebug, *m_mesh, m_part,               *m_mesh, m_partDecimateLevel1);
     m_partDebug_Slot2 = computeMeshDebugDiff(*m_meshDebug, *m_mesh, m_partDecimateLevel1, *m_mesh, m_part);
     m_partDebug_Slot3 = computeMeshDebugTetra(*m_meshDebug, *m_mesh, m_tetrahedrons);
+
+    // show center
+    {
+      const uint indices[] = { 0, 1, 2, 3, 4, 5};
+      const float vertices[] = { m_centerAndVolume.x - 0.1f, m_centerAndVolume.y, m_centerAndVolume.z,
+                                 m_centerAndVolume.x + 0.1f, m_centerAndVolume.y, m_centerAndVolume.z,
+                                 m_centerAndVolume.x, m_centerAndVolume.y - 0.1f, m_centerAndVolume.z,
+                                 m_centerAndVolume.x, m_centerAndVolume.y + 0.1f, m_centerAndVolume.z,
+                                 m_centerAndVolume.x, m_centerAndVolume.y, m_centerAndVolume.z - 0.1f,
+                                 m_centerAndVolume.x, m_centerAndVolume.y, m_centerAndVolume.z + 0.1f };
+      const float color[] = { 0.3f, 1.f, 0.3f, 1.f};
+      m_partDebug_Lines = m_meshDebug->createPartFromIndexes(indices, 6, vertices, color);
+    }
 
     systemtick frameDebug = systemclock::now();
 
@@ -416,6 +433,9 @@ int main(int argc, char **argv)
 
   // - Load shaders
 
+  tre::shader shaderRaw3D;
+  shaderRaw3D.loadShader(tre::shader::PRGM_3D, tre::shader::PRGM_COLOR);
+
   tre::shader shaderMainMaterial;
   shaderMainMaterial.loadShader(tre::shader::PRGM_3D,
                                 tre::shader::PRGM_UNICOLOR |
@@ -693,9 +713,6 @@ int main(int argc, char **argv)
       }
     }
 
-    //if (myControls.m_keyUP  ) // TODO, additionnal control for debug
-    //if (myControls.m_keyDOWN) // TODO, additionnal control for debug
-
     if (myControls.m_home) mModelScale = 1.f;
     if (myControls.m_mouse.z < 0.f) mModelScale *= 1.2f;
     if (myControls.m_mouse.z > 0.f) mModelScale /= 1.2f;
@@ -812,9 +829,14 @@ int main(int argc, char **argv)
     if (meshContextSelected.m_completed && !meshContextSelected.m_ongoing)
     {
       glViewport(myWindow.m_resolutioncurrent.x / 2, 0, myWindow.m_resolutioncurrent.x / 2, myWindow.m_resolutioncurrent.y);
+
       glUseProgram(shaderMesh2D.m_drawProgram);
       shaderMesh2D.setUniformMatrix(mPV * curModel, curModel);
       mesh2D.drawcall(meshContextSelected.m_partEnvelop2D, 1, true, GL_LINES);
+
+      glUseProgram(shaderRaw3D.m_drawProgram);
+      shaderRaw3D.setUniformMatrix(mPV * curModel, curModel);
+      meshDebug.drawcall(meshContextSelected.m_partDebug_Lines, 1, true, GL_LINES);
     }
 
     // - render UI
@@ -903,6 +925,7 @@ int main(int argc, char **argv)
     SDL_GL_SwapWindow( myWindow.m_window );
   }
 
+  shaderRaw3D.clearShader();
   shaderMainMaterial.clearShader();
   shaderWireframe.clearShader();
   shaderWireframePlain.clearShader();

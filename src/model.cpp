@@ -989,7 +989,6 @@ void modelInstancedBillboard::drawInstanced(std::size_t ipart, std::size_t insta
     localInst.m_data = localInst.m_data + localInst.m_stride * instancedOffset;
     _bind_instancedAttribPointer_float(localInst, 11, m_InstBuffer.data());
   }
-
   glDrawArraysInstanced(mode, m_partInfo[ipart].m_offset, m_partInfo[ipart].m_size, instancedCount);
 #else
   glDrawArraysInstancedBaseInstance(mode, m_partInfo[ipart].m_offset, m_partInfo[ipart].m_size, instancedCount, instancedOffset);

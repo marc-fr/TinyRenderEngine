@@ -19,15 +19,24 @@ namespace modelTools {
 //=============================================================================
 // 2D ...
 
+/// \brief computeBarycenter2D
+/// \return the barycenter (xy) and the surface (z)
+glm::vec3 computeBarycenter2D(const std::vector<glm::vec2> &inEnvelop);
+
 /// @brief computeConvexeEnvelop2D_XY
 /// @param threshold
 void computeConvexeEnvelop2D_XY(const s_modelDataLayout &layout, const s_partInfo &part, const glm::mat4 &transform, const float threshold, std::vector<glm::vec2> &outEnvelop);
 
 /// @brief triangulate from a 2D envelop. Interior is defined as the "left"-side of the envelop's edges.
+/// @param listTriangles
 void triangulate(const std::vector<glm::vec2> &envelop, std::vector<uint> &listTriangles);
 
 //=============================================================================
 // 3D ...
+
+/// \brief computeBarycenter3D
+/// \return the barycenter (xyz) and the volume (w)
+glm::vec4 computeBarycenter3D(const s_modelDataLayout &layout, const s_partInfo &part);
 
 /// @brief computeConvexeSkin3D
 /// @param threshold

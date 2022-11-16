@@ -32,6 +32,7 @@ struct s_meshTriangulation
   std::size_t              m_meshPartEnvelop;
   std::size_t              m_meshPartTriangulated;
   std::size_t              m_meshPartWireframe;
+  std::size_t              m_meshPartCenter;
 
 
   s_meshTriangulation(tre::modelRaw2D &mesh)
@@ -40,6 +41,7 @@ struct s_meshTriangulation
     m_meshPartEnvelop = mesh.createPart(0);
     m_meshPartTriangulated = mesh.createPart(0);
     m_meshPartWireframe = mesh.createPart(0);
+    m_meshPartCenter = mesh.createPart(4);
   }
 
   void run()
@@ -90,6 +92,20 @@ struct s_meshTriangulation
     }
 
     m_mesh->colorizePart(m_meshPartWireframe, COLOR_MESH_EDGE);
+
+    {
+      const glm::vec2 center = tre::modelTools::computeBarycenter2D(m_envelop);
+      auto posIt = layout.m_positions.begin<glm::vec2>(m_mesh->partInfo(m_meshPartCenter).m_offset);
+      auto colorIt = layout.m_colors.begin<glm::vec4>(m_mesh->partInfo(m_meshPartCenter).m_offset);
+      *posIt++ = center - glm::vec2(0.04f, 0.f);
+      *posIt++ = center + glm::vec2(0.04f, 0.f);
+      *posIt++ = center - glm::vec2(0.f, 0.04f);
+      *posIt++ = center + glm::vec2(0.f, 0.04f);
+      *colorIt++ = glm::vec4(0.4f, 1.f, 0.4f, 1.f);
+      *colorIt++ = glm::vec4(0.4f, 1.f, 0.4f, 1.f);
+      *colorIt++ = glm::vec4(0.4f, 1.f, 0.4f, 1.f);
+      *colorIt++ = glm::vec4(0.4f, 1.f, 0.4f, 1.f);
+    }
   }
 
   std::size_t getTriangle(glm::vec2 pt) const
@@ -320,6 +336,7 @@ int main(int argc, char **argv)
     if (mainMode == MM_VIEW)
     {
       mesh2D.drawcall(data.m_meshPartWireframe, 1, false, GL_LINES);
+      mesh2D.drawcall(data.m_meshPartCenter, 1, false, GL_LINES);
     }
 
     mesh2D.drawcall(data.m_meshPartEnvelop, 1, false, GL_LINES);

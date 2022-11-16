@@ -80,6 +80,14 @@ bool model::reorganizeParts(const std::vector<std::string> &matchnames)
   return status;
 }
 
+void model::movePart(std::size_t ipart, std::size_t dstIndex)
+{
+  TRE_ASSERT(ipart < m_partInfo.size());
+  TRE_ASSERT(dstIndex < m_partInfo.size());
+  if (ipart != dstIndex)
+    std::swap(m_partInfo[ipart], m_partInfo[dstIndex]);
+}
+
 void model::mergeParts(std::size_t ipart, std::size_t jpart)
 {
   TRE_ASSERT(ipart < m_partInfo.size());
