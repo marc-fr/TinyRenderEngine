@@ -1,27 +1,135 @@
 # TinyRenderEngine
 
-Toolkit aimed to provide a foundation for the development of games or game engines
+Toolkit aimed at providing a foundation for the development of games or game engines.
 
 ## Description
 
-TinyRnederEngine provides utilities for the development of games or game engines.
-It is written in C++11, and the STL is used (so exeptions should not be disabled even if the library does not throw exceptions by itself).
+TinyRnederEngine provides various utilities for the development of games or game engines,
+such as mesh operations, contact algorithm, UI and wrappers for OpenGL API.
+It is designed to empower game programmers to create prototypes or released game.
+It favors simplicity to embed and to use. 
+
+It is written in C++11, with the usage of the STL.
 Usage of third-parties is kept limited, or is optional.
-It contains:
-- contact algorithm (2D and 3D), 
-- mesh utilities (handle mesh data, baking, wrapper to OpenGL API, transform meshes, compute bounds, compute LOD),
-- texture utilities (baking, wrapper to OpenGL API, sample textures, compute cube-map),
-- shader utilities (wrapper to OpenGL API, basic materials),
-- render-target utilities (wrapper to OpenGL API, basic post-effects),
-- text rendering,
-- ui (widget based)
-- profiler
-- audio-mixer (wrapper to SDL2 API)
+The main target platform is desktop that supports OpenGL (primilary Windows and Linux).
+The web-assembly platform is also supported, with the help of [Emscriten](https://emscripten.org/) and the compatibility with OpenGL ES 3. 
 
-It is not a game engine, as this library does not contain entity-managment, neither game-loop implementation, neither game editor.
+TinyRnederEngine is not a game engine.
+Indeed, it does not implement an entity managment, neither game-loop logic, neither a game editor.
 
-The main target platform is desktop on Windows and Linux.
-The web-assembly platform is also supported, through the compatibility with OpenGL ES 3 and [Emscriten](https://emscripten.org/).
+## Usage
+
+No specific build process is required. 
+You can either build a static library from it (a CMake project is included, that handles being included from your root project),
+either add the sources files into your existing project.
+
+Some examples are provided in the [tests](./tests) directory.
+
+## Features
+
+### Contact algorithms (2D and 3D)
+
+Contact algorithms with various geometric objects, in 2D and 3D, are implemented:
+
+* point in object: it can additionally return the penetration distance to the closest border  
+  ![contact-2D-point](doc/contact-2D-point.jpg)
+
+* raycast in object
+  ![doc/contact-2D-raycast](doc/contact-2D-raycast.jpg)
+
+* object in object: it can additionally return the barycenter of the interpenetration, with the minimal translation needed to make the objects not penetrating with each others.
+  ![contact-2D-shape-penetration](doc/contact-2D-shape-penetration.jpg)
+  ![contact-3D-box-penetration](doc/contact-3D-box-penetration.jpg)
+  ![contact-3D-shape-penetration](doc/contact-3D-shape-penetration.jpg)   
+
+
+### Mesh operations
+
+Besides a light wrapper to OpenGL that holds GPU-buffers handlers and that encapsulates draw-call commands,
+some mesh-processing algorithms are implemented.
+These algorithms are not designed to be run in a game context or a real-time context,
+but for pre-processing purpose.
+
+* compute of the bounding-box
+
+* compute of the barycentric center, the aera (in 2D) and the volume (3D)
+
+* compute of the convexe hull
+  ![mesh-3D-convexe-hull](doc/mesh-3D-convexe-hull.jpg)
+
+* simplification by reducing the number of vertices (**WIP**)
+  ![mesh-3D-simplify](doc/mesh-3D-simplify.jpg)
+
+* triangulation (in 2D) and tetrahedrization (in 3D) (**WIP**)
+  ![mesh-2D-triangulation](doc/mesh-2D-triangulation.jpg)
+  ![mesh-3D-tetrahedrization](doc/mesh-3D-tetrahedrization.jpg)
+
+
+### Textures utilities
+
+Handeling of textures can be tricky when dealing with formats and compression across OpenGL versions.
+A wrapper to OpenGL is implemented to take account of various cases:
+```
+tre::texture::MMASK_MIPMAP             : tell to OpenGL to automatically generate the mipmaps.
+tre::texture::MMASK_COMPRESS           : compress to native OpenGL compressed texture
+tre::texture::MMASK_ANISOTROPIC        : tell to OpenGL to use the anisotropic filtering (it requires MIPMAP)
+tre::texture::MMASK_ALPHA_ONLY         : only take the alpha channel
+tre::texture::MMASK_RG_ONLY            : only take the red-green channels
+tre::texture::MMASK_FORCE_NO_ALPHA     : only take the red-green-blue channels
+tre::texture::MMASK_NEAREST_MAG_FILTER : tell to OpenGL to use the nearest magnificate-filtering (default is linear)
+```
+
+Compression algorithms have been implemented, even if the OpenGL drivers can acheive it on desktop platforms.
+The proposed implementation is simple but has limited features compared to standard implementations, like [ETCPACK](https://github.com/Ericsson/ETCPACK)
+
+Re-sampling methods are also available, that can transform the UV space.
+A good example is to generate the cube-map faces from a single map in the equirectangular-spherical projection.
+
+
+### Basic materials
+
+A basic material library is proposed, that allows quick prototyping with a lot of combinaisons of texturing and lighting.
+The generated shaders can be overwritten for more complexe rendering.
+
+* Diffuse color options: uniform-color, vertex-color, textured
+* Lighting options: unidirectional light, point lights, shadow casting from the unidirectional light and the point lights
+* Lighting models: Phong, BRDF
+* Other features: texture altas and blending, soft-distance fadeout, instanced orientation and color  
+
+Example: instanced billboards, textured and lighted:
+```
+  shaderInstancedBB.loadShader(tre::shader::PRGM_2Dto3D,
+                               tre::shader::PRGM_TEXTURED |
+                               tre::shader::PRGM_LIGHT_SUN | tre::shader::PRGM_SHADOW_SUN |
+                               tre::shader::PRGM_UNIPHONG |
+                               tre::shader::PRGM_INSTANCED | tre::shader::PRGM_INSTCOLOR | tre::shader::PRGM_ROTATION);
+
+```
+
+
+### Graphical user interface
+
+A G.U.I toolkit is provided, that comes with a text-rendering helper and a font management.
+Note that [ImGUI](https://github.com/ocornut/imgui) is a powerful alternative to the present implementation,
+even though the present implementation allows to bind callbacks and supports animations.
+
+![UI-example](doc/UI-example.jpg)
+
+
+### Profiler
+
+A basic profiler is provided.
+
+The code should be intrumentalized with `TRE_PROFILEDSCOPE("name", scoped-unique-cpp-name);`
+, resulting ![screenshot](doc/profiler-screenshot-1.jpg) 
+
+
+### Audio mixer
+
+A wrapper to the SDL2 audio API is implemented.
+It also helps to bake audio files.
+This is an optional alternative to SDL_Mixer.
+
 
 ## Dependencies
 
@@ -29,160 +137,12 @@ The web-assembly platform is also supported, through the compatibility with Open
 
 * SDL2
 
-* SDL_Image (optionnal)
-
 * [glm](https://glm.g-truc.net/0.9.9/index.html)
 
-* freetype (optionnal)
+* freetype (optional)
 
-* libTIFF (optionnal)
+* SDL_Image (optional)
 
-* [opus](https://opus-codec.org) (optionnal)
+* [libTIFF](http://www.libtiff.org) (optional)
 
-## Code sample
-
-```cpp
-int main(int argc, char **argv)
-{
-  tre::windowHelper myWindow; // a helper provided by the library
-
-  if (!myWindow.SDLInit(SDL_INIT_VIDEO, "window name", SDL_WINDOW_RESIZABLE))
-    return -1;
-
-  if (!myWindow.OpenGLInit())
-    return -2;
-
-  // - Upload mesh
-
-  tre::modelRaw2D mesh2D;
-
-  // [...] <- my mesh loading (WaveFront file, procedural, ...)
-
-  mesh2D.loadIntoGPU();
-
-  // - Load shaders
-
-  tre::shader shaderMainMaterial;
-  shaderMainMaterial.loadShader(tre::shader::PRGM_2D, tre::shader::PRGM_COLOR); // just a solid-color mat, without lighting.
-
-  tre::shader shaderDataVisu;
-  {
-    const char *srcFrag_Color = /* ... */;
-
-    tre::shader::s_layout shLayout(tre::shader::PRGM_2D, tre::shader::PRGM_COLOR | tre::shader::PRGM_UNICOLOR);
-
-    shaderDataVisu.loadCustomShader(shLayout, srcFrag_Color, "dataVisualisation");
-  }
-
-  // - load UI
-
-  tre::font font;
-#ifdef TRE_WITH_FREETYPE
-  std::vector<unsigned> texSizes = { 64, 20, 12 };
-  font.loadNewFontMapFromTTF("...", texSizes);
-#else
-  font.loadNewFontMapFromBMPandFNT("...");
-#endif
-
-  tre::baseUI2D bUI_main;
-  bUI_main.set_defaultFont(&font);
-  tre::ui::window &wUI_main = *bUI_main.create_window(); // this is bad (no check on null-ptr dereference)
-  wUI_main.set_layoutGrid(3, 2);
-  
-  // [...] <- my UI creation
-
-  bUI_main.loadShader();
-  bUI_main.loadIntoGPU();
-
-  // - scene and event variables
-
-  SDL_Event event;
-
-  // - init rendering
-
-  glBindFramebuffer(GL_FRAMEBUFFER,0);
-  glDisable(GL_DEPTH_TEST);
-
-  // - MAIN LOOP ------------
-
-  while(!myWindow.m_controls.m_quit)
-  {
-    // event actions + updates --------
-
-    myWindow.m_controls.newFrame();
-
-    //-> SDL events
-    while(SDL_PollEvent(&event) == 1)
-    {
-      myWindow.SDLEvent_onWindow(event);
-      myWindow.m_controls.treatSDLEvent(event);
-      // [...] <- my events
-    }
-
-    // [ ... ] <- my logic
-
-    // [ ... ] <- and maybe mesh updates
-
-    mesh2D.updateIntoGPU();
-
-    // main render pass -------------
-
-    glViewport(0, 0, myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
-    glClear(GL_COLOR_BUFFER_BIT);
-
-    // - render mesh
-
-    mesh2D.drawcall(0, 0, true); // just bind the VAO
-
-    glUseProgram(shaderDataVisu.m_drawProgram);
-    shaderDataVisu.setUniformMatrix(myWindow.m_matProjection2D);
-
-    const glm::vec4 uChoiceVisu(visuMode == 0 ? 1.f : 0.f,
-                                visuMode == 1 ? 1.f : 0.f,
-                                visuMode == 2 ? 1.f : 0.f,
-                                visuMode == 3 ? 1.f : 0.f);
-    glUniform4fv(shaderDataVisu.getUniformLocation(tre::shader::uniColor), 1, glm::value_ptr(uChoiceVisu));
-
-    mesh2D.drawcall(data.m_meshPartTriangulated, 1, false, GL_TRIANGLES);
-
-    glUseProgram(shaderMainMaterial.m_drawProgram);
-    shaderMainMaterial.setUniformMatrix(myWindow.m_matProjection2D);
-
-    mesh2D.drawcall(data.m_meshPartWireframe, 1, false, GL_LINES);
-
-    mesh2D.drawcall(data.m_meshPartEnvelop, 1, false, GL_LINES);
-
-    tre::IsOpenGLok("main render pass - draw meshes");
-
-    // - render UI
-
-    bUI_main.updateCameraInfo(myWindow.m_matProjection2D, myWindow.m_resolutioncurrent);
-    bUI_main.updateIntoGPU();
-    bUI_main.draw();
-
-    tre::IsOpenGLok("UI render pass");
-
-    // end render pass --------------
-
-    SDL_GL_SwapWindow( myWindow.m_window );
-  }
-
-  shaderMainMaterial.clearShader();
-  shaderDataVisu.clearShader();
-
-  mesh2D.clearGPU();
-
-  font.clear();
-
-  bUI_main.clear();
-  bUI_main.clearGPU();
-  bUI_main.clearShader();
-
-  myWindow.OpenGLQuit();
-  myWindow.SDLQuit();
-
-  TRE_LOG("Program finalized with success");
-
-  return 0;
-}
-```
+* [opus](https://opus-codec.org) (optional)
