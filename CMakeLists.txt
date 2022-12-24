@@ -96,7 +96,10 @@ endif()
 
 find_package(SDL2       REQUIRED)
 find_package(SDL2_image )
+
+set(OpenGL_GL_PREFERENCE GLVND)
 find_package(OpenGL     REQUIRED)
+
 find_package(Freetype   )
 find_package(TIFF       )
 find_package(Opus       )
