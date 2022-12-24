@@ -550,12 +550,12 @@ protected:
   /// @{
 public:
   static const std::size_t s_textureSlotsCount = 4;
-  std::size_t addTexture(texture *t); ///< Add a new texture. Returns the slot id. The baseUI does not take ownership of the texture.
-  texture     *getTexture(uint id) const {  return (id < s_textureSlotsCount) ? m_textures[id] : nullptr; }
-  std::size_t getTextureSlot(texture *t) const;
+  std::size_t    addTexture(const texture *t); ///< Add a new texture. Returns the slot id. The baseUI does not take ownership of the texture.
+  const texture *getTexture(uint id) const {  return (id < s_textureSlotsCount) ? m_textures[id] : nullptr; }
+  std::size_t    getTextureSlot(const texture *t) const;
 protected:
-  std::array<texture*, s_textureSlotsCount> m_textures; ///< Textures.
-  texture                                   m_textureWhite;
+  std::array<const texture*, s_textureSlotsCount> m_textures; ///< Textures.
+  texture                                         m_textureWhite;
   /// @}
 
   /// @name window

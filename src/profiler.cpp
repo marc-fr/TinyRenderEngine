@@ -289,6 +289,8 @@ bool profiler::acceptEvent(const glm::ivec2 &mousePosition)
 
   m_hoveredRecord = -1; // tmp, TODO have a timer
 
+  const double dxPixel = 2.f / m_viewportSize.x; // TODO, consider m_PV and m_matModel
+
   uint levelmax = 4;
   for (const s_record & rec : m_collectedRecords)
   {
@@ -301,7 +303,7 @@ bool profiler::acceptEvent(const glm::ivec2 &mousePosition)
   for (const s_record & rec : m_collectedRecords)
   {
     const double x0 = m_xStart + rec.m_start * m_dX / m_dTime;
-    const double x1 = x0 + rec.m_duration * m_dX / m_dTime;
+    const double x1 = std::max(x0 + rec.m_duration * m_dX / m_dTime, x0 + 2.f * dxPixel);
     TRE_ASSERT(rec.length() >= 2); // root + first-zone
     const uint level = rec.length() - 2;
 

@@ -40,7 +40,6 @@ void widgetTextTitle::compute_data()
 void window::set_visible(bool a_visible)
 {
   if (wvisible == a_visible) return;
-  m_isUpdateNeededData |= true;
   wvisible = a_visible;
   if (wvisible == false)
   {

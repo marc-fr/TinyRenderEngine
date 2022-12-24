@@ -331,8 +331,8 @@ int main(int argc, char **argv)
 {
   // - Arguments
 
-  char meshFile[128] = TESTIMPORTPATH "resources/objects.obj";
-  //char meshFile[128] = TESTIMPORTPATH "resources/test.obj";
+  char meshFile[256] = TESTIMPORTPATH "resources/objects.obj";
+  //char meshFile[256] = TESTIMPORTPATH "resources/test.obj";
 
   if (argc >= 2)
   {

@@ -170,7 +170,7 @@ void baseUI::clearGPU()
   m_textureWhite.clear();
 }
 
-std::size_t baseUI::addTexture(texture *t)
+std::size_t baseUI::addTexture(const texture *t)
 {
   for (std::size_t i = 0; i < m_textures.size(); ++i)
   {
@@ -187,7 +187,7 @@ std::size_t baseUI::addTexture(texture *t)
   return std::size_t(-1);
 }
 
-std::size_t baseUI::getTextureSlot(texture *t) const
+std::size_t baseUI::getTextureSlot(const texture *t) const
 {
   for (std::size_t i = 0; i < m_textures.size(); ++i)
   {

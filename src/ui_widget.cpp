@@ -269,6 +269,7 @@ void widgetTextEdit::acceptEvent(s_eventIntern &event)
   }
 
   // editing ...
+  // TODO: bug when editing UFT-8 characters (bad cursor position) ...
   if (wisEditing)
   {
     if (event.event.type == SDL_KEYDOWN)
@@ -369,7 +370,7 @@ uint widgetPicture::get_vcountText() const { return 0; }
 uint widgetPicture::get_textureSlot() const { return wtexId; }
 glm::vec2 widgetPicture::get_zoneSizeDefault() const
 {
-  texture *tex = get_parentUI()->getTexture(wtexId);
+  const texture *tex = get_parentUI()->getTexture(wtexId);
   if (tex == nullptr)
     return get_parentWindow()->resolve_sizeWH(s_size::ONE_PIXEL);
 
