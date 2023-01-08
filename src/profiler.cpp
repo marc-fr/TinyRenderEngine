@@ -362,6 +362,8 @@ bool profiler::loadIntoGPU(font *fontToUse)
   m_whiteTexture = new texture();
   m_whiteTexture->loadWhite();
 
+  m_enabled = true;
+
   return true;
 }
 

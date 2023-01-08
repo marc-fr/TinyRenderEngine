@@ -121,7 +121,7 @@ private:
   std::vector<s_record>    m_meanvalueRecords; // TODO: keep like this ??
   std::array<float, 0x100> m_timeOverFrames;
   uint                 m_frameIndex = 0;
-  bool                     m_enabled = true;
+  bool                     m_enabled = false;
   bool                     m_paused = false;
 
   s_context *get_threadContext() { return &m_context; } // TODO ...
