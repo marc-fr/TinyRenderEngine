@@ -86,15 +86,15 @@ struct s_taskMeshProcessingContext
 
     // show center
     {
-      const uint indices[] = { 0, 1, 2, 3, 4, 5};
+      const std::array<uint, 6> indices = { 0, 1, 2, 3, 4, 5};
       const float vertices[] = { m_centerAndVolume.x - 0.1f, m_centerAndVolume.y, m_centerAndVolume.z,
                                  m_centerAndVolume.x + 0.1f, m_centerAndVolume.y, m_centerAndVolume.z,
                                  m_centerAndVolume.x, m_centerAndVolume.y - 0.1f, m_centerAndVolume.z,
                                  m_centerAndVolume.x, m_centerAndVolume.y + 0.1f, m_centerAndVolume.z,
                                  m_centerAndVolume.x, m_centerAndVolume.y, m_centerAndVolume.z - 0.1f,
                                  m_centerAndVolume.x, m_centerAndVolume.y, m_centerAndVolume.z + 0.1f };
-      const float color[] = { 0.3f, 1.f, 0.3f, 1.f};
-      m_partDebug_Lines = m_meshDebug->createPartFromIndexes(indices, 6, vertices, color);
+      m_partDebug_Lines = m_meshDebug->createPartFromIndexes(indices, vertices);
+      m_meshDebug->colorizePart(m_partDebug_Lines, glm::vec4(0.3f, 1.f, 0.3f, 1.f));
     }
 
     systemtick frameDebug = systemclock::now();
@@ -193,9 +193,7 @@ struct s_taskMeshProcessingContext
       distanceNormalizedPerVertex[ivert] = expf(-1.e2f * distance);
     }
 
-    std::vector<GLuint> indicesOut(meshOriginIndiceCount);
-    for (std::size_t i = 0; i < meshOriginIndiceCount; ++i) indicesOut[i] = i;
-    const std::size_t partOut = meshOut.createPartFromIndexes(indicesOut.data(), meshOriginIndiceCount);
+    const std::size_t partOut = meshOut.createRawPart(meshOriginIndiceCount);
 
     const std::size_t meshOutIndiceStart = meshOut.layout().m_index[meshOut.partInfo(partOut).m_offset];
     tre::s_modelDataLayout::s_vertexData::iterator<glm::vec3> posIt = meshOut.layout().m_positions.begin<glm::vec3>(meshOutIndiceStart);
@@ -238,9 +236,7 @@ struct s_taskMeshProcessingContext
     if (inTetraCount == 0)
       return meshOut.createRawPart(0);
 
-    std::vector<GLuint> indicesOut(outVertexCount);
-    for (std::size_t i = 0; i < outVertexCount; ++i) indicesOut[i] = i;
-    const std::size_t partOut = meshOut.createPartFromIndexes(indicesOut.data(), outVertexCount);
+    const std::size_t partOut = meshOut.createRawPart(outVertexCount);
 
     const std::size_t meshOutIndiceStart = meshOut.layout().m_index[meshOut.partInfo(partOut).m_offset];
     tre::s_modelDataLayout::s_vertexData::iterator<glm::vec3> posIt = meshOut.layout().m_positions.begin<glm::vec3>(meshOutIndiceStart);

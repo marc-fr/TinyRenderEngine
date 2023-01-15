@@ -219,7 +219,8 @@ public:
 
   virtual std::size_t copyPart(std::size_t ipart, std::size_t pcount = 1) override;
 
-  std::size_t createPartFromIndexes(const GLuint *pind, const std::size_t nind, const GLfloat *pvert = nullptr, const GLfloat * unicolor = nullptr);
+  std::size_t createPart(std::size_t indiceCount, std::size_t vertexCount, std::size_t &firstVertex); ///< create a uninitialized part. Reserve buffers only. Returns the vertex-offset.
+  std::size_t createPartFromIndexes(tre::span<GLuint> indices, const GLfloat *pvert = nullptr);
 
   std::size_t createRawPart(std::size_t count); ///< create a part with 1:1 relationship between indice and vertice.
   void        resizeRawPart(std::size_t ipart, std::size_t count); ///< resize the raw-part (may recompute index-buffer)

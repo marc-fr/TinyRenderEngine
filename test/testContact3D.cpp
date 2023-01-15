@@ -89,11 +89,7 @@ bool sceneObjectPoint::rayTrace(const glm::vec3 &origin, const glm::vec3 &direct
 
 sceneObjectTetra::sceneObjectTetra(tre::modelIndexed *model, const glm::vec3 &pt0, const glm::vec3 &pt1, const glm::vec3 &pt2, const glm::vec3 &pt3) : sceneObjectBase(model)
 {
-  std::vector<GLuint> indexes;
-  indexes.resize(12);
-  for (unsigned i = 0; i< 12; ++i) indexes[i] = i;
-
-  m_part = model->createPartFromIndexes(indexes.data(), 12);
+  m_part = model->createRawPart(12);
 
   m_ptsTri_skin.resize(12);
 

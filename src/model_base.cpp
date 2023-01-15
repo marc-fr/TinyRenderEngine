@@ -1022,22 +1022,37 @@ void modelIndexed::resizePart(std::size_t ipart, std::size_t count)
   }
 }
 
-std::size_t modelIndexed::createPartFromIndexes(const GLuint *pind, const std::size_t nind, const GLfloat *pvert, const GLfloat * unicolor)
+std::size_t modelIndexed::createPart(std::size_t indiceCount, std::size_t vertexCount, std::size_t &firstVertex)
 {
-  TRE_ASSERT(pind != nullptr);
+  TRE_ASSERT(indiceCount != 0);
+  TRE_ASSERT(vertexCount != 0);
+  const std::size_t Nver0 = get_NextAvailable_vertex();
   // create the part
   const std::size_t newPartId = m_partInfo.size();
   m_partInfo.push_back(s_partInfo());
-  if (nind == 0)
-    return newPartId;
+  // reserve index-data
+  resizePart(newPartId, indiceCount);
+  // reserve vertex-data
+  reserveVertex(Nver0 + vertexCount);
+  // return
+  firstVertex = Nver0;
+  return newPartId;
+}
+
+std::size_t modelIndexed::createPartFromIndexes(tre::span<GLuint> indices, const GLfloat *pvert)
+{
+  TRE_ASSERT(!indices.empty());
+  // create the part
+  const std::size_t newPartId = m_partInfo.size();
+  m_partInfo.push_back(s_partInfo());
   const std::size_t Nver0 = get_NextAvailable_vertex();
-  resizePart(newPartId, nind);
+  resizePart(newPartId, indices.size());
   s_partInfo & newPart = m_partInfo[newPartId];
   // copy and shift index data
-  for (std::size_t i=0; i<nind; ++i) m_IBuffer[newPart.m_offset + i] = Nver0 + pind[i]; //shift !
+  for (std::size_t i=0; i< indices.size(); ++i) m_IBuffer[newPart.m_offset + i] = Nver0 + indices[i]; //shift !
   // compute size of vertices to append // TODO : gore but works
   std::size_t Nmaxvert = 0;
-  for (std::size_t i=0; i<nind; ++i) { if (pind[i] > Nmaxvert) Nmaxvert = pind[i]; }
+  for (std::size_t i=0; i< indices.size(); ++i) { if (indices[i] > Nmaxvert) Nmaxvert = indices[i]; }
   if (Nmaxvert > 0) Nmaxvert++;
   // copy vertex data
   reserveVertex(Nver0 + Nmaxvert);
@@ -1049,18 +1064,6 @@ std::size_t modelIndexed::createPartFromIndexes(const GLuint *pind, const std::s
       m_layout.m_positions[Nver0+v][0] = pvert[v*3+0];
       m_layout.m_positions[Nver0+v][1] = pvert[v*3+1];
       m_layout.m_positions[Nver0+v][2] = pvert[v*3+2];
-    }
-  }
-  // color if present
-  if (unicolor != nullptr)
-  {
-    TRE_ASSERT(m_layout.m_colors.m_size == 4);
-    for (std::size_t v=0; v<Nmaxvert; ++v)
-    {
-      m_layout.m_colors[Nver0+v][0] = unicolor[0];
-      m_layout.m_colors[Nver0+v][1] = unicolor[1];
-      m_layout.m_colors[Nver0+v][2] = unicolor[2];
-      m_layout.m_colors[Nver0+v][3] = unicolor[3];
     }
   }
   // bound-box

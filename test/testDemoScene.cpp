@@ -53,7 +53,7 @@ int main(int argc, char **argv)
        10.f,  10.f,  10.f,
        10.f, -10.f, -10.f,
        10.f,  10.f, -10.f };
-    const GLuint cubeind[] = {
+    const std::array<GLuint, 36> cubeind = {
        1, 2, 0,       3, 6, 2,
        7, 4, 6,       5, 0, 4,
        6, 0, 2,       3, 5, 7,
@@ -61,7 +61,7 @@ int main(int argc, char **argv)
        7, 5, 4,       5, 1, 0,
        6, 4, 0,       3, 1, 5 };
 
-    worldSkyboxModel.createPartFromIndexes(cubeind, 36, cubepos, nullptr);
+    worldSkyboxModel.createPartFromIndexes(cubeind, cubepos);
 
     worldSkyboxModel.loadIntoGPU();
   }

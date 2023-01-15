@@ -17,18 +17,14 @@ std::size_t modelIndexed::createPartFromPrimitive_box(const glm::mat4 &transform
   const glm::vec3 pt110 = transform[3] + transform[0] * halfSize + transform[1] * halfSize - transform[2] * halfSize;
   const glm::vec3 pt111 = transform[3] + transform[0] * halfSize + transform[1] * halfSize + transform[2] * halfSize;
 
-  const std::size_t indiceAddCount = 36;
-
-  const GLuint bufferInd[] = { 0, 1, 2, 3, 0, 2, //face Z-
-                               4, 6, 5, 7, 6, 4, //face Z+
-                               8, 9,10,11, 8,10, //face X-
-                              12,14,13,15,14,12, //face X+
-                              16,18,17,19,18,16, //face Y-
-                              20,21,22,23,20,22, //face Y+
+  const std::array<GLuint, 36> bufferInd = { 0, 1, 2, 3, 0, 2, //face Z-
+                                             4, 6, 5, 7, 6, 4, //face Z+
+                                             8, 9,10,11, 8,10, //face X-
+                                            12,14,13,15,14,12, //face X+
+                                            16,18,17,19,18,16, //face Y-
+                                            20,21,22,23,20,22, //face Y+
   };
-  TRE_ASSERT(sizeof(bufferInd) == sizeof(GLuint) * indiceAddCount);
-
-  const std::size_t partId = createPartFromIndexes((GLuint*)bufferInd, indiceAddCount, nullptr, nullptr);
+  const std::size_t partId = createPartFromIndexes(bufferInd, nullptr);
   m_partInfo[partId].m_name = "generated-box";
 
   const GLuint ver0 = m_layout.m_index[partInfo(partId).m_offset];
@@ -124,18 +120,15 @@ std::size_t modelIndexed::createPartFromPrimitive_box_wireframe(const glm::mat4 
   const glm::vec3 pt110 = transform[3] + transform[0] * halfSize + transform[1] * halfSize - transform[2] * halfSize;
   const glm::vec3 pt111 = transform[3] + transform[0] * halfSize + transform[1] * halfSize + transform[2] * halfSize;
 
-  const std::size_t indiceAddCount = 48;
-
-  const GLuint bufferInd[] = { 0, 1, 1, 3, 3, 2, 2, 0, //face X-
-                               4, 5, 5, 7, 7, 6, 6, 4, //face X+
-                               0, 1, 1, 5, 5, 4, 4, 0, //face Y-
-                               3, 2, 2, 6, 6, 7, 7, 3, //face Y+
-                               0, 2, 2, 6, 6, 4, 4, 0, //face Z-
-                               3, 7, 7, 5, 5, 1, 1, 3, //face Z+
+  const std::array<GLuint, 48> bufferInd = { 0, 1, 1, 3, 3, 2, 2, 0, //face X-
+                                             4, 5, 5, 7, 7, 6, 6, 4, //face X+
+                                             0, 1, 1, 5, 5, 4, 4, 0, //face Y-
+                                             3, 2, 2, 6, 6, 7, 7, 3, //face Y+
+                                             0, 2, 2, 6, 6, 4, 4, 0, //face Z-
+                                             3, 7, 7, 5, 5, 1, 1, 3, //face Z+
   };
-  TRE_ASSERT(sizeof(bufferInd) == sizeof(GLuint) * indiceAddCount);
 
-  const std::size_t partId = createPartFromIndexes((GLuint*)bufferInd, indiceAddCount, nullptr, nullptr);
+  const std::size_t partId = createPartFromIndexes(bufferInd, nullptr);
   m_partInfo[partId].m_name = "generated-box-wireframe";
 
   const GLuint ver0 = m_layout.m_index[partInfo(partId).m_offset];
