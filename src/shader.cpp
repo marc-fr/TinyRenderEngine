@@ -8,11 +8,7 @@ namespace tre {
 
 bool shader::loadShader(e_category cat, int flags, const char *pname)
 {
-  if (m_drawProgram!=0)
-  {
-    TRE_LOG("Program already loaded in that shader instance");
-    return false;
-  }
+  TRE_ASSERT(m_drawProgram == 0);
 
   //-- Layout
 
@@ -42,11 +38,7 @@ bool shader::loadShader(e_category cat, int flags, const char *pname)
 
 bool shader::loadCustomShader(const s_layout & shaderLayout , const char * sourceMainFrag, const char * pname)
 {
-  if (m_drawProgram!=0)
-  {
-    TRE_LOG("Program already loaded in that object");
-    return false;
-  }
+  TRE_ASSERT(m_drawProgram == 0);
 
   //-- Layout
 
@@ -80,11 +72,7 @@ bool shader::loadCustomShader(const s_layout & shaderLayout , const char * sourc
 
 bool shader::loadCustomShaderWithGeom(const s_layout & shaderLayout , const char * sourceFullGeom, const char * sourceFullFrag, const char * pname)
 {
-  if (m_drawProgram!=0)
-  {
-    TRE_LOG("program already loaded in that object");
-    return false;
-  }
+  TRE_ASSERT(m_drawProgram == 0);
 
   //-- Layout
 
@@ -235,8 +223,7 @@ bool shader::activeUBO_sunLight()
 
   const GLuint index = glGetUniformBlockIndex(m_drawProgram, "s_sunlight");
   glUniformBlockBinding(m_drawProgram, index, UBOhandle_sunLight.m_bindpoint);
-  IsOpenGLok("shader::activeUBO_sunLight");
-  return true;
+  return IsOpenGLok("shader::activeUBO_sunLight");
 }
 
 // ----------------------------------------------------------------------------
@@ -249,8 +236,7 @@ bool shader::activeUBO_sunShadow()
 
   const GLuint index = glGetUniformBlockIndex(m_drawProgram, "s_sunshadow");
   glUniformBlockBinding(m_drawProgram, index, UBOhandle_sunShadow.m_bindpoint);
-  IsOpenGLok("shader::activeUBO_sunShadow");
-  return true;
+  return IsOpenGLok("shader::activeUBO_sunShadow");
 }
 
 // ----------------------------------------------------------------------------
@@ -263,8 +249,7 @@ bool shader::activeUBO_ptsLight()
 
   const GLuint index = glGetUniformBlockIndex(m_drawProgram, "s_ptslight");
   glUniformBlockBinding(m_drawProgram, index, UBOhandle_ptsLight.m_bindpoint);
-  IsOpenGLok("shader::activeUBO_ptsLight");
-  return true;
+  return IsOpenGLok("shader::activeUBO_ptsLight");
 }
 
 // ----------------------------------------------------------------------------
@@ -277,9 +262,9 @@ bool shader::activeUBO_ptsShadow()
 
   const GLuint index = glGetUniformBlockIndex(m_drawProgram, "s_ptsshadow");
   glUniformBlockBinding(m_drawProgram, index, UBOhandle_ptsShadow.m_bindpoint);
-  IsOpenGLok("shader::activeUBO_ptsShadow");
-  return true;
+  return IsOpenGLok("shader::activeUBO_ptsShadow");
 }
+
 // ----------------------------------------------------------------------------
 
 void shader::clearUBO()
@@ -288,6 +273,18 @@ void shader::clearUBO()
   UBOhandle_sunShadow.clear();
   UBOhandle_ptsLight.clear();
   UBOhandle_ptsShadow.clear();
+}
+
+// ----------------------------------------------------------------------------
+
+bool shader::activeUBO_custom(const s_UBOhandle &ubo, const char *name)
+{
+  TRE_ASSERT(m_drawProgram!=0);
+  TRE_ASSERT(ubo.m_bindpoint != GLuint(-1) && ubo.m_buffersize != 0);
+
+  const GLuint index = glGetUniformBlockIndex(m_drawProgram, name);
+  glUniformBlockBinding(m_drawProgram, index, ubo.m_bindpoint);
+  return IsOpenGLok("shader::activeUBO_custom");
 }
 
 // ----------------------------------------------------------------------------

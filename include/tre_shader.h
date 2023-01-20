@@ -18,7 +18,7 @@ namespace tre {
 class shader : public shaderGenerator
 {
 public:
-  shader() : shaderGenerator(), m_uniformVars(int(NCOMUNIFORMVAR),-2) {}
+  shader() : shaderGenerator() { m_uniformVars.fill(-2); }
   shader(const shader &) = delete;
   shader(shader &&other) { *this = std::move(other); }
   ~shader() { TRE_ASSERT(m_drawProgram==0); }
@@ -131,9 +131,24 @@ public:
   bool activeUBO_ptsShadow(); ///< Create the UBO if needed, and bind it to the current shader
   static void updateUBO_ptsShadow(const s_UBOdata_ptsShadow &data) { UBOhandle_ptsShadow.update(static_cast<const void*>(&data)); }
 
-  // UBO clear
+  static void clearUBO(); ///< Clear all (predefined) UBOs
 
-  static void clearUBO();
+  /**
+   * @brief The s_UBOhandle struct
+   */
+  struct s_UBOhandle
+  {
+    GLuint  m_handle = 0;             ///< GPU buffer attached to the UBO
+    GLuint  m_bindpoint = GLuint(-1); ///< shader binding-point for the UBO
+    uint    m_buffersize = 0;         ///< Buffer byte-size
+    s_UBOhandle() {}
+    ~s_UBOhandle() { TRE_ASSERT(m_handle==0); }
+    void create(uint sizeofdata);
+    void update(const void* data);
+    void clear();
+  };
+
+  bool activeUBO_custom(const s_UBOhandle &ubo, const char *name); ///< Bind a custom UBO to the current shader
 
 private:
 
@@ -144,20 +159,10 @@ private:
   std::string m_name;
   void compute_name(e_category cat, int flags, const char * pname); ///< Compute the name of the shader.
 
-  std::vector<GLint> m_uniformVars;
+  std::array<GLint, NCOMUNIFORMVAR> m_uniformVars;
 
   static GLuint UBObindpoint_incr;
-  struct s_UBOhandle
-  {
-    GLuint   m_handle = 0;
-    GLuint   m_bindpoint = GLuint(-1);
-    uint m_buffersize = 0;
-    s_UBOhandle() {}
-    ~s_UBOhandle() { TRE_ASSERT(m_handle==0); }
-    void create(uint sizeofdata);
-    void update(const void* data);
-    void clear();
-  };
+
   static s_UBOhandle UBOhandle_sunLight;
   static s_UBOhandle UBOhandle_sunShadow;
   static s_UBOhandle UBOhandle_ptsLight;
