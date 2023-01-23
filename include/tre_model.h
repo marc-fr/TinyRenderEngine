@@ -273,7 +273,7 @@ public:
 
 protected:
   virtual void resizeVertex(std::size_t count) override;
-  virtual void resizeIndex(std::size_t count) override { TRE_FATAL("should not be called"); }
+  virtual void resizeIndex(std::size_t) override { TRE_FATAL("should not be called"); }
 
 public:
   std::size_t createPart(std::size_t partSize);
@@ -314,8 +314,12 @@ public:
   static const int VB_TANGENT  = 0x0004;
   static const int VB_COLOR    = 0x0008;
 
-  modelStaticIndexed3D(const int flagsVB = 0) : m_flags(flagsVB | VB_POSITION) {} ///< VB_POSITION is implicit, no need to specify it
+  modelStaticIndexed3D() = default;
+  modelStaticIndexed3D(int flags) : m_flags(flags | VB_POSITION) {}
   virtual ~modelStaticIndexed3D() { TRE_ASSERT(m_VBufferHandle == 0); }
+
+  void setFlags(int flags) { TRE_ASSERT(m_VBufferHandle == 0 && m_VBuffer.empty()); m_flags = flags | VB_POSITION; }
+  int flags() const { return m_flags; }
 
 protected:
   virtual void resizeVertex(std::size_t count) override;
@@ -332,8 +336,8 @@ protected:
   void loadIntoGPU_VertexBuffer(); ///< [intern] only bind the buffer and set the attribute pointer
 
 protected:
-  int m_flags;
   std::vector<GLfloat> m_VBuffer; ///< per-Vertex Buffer
+  int    m_flags = VB_POSITION;
   GLuint m_VBufferHandle = 0;
 };
 
@@ -347,9 +351,19 @@ protected:
 class modelSemiDynamic3D : public modelStaticIndexed3D
 {
 public:
-  modelSemiDynamic3D(const int flagVBstatic = 0, const int flagVBdynamic = 0) : m_flagsDynamic(flagVBdynamic), modelStaticIndexed3D(flagVBstatic)
-  { m_flags &= ~flagVBdynamic; TRE_ASSERT((m_flags & m_flagsDynamic) == 0x0); /*enforce unique flags*/ }
+  modelSemiDynamic3D() = default;
+  modelSemiDynamic3D(int flagsStatic, int flagDynamic) { setFlags(flagsStatic, flagDynamic); }
   virtual ~modelSemiDynamic3D() { TRE_ASSERT(m_VBufferHandleDyn == 0); }
+
+  void setFlags(int flagsStatic, int flagDynamic)
+  {
+    TRE_ASSERT(m_VBufferHandleDyn == 0 && m_VBufferDyn.empty());
+    TRE_ASSERT((flagsStatic & flagDynamic) == 0); // enforce unique flags
+    TRE_ASSERT(((flagsStatic | flagDynamic) & VB_POSITION) != 0); // enforce position
+    m_flags = flagsStatic;
+    m_flagsDynamic = flagDynamic;
+  }
+  int flagsDynamic() const { return m_flagsDynamic; }
 
 protected:
   virtual void resizeVertex(std::size_t count) override;
@@ -365,8 +379,8 @@ protected:
   void loadIntoGPU_VertexBuffer(const bool clearCPUbuffer = false); ///< [intern] only bind the buffer and set the attribute pointer
 
 protected:
-  int m_flagsDynamic = 0; ///< Store which data is dynamic
   std::vector<GLfloat> m_VBufferDyn; ///< per-Vertex Buffer (dynamic)
+  int m_flagsDynamic = 0; ///< Store which data is dynamic
   GLuint m_VBufferHandleDyn = 0;
 };
 
@@ -386,8 +400,16 @@ public:
   static const int VI_COLOR         = 0x0800;
   static const int VI_ROTATION      = 0x2000; // note: scalar
 
-  modelInstanced(const int flags = 0) : m_flagsInstanced(flags | VI_POSITION) {} ///< VI_POSITION is forced, no need to specify it
+  modelInstanced() = default;
+  modelInstanced(int flags) : m_flagsInstanced(flags | VI_POSITION) {}
   virtual ~modelInstanced() { TRE_ASSERT(m_InstBufferHandle == 0); }
+
+  void setFlagsInstanced(int flagsInstanced)
+  {
+    TRE_ASSERT(m_InstBufferHandle == 0 && m_InstBuffer.empty());
+    m_flagsInstanced = flagsInstanced | VI_POSITION;
+  }
+  int flagsInstanced() const { return m_flagsInstanced; }
 
   std::size_t sizeInstance() const { return const_cast<modelInstanced*>(this)->_layout().m_instanceCount; }
   void        resizeInstance(std::size_t newsize);
@@ -406,8 +428,8 @@ protected:
 
 protected:
   virtual s_modelDataLayout &_layout() = 0; // scaffolding
-  int m_flagsInstanced;
   std::vector<GLfloat> m_InstBuffer; ///< per-Instance Buffer
+  int    m_flagsInstanced = VI_POSITION;
   GLuint m_InstBufferHandle = 0;
 };
 
@@ -419,7 +441,8 @@ protected:
 class modelInstancedBillboard : public modelRaw2D, public modelInstanced
 {
 public:
-  modelInstancedBillboard(const int flags = 0) : modelRaw2D(), modelInstanced(flags) {}
+  modelInstancedBillboard() = default;
+  modelInstancedBillboard(int flagsInstanced) : modelInstanced(flagsInstanced) {}
 
   std::size_t createBillboard(const glm::vec4 & AxAyBxBy = glm::vec4(-1.f,-1.f,1.f,1.f), const glm::vec4 & AuAvBuBv = glm::vec4(0.f,1.f,1.f,0.f), const glm::vec4 & color = glm::vec4(1.f)); ///< returns the part where the billboard is created.
   std::size_t createBillboard_wireframe(const glm::vec4 & AxAyBxBy = glm::vec4(-1.f,-1.f,1.f,1.f), const glm::vec4 & color = glm::vec4(1.f)); ///< returns the part where the billboard is created.
@@ -443,7 +466,8 @@ protected:
 class modelInstancedMesh : public modelStaticIndexed3D, public modelInstanced
 {
 public:
-  modelInstancedMesh(const int flags = 0) : modelStaticIndexed3D(flags), modelInstanced(flags) {}
+  modelInstancedMesh() = default;
+  modelInstancedMesh(int flags, int flagsInstanced) : modelStaticIndexed3D(flags), modelInstanced(flagsInstanced) {}
 
 public:
   virtual bool read(std::istream & inbuffer) override { return modelStaticIndexed3D::read(inbuffer) && modelInstanced::read(inbuffer); }

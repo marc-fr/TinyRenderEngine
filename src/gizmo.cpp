@@ -22,11 +22,12 @@ static const glm::ivec4 ivec4ZERO = glm::ivec4(0);
 
 //----------------------------------------------------------------------------
 
-gizmo::gizmo() : m_model(modelSemiDynamic3D::VB_POSITION, modelSemiDynamic3D::VB_COLOR)
+gizmo::gizmo()
 {
   m_parentPureRotation = IDENTITY;
   m_parentTransform = IDENTITY;
   m_transform = IDENTITY;
+  m_model.setFlags(modelSemiDynamic3D::VB_POSITION, modelSemiDynamic3D::VB_COLOR);
 }
 
 //----------------------------------------------------------------------------

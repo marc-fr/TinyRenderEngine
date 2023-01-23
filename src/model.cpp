@@ -607,6 +607,8 @@ void modelStaticIndexed3D::loadIntoGPU_VertexBuffer()
 
 void modelSemiDynamic3D::resizeVertex(std::size_t count)
 {
+  TRE_ASSERT((m_flagsDynamic & m_flags) == 0); // enforce unique flags
+
   std::size_t sumSize = 0;
 
   if (m_flagsDynamic & VB_POSITION) sumSize += m_layout.m_positions.m_size = 3;

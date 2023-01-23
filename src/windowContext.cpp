@@ -49,7 +49,7 @@ bool windowContext::SDLInit(Uint32 sdl_init_flags, const char * windowname, Uint
                              m_displayModeWindow.w, m_displayModeWindow.h, SDL_WINDOW_OPENGL | sdl_window_flags);
   if (!m_window)
   {
-    SDL_Log("Couldn't create window: %s",SDL_GetError());
+    TRE_LOG("Couldn't create window " << SDL_GetError());
     return false;
   }
   // Misc

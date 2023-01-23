@@ -154,7 +154,7 @@ int main(int argc, char **argv)
   worldParticlesBB.createBillboard();
   worldParticlesBB.loadIntoGPU();
 
-  tre::modelInstancedMesh worldParticlesMesh(tre::modelInstanced::VI_ORIENTATION | tre::modelInstanced::VI_COLOR | tre::modelInstancedMesh::VB_NORMAL);
+  tre::modelInstancedMesh worldParticlesMesh(tre::modelInstancedMesh::VB_NORMAL, tre::modelInstanced::VI_ORIENTATION | tre::modelInstanced::VI_COLOR);
   worldParticlesMesh.createPartFromPrimitive_box(glm::mat4(1.f), 0.5f);
   worldParticlesMesh.createPartFromPrimitive_uvtrisphere(glm::mat4(1.f), 0.5f, 6, 6);
   worldParticlesMesh.loadIntoGPU();
