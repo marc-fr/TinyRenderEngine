@@ -28,7 +28,9 @@ public:
   SDL_DisplayMode m_displayModeWindow;
   bool            m_window_isfullscreen = false;
 
-  bool SDLInit(Uint32 sdl_init_flags, const char * windowname, Uint32 sdl_window_flags = 0, int gl_depth_bits = 24);
+  bool SDLInit(Uint32 sdl_init_flags, int gl_depth_bits = 24);
+
+  bool SDLCreateWindow(int initialWidth, int initialHeight, const char * windowname, Uint32 sdl_window_flags = 0); ///< Helper to create an OpenGL window. (not mandatory to use this.)
 
   void SDLEvent_newFrame() { m_viewportResized = false; }
 
@@ -60,7 +62,7 @@ public:
 
   bool OpenGLInit();
 
-  void OpenGLCamera(float near, float far, float fov);
+  void OpenGLCamera(float near, float far, float fov); ///< Helper for creating the projection matrix (stored in m_matProjection2D and m_matProjection3D)
 
   void OpenGLResize(const int width, const int height);
 

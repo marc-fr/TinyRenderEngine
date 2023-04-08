@@ -31,11 +31,19 @@ int main(int argc, char **argv)
   tre::windowContext::s_timer myTimings;
   tre::windowContext::s_view3D myView3D(&myWindow);
 
-  if (!myWindow.SDLInit(SDL_INIT_VIDEO, "test Demo scene", SDL_WINDOW_RESIZABLE))
+  if (!myWindow.SDLInit(SDL_INIT_VIDEO))
     return -1;
 
-  if (!myWindow.OpenGLInit())
+  // Retreive display information
+  SDL_DisplayMode currentdm;
+  SDL_GetDesktopDisplayMode(0,&currentdm);
+  TRE_LOG("SDL Desktop resolution : " << currentdm.w << " * " << currentdm.h);
+
+  if (!myWindow.SDLCreateWindow(int(currentdm.w * 0.8 / 8)*8, int(currentdm.h * 0.8 / 8)*8, "test Demo Scene", SDL_WINDOW_RESIZABLE))
     return -2;
+
+  if (!myWindow.OpenGLInit())
+    return -3;
 
   // - random generator
   srand(time(nullptr));

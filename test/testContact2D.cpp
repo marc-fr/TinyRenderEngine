@@ -253,11 +253,19 @@ int main(int argc, char **argv)
   tre::windowContext::s_controls myControls;
   tre::windowContext::s_view2D myView2D(&myWindow);
 
-  if (!myWindow.SDLInit(SDL_INIT_VIDEO, "test Contact 2D", SDL_WINDOW_RESIZABLE))
+  if (!myWindow.SDLInit(SDL_INIT_VIDEO))
     return -1;
 
-  if (!myWindow.OpenGLInit())
+  // Retreive display information
+  SDL_DisplayMode currentdm;
+  SDL_GetDesktopDisplayMode(0,&currentdm);
+  TRE_LOG("SDL Desktop resolution : " << currentdm.w << " * " << currentdm.h);
+
+  if (!myWindow.SDLCreateWindow(int(currentdm.w * 0.8 / 8)*8, int(currentdm.h * 0.8 / 8)*8, "test Contact 2D", SDL_WINDOW_RESIZABLE))
     return -2;
+
+  if (!myWindow.OpenGLInit())
+    return -3;
 
   // arguments
   std::string addmodel3D_path = TESTIMPORTPATH "resources/objects.obj";

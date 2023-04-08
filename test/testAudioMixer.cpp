@@ -193,11 +193,19 @@ static int app_init()
 {
   // - Init
 
-  if(!myWindow.SDLInit(SDL_INIT_VIDEO | SDL_INIT_AUDIO, "test Sound", SDL_WINDOW_RESIZABLE))
+  if(!myWindow.SDLInit(SDL_INIT_VIDEO | SDL_INIT_AUDIO))
     return -1;
 
+  // Retreive display information
+  SDL_DisplayMode currentdm;
+  SDL_GetDesktopDisplayMode(0,&currentdm);
+  TRE_LOG("SDL Desktop resolution : " << currentdm.w << " * " << currentdm.h);
+
+  if (!myWindow.SDLCreateWindow(int(currentdm.w * 0.8 / 8)*8, int(currentdm.h * 0.8 / 8)*8, "test Audio Mixer", SDL_WINDOW_RESIZABLE))
+    return -2;
+
   if(!myWindow.OpenGLInit())
-    return -1;
+    return -3;
 
   // -> Set pipeline state and clear the window
 

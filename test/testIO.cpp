@@ -60,8 +60,6 @@ bool test_bakePicture()
   }
 #endif
 
-  status &= tre::IsOpenGLok("test_bakePicture");
-
   container.flushAndCloseFile();
 
   return status;
@@ -173,7 +171,7 @@ int main(int argc, char **argv)
 
   tre::windowContext context;
 
-  if (!context.SDLInit(SDL_INIT_VIDEO, "no-window", SDL_WINDOW_HIDDEN))
+  if (!context.SDLInit(SDL_INIT_VIDEO))
   {
     std::cout << "[debug] Fail to initialize SDL2 : " << SDL_GetError() << std::endl;
     return -1;
@@ -183,18 +181,9 @@ int main(int argc, char **argv)
   if (!context.SDLImageInit(IMG_INIT_PNG))
   {
     std::cout << "[debug] Fail to initialize SDL_Image : " << IMG_GetError() << std::endl;
-    context.SDLQuit();
     return -1;
   }
 #endif
-
-  if (!context.OpenGLInit())
-  {
-    std::cout << SDL_GetError() << std::endl;
-    context.SDLImageQuit();
-    context.SDLQuit();
-    return -1;
-  }
 
   int Ntest = 0;
   int Nok = 0;
@@ -228,9 +217,6 @@ int main(int argc, char **argv)
 
   std::cout << "END: " << Nok << " PASSED , " << Ntest-Nok << " FAILED" << std::endl;
 
-  tre::IsOpenGLok("End");
-
-  context.OpenGLQuit();
   context.SDLImageQuit();
   context.SDLQuit();
 

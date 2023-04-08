@@ -60,11 +60,19 @@ static glm::mat3 mView = glm::mat3(1.f);
 
 static int app_init(int argc, char **argv)
 {
-  if (!myWindow.SDLInit(SDL_INIT_VIDEO, "test Texture compression", SDL_WINDOW_RESIZABLE))
+  if (!myWindow.SDLInit(SDL_INIT_VIDEO))
     return -1;
 
-  if (!myWindow.OpenGLInit())
+  // Retreive display information
+  SDL_DisplayMode currentdm;
+  SDL_GetDesktopDisplayMode(0,&currentdm);
+  TRE_LOG("SDL Desktop resolution : " << currentdm.w << " * " << currentdm.h);
+
+  if (!myWindow.SDLCreateWindow(int(currentdm.w * 0.8 / 8)*8, int(currentdm.h * 0.8 / 8)*8, "test Texture compression", SDL_WINDOW_RESIZABLE))
     return -2;
+
+  if (!myWindow.OpenGLInit())
+    return -3;
 
 #ifdef TRE_OPENGL_ES
   TRE_LOG("extensions: " << reinterpret_cast<const char*>(glGetString(GL_EXTENSIONS)));

@@ -6,7 +6,7 @@ namespace tre {
 
 // Root =======================================================================
 
-bool windowContext::SDLInit(Uint32 sdl_init_flags, const char * windowname, Uint32 sdl_window_flags, int gl_depth_bits)
+bool windowContext::SDLInit(Uint32 sdl_init_flags, int gl_depth_bits)
 {
   // Init SDL2
   if(SDL_Init(sdl_init_flags) < 0)
@@ -36,13 +36,17 @@ bool windowContext::SDLInit(Uint32 sdl_init_flags, const char * windowname, Uint
   // Double Buffer
   SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
   SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE  , gl_depth_bits);
-  // Retreive display information
-  SDL_DisplayMode currentdm;
-  SDL_GetDesktopDisplayMode(0,&currentdm);
-  m_displayModeWindow.w = int(currentdm.w * 0.8 / 8)*8;
-  m_displayModeWindow.h = int(currentdm.h * 0.8 / 8)*8;
-  TRE_LOG("SDL Desktop resolution : " << currentdm.w << " * " << currentdm.h);
-  TRE_LOG("SDL Window resolution : " << m_displayModeWindow.w << " * " << m_displayModeWindow.h);
+  // Misc
+  SDL_StopTextInput();
+  // End
+  return true;
+}
+
+bool windowContext::SDLCreateWindow(int initialWidth, int initialHeight, const char * windowname, Uint32 sdl_window_flags)
+{
+  m_displayModeWindow.w = initialWidth;
+  m_displayModeWindow.h = initialHeight;
+
   // Create Window
   m_window = SDL_CreateWindow(windowname,
                              SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
@@ -52,9 +56,8 @@ bool windowContext::SDLInit(Uint32 sdl_init_flags, const char * windowname, Uint
     TRE_LOG("Couldn't create window " << SDL_GetError());
     return false;
   }
-  // Misc
-  SDL_StopTextInput();
   // End
+  TRE_LOG("SDL Window created with resolution " << m_displayModeWindow.w << " * " << m_displayModeWindow.h);
   return true;
 }
 
@@ -81,14 +84,25 @@ bool windowContext::SDLEvent_onWindow(const SDL_Event & event)
     }
     else if (event.window.event == SDL_WINDOWEVENT_RESIZED)
     {
-      if (m_window_isfullscreen == false)
+      if (m_window_isfullscreen == true)
       {
-        TRE_LOG("Window resized (" << event.window.data1 << " * " << event.window.data2 << ")");
-        m_displayModeWindow.w = event.window.data1;
-        m_displayModeWindow.h = event.window.data2;
-        OpenGLResize(event.window.data1, event.window.data2);
-        return true;
+        // check if the window is no longer on full-screen.
+        // Note: it would be better to use (SDL_GetWindowFlags() & SDL_WINDOW_FULLSCREEN_DESKTOP) == SDL_WINDOW_FULLSCREEN_DESKTOP)
+        //       to check the actual state. Somehow, SDL_SetWindowFullscreen does not take account of other ways to set/unset full-screen.
+        SDL_DisplayMode currentdm;
+        SDL_GetWindowDisplayMode(m_window,&currentdm);
+        if (event.window.data1 < currentdm.w || event.window.data2 < currentdm.h)
+        {
+          TRE_LOG("Window full-screen mode has been lost. (Detection from window resize event.)");
+          m_window_isfullscreen = false;
+          SDL_SetWindowFullscreen(m_window,0); // force the SDL status
+        }
       }
+      TRE_LOG("Window resized (" << event.window.data1 << " * " << event.window.data2 << ")");
+      m_displayModeWindow.w = event.window.data1;
+      m_displayModeWindow.h = event.window.data2;
+      OpenGLResize(event.window.data1, event.window.data2);
+      return true;
     }
     else if (event.window.event == SDL_WINDOWEVENT_FOCUS_LOST)
     {
@@ -110,18 +124,14 @@ void windowContext::SDLToggleFullScreen()
   if (m_window_isfullscreen==true)
   {
     SDL_SetWindowFullscreen(m_window,0);
-    OpenGLResize(m_displayModeWindow.w,m_displayModeWindow.h);
     m_window_isfullscreen = false;
-    TRE_LOG("Out of full-screen (" << m_displayModeWindow.w << " * " << m_displayModeWindow.h << ")");
+    TRE_LOG("Request out of full-screen");
   }
   else
   {
     SDL_SetWindowFullscreen(m_window,SDL_WINDOW_FULLSCREEN_DESKTOP);
-    SDL_DisplayMode currentdm;
-    SDL_GetWindowDisplayMode(m_window,&currentdm);
-    OpenGLResize(currentdm.w,currentdm.h);
     m_window_isfullscreen = true;
-    TRE_LOG("Go full-screen (" << currentdm.w << " * " << currentdm.h << ")");
+    TRE_LOG("Request full-screen");
   }
 }
 
