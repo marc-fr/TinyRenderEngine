@@ -497,7 +497,7 @@ void window::acceptEvent(s_eventIntern &event)
   {
     if (m_isMoved)
     {
-      if (event.mouseLeftPressed)
+      if ((event.mouseButtonIsPressed & SDL_BUTTON_LMASK) != 0)
       {
         const glm::vec3 deltaMouse = event.mousePos - event.mousePosPrev;
         if (get_parentUI()->get_dimension() == 2)
@@ -513,7 +513,7 @@ void window::acceptEvent(s_eventIntern &event)
     }
     else
     {
-      const bool isClickedL = (event.event.type == SDL_MOUSEBUTTONDOWN && event.event.button.button == SDL_BUTTON_LEFT);
+      const bool isClickedL = (event.mouseButtonIsPressed & SDL_BUTTON_LMASK) != 0 && (event.mouseButtonPrev & SDL_BUTTON_LMASK) == 0;
       if (isClickedL && widTopBar->get_ishighlighted())
       {
         m_isMoved = true;

@@ -128,11 +128,15 @@ struct s_layoutGrid
 
 struct s_eventIntern
 {
-  SDL_Event event;
-  glm::vec3 mousePos; ///< mouse position (in the window's frame)
-  glm::vec3 mousePosPrev; ///< same as mousePos, but on last "pressed" event
-  bool mouseLeftPressed = false;
-  bool mouseRightPressed = false;
+  glm::vec3 mousePos;     ///< mouse position (in the window's frame)
+  glm::vec3 mousePosPrev; ///< same as mousePos, but on last mouse button-down event
+
+  uint mouseButtonIsPressed = 0; ///< a button is pressed. Use SDL_BUTTON_*MASK for masking.
+  uint mouseButtonPrev = 0;
+
+  uint keyDown = 0; ///< a key is begin pressed. Use SDLK_** for value.
+  const char *textInput = nullptr; ///< when using SDL_TextInput mode
+
   bool accepted = false;
 };
 
@@ -227,7 +231,7 @@ public:
   widget*               get_parent() const { TRE_ASSERT(m_parent != nullptr); return m_parent; }
   virtual window*       get_parentWindow() const { TRE_ASSERT(m_parent != nullptr); return m_parent->get_parentWindow(); }
   virtual tre::baseUI*  get_parentUI() const { TRE_ASSERT(m_parent != nullptr); return m_parent->get_parentUI(); }
-  virtual float         resolve_colorModifier() const { TRE_ASSERT(m_parent != nullptr); return (wisactive ? (wishighlighted ? 1.f : -0.3f) : 0.f) + m_parent->resolve_colorModifier(); }
+  virtual float         resolve_colorModifier() const { TRE_ASSERT(m_parent != nullptr); return (wisactive && wishighlighted ? 1.f : 0.f) + m_parent->resolve_colorModifier(); }
 private:
   widget *m_parent = nullptr;
   /// @}
@@ -341,6 +345,17 @@ public:
 
   virtual uint get_vcountLine() const;
   virtual void compute_data();
+};
+
+class widgetSlider : public widget
+{
+  widget_DECLARECONSTRUCTORS(widgetSlider)
+  widget_DECLARECOMMUNMETHODS()
+  widget_DECLAREATTRIBUTE(widgetSlider,float,valuemin,= 0.f, m_isUpdateNeededData)
+  widget_DECLAREATTRIBUTE(widgetSlider,float,valuemax,= 1.f, m_isUpdateNeededData)
+  widget_DECLAREATTRIBUTE(widgetSlider,float,value,= 0.f, m_isUpdateNeededData)
+  widget_DECLAREATTRIBUTE(widgetSlider,float,snapInterval, = 0.f, m_isUpdateNeededData) ///< Negative or zero value means no snapping
+  widget_DECLAREATTRIBUTE(widgetSlider,float,widthFactor, = 5.f, m_isUpdateNeededData) ///< Width/Height ratio
 };
 
 class widgetBoxCheck : public widget
@@ -483,6 +498,7 @@ public:
   window_DECLAREWIDGETHELPER(widgetPicture)
   window_DECLAREWIDGETHELPER(widgetBar)
   window_DECLAREWIDGETHELPER(widgetBarZero)
+  window_DECLAREWIDGETHELPER(widgetSlider)
   window_DECLAREWIDGETHELPER(widgetBoxCheck)
   window_DECLAREWIDGETHELPER(widgetLineChoice)
 

@@ -334,21 +334,21 @@ void baseUI2D::updateCameraInfo(const glm::mat3 &mProjView, const glm::ivec2 &sc
 
 bool baseUI2D::acceptEvent(const SDL_Event &event)
 {
-  eventState.event = event;
+  eventState.mouseButtonPrev = eventState.mouseButtonIsPressed;
+  eventState.keyDown = 0;
+  eventState.textInput = nullptr;
 
   switch(event.type)
   {
   case SDL_MOUSEBUTTONDOWN:
-    if      (event.button.button == SDL_BUTTON_LEFT ) eventState.mouseLeftPressed = true;
-    else if (event.button.button == SDL_BUTTON_RIGHT) eventState.mouseRightPressed = true;
+    eventState.mouseButtonIsPressed |= SDL_BUTTON(event.button.button); // BUTTON_{L,R,M,X1,X2}MASK
     eventState.mousePos.x = float(event.button.x);
     eventState.mousePos.y = float(event.button.y);
     eventState.mousePos.z = 0.f;
     eventState.mousePosPrev = eventState.mousePos;
     break;
   case SDL_MOUSEBUTTONUP:
-    if      (event.button.button == SDL_BUTTON_LEFT ) eventState.mouseLeftPressed = false;
-    else if (event.button.button == SDL_BUTTON_RIGHT) eventState.mouseRightPressed = false;
+    eventState.mouseButtonIsPressed &= ~ SDL_BUTTON(event.button.button); // BUTTON_{L,R,M,X1,X2}MASK
     eventState.mousePos.x = float(event.button.x);
     eventState.mousePos.y = float(event.button.y);
     eventState.mousePos.z = 0.f;
@@ -358,9 +358,18 @@ bool baseUI2D::acceptEvent(const SDL_Event &event)
     eventState.mousePos.y = float(event.button.y);
     eventState.mousePos.z = 0.f;
     break;
+  case SDL_KEYDOWN:
+    eventState.keyDown = event.key.keysym.sym;
+    break;
+  case SDL_TEXTINPUT:
+    eventState.textInput = event.text.text;
+    break;
+  default:
+    return false;
+    break;
   }
 
-  bool accepted = false;
+  eventState.accepted = false;
 
   for (ui::window * curw : windowsList)
   {
@@ -370,51 +379,44 @@ bool baseUI2D::acceptEvent(const SDL_Event &event)
     ui::s_eventIntern eventIntern = eventState;
     eventIntern.mousePosPrev = glm::vec3(projectWindowPointFromScreen(eventState.mousePosPrev, curw->get_mat3()), 0.f);
     eventIntern.mousePos     = glm::vec3(projectWindowPointFromScreen(eventState.mousePos, curw->get_mat3()), 0.f);
-    eventIntern.accepted     = accepted;
 
     curw->acceptEvent(eventIntern);
 
-    accepted |= eventIntern.accepted;
+    eventState.accepted |= eventIntern.accepted;
   }
 
-  return accepted;
+  return eventState.accepted;
 }
 
 bool baseUI2D::acceptEvent(glm::ivec2 mousePosition, bool mouseLEFT, bool mouseRIGHT)
 {
+  eventState.mouseButtonPrev = eventState.mouseButtonIsPressed;
+  eventState.keyDown = 0;
+  eventState.textInput = nullptr;
+
   eventState.mousePos = glm::vec3(mousePosition, 0.f);
 
-  eventState.event.type = SDL_MOUSEMOTION;
-  eventState.event.button.x = mousePosition.x;
-  eventState.event.button.y = mousePosition.y;
-
-  if (mouseLEFT && !eventState.mouseLeftPressed)
+  if (mouseLEFT && (eventState.mouseButtonPrev & SDL_BUTTON_LMASK) == 0)
   {
-    eventState.event.type = SDL_MOUSEBUTTONDOWN;
-    eventState.event.button.button = SDL_BUTTON_LEFT;
     eventState.mousePosPrev = eventState.mousePos;
+    eventState.mouseButtonIsPressed |= SDL_BUTTON_LMASK;
   }
-  else if (!mouseLEFT && eventState.mouseLeftPressed)
+  else if (!mouseLEFT && (eventState.mouseButtonPrev & SDL_BUTTON_LMASK) != 0)
   {
-    eventState.event.type = SDL_MOUSEBUTTONUP;
-    eventState.event.button.button = SDL_BUTTON_LEFT;
+    eventState.mouseButtonIsPressed &= ~SDL_BUTTON_LMASK;
   }
-  else if (mouseRIGHT && !eventState.mouseRightPressed)
+
+  if (mouseRIGHT && (eventState.mouseButtonPrev & SDL_BUTTON_RMASK) == 0)
   {
-    eventState.event.type = SDL_MOUSEBUTTONDOWN;
-    eventState.event.button.button = SDL_BUTTON_RIGHT;
     eventState.mousePosPrev = eventState.mousePos;
+    eventState.mouseButtonIsPressed |= SDL_BUTTON_RMASK;
   }
-  else if (!mouseRIGHT && eventState.mouseRightPressed)
+  else if (!mouseRIGHT && (eventState.mouseButtonPrev & SDL_BUTTON_RMASK) != 0)
   {
-    eventState.event.type = SDL_MOUSEBUTTONUP;
-    eventState.event.button.button = SDL_BUTTON_RIGHT;
+    eventState.mouseButtonIsPressed &= ~SDL_BUTTON_RMASK;
   }
 
-  eventState.mouseLeftPressed = mouseLEFT;
-  eventState.mouseRightPressed = mouseRIGHT;
-
-  bool accepted = false;
+  eventState.accepted = false;
 
   for (ui::window * curw : windowsList)
   {
@@ -424,14 +426,13 @@ bool baseUI2D::acceptEvent(glm::ivec2 mousePosition, bool mouseLEFT, bool mouseR
     ui::s_eventIntern eventIntern = eventState;
     eventIntern.mousePosPrev = glm::vec3(projectWindowPointFromScreen(eventState.mousePosPrev, curw->get_mat3()), 0.f);
     eventIntern.mousePos     = glm::vec3(projectWindowPointFromScreen(eventState.mousePos, curw->get_mat3()), 0.f);
-    eventIntern.accepted     = accepted;
 
     curw->acceptEvent(eventIntern);
 
-    accepted |= eventIntern.accepted;
+    eventState.accepted |= eventIntern.accepted;
   }
 
-  return accepted;
+  return eventState.accepted;
 }
 
 glm::vec2 baseUI2D::projectWindowPointFromScreen(const glm::vec2 &pixelCoords, const glm::mat3 &mModelWindow, bool isPosition) const
@@ -579,21 +580,21 @@ void baseUI3D::updateCameraInfo(const glm::mat4 &mProj, const glm::mat4 &mView, 
 
 bool baseUI3D::acceptEvent(const SDL_Event &event)
 {
-  eventState.event = event;
+  eventState.mouseButtonPrev = eventState.mouseButtonIsPressed;
+  eventState.keyDown = 0;
+  eventState.textInput = nullptr;
 
   switch(event.type)
   {
   case SDL_MOUSEBUTTONDOWN:
-    if      (event.button.button == SDL_BUTTON_LEFT ) eventState.mouseLeftPressed = true;
-    else if (event.button.button == SDL_BUTTON_RIGHT) eventState.mouseRightPressed = true;
+    eventState.mouseButtonIsPressed |= SDL_BUTTON(event.button.button); // BUTTON_{L,R,M,X1,X2}MASK
     eventState.mousePos.x = float(event.button.x);
     eventState.mousePos.y = float(event.button.y);
     eventState.mousePos.z = 0.f;
     eventState.mousePosPrev = eventState.mousePos;
     break;
   case SDL_MOUSEBUTTONUP:
-    if      (event.button.button == SDL_BUTTON_LEFT ) eventState.mouseLeftPressed = false;
-    else if (event.button.button == SDL_BUTTON_RIGHT) eventState.mouseRightPressed = false;
+    eventState.mouseButtonIsPressed &= ~SDL_BUTTON(event.button.button); // BUTTON_{L,R,M,X1,X2}MASK
     eventState.mousePos.x = float(event.button.x);
     eventState.mousePos.y = float(event.button.y);
     eventState.mousePos.z = 0.f;
@@ -603,12 +604,18 @@ bool baseUI3D::acceptEvent(const SDL_Event &event)
     eventState.mousePos.y = float(event.button.y);
     eventState.mousePos.z = 0.f;
     break;
+  case SDL_KEYDOWN:
+    eventState.keyDown = event.key.keysym.sym;
+    break;
+  case SDL_TEXTINPUT:
+    eventState.textInput = event.text.text;
+    break;
   default:
     return false;
     break;
   }
 
-  bool accepted = false;
+  eventState.accepted = false;
 
   for (ui::window * curw : windowsList)
   {
@@ -618,51 +625,44 @@ bool baseUI3D::acceptEvent(const SDL_Event &event)
     ui::s_eventIntern eventIntern = eventState;
     eventIntern.mousePosPrev = projectWindowPointFromScreen(glm::vec2(eventState.mousePosPrev), curw->get_mat4());
     eventIntern.mousePos     = projectWindowPointFromScreen(glm::vec2(eventState.mousePos), curw->get_mat4());
-    eventIntern.accepted     = accepted;
 
     curw->acceptEvent(eventIntern);
 
-    accepted |= eventIntern.accepted;
+    eventState.accepted |= eventIntern.accepted;
   }
 
-  return accepted;
+  return eventState.accepted;
 }
 
 bool baseUI3D::acceptEvent(glm::ivec2 mousePosition, bool mouseLEFT, bool mouseRIGHT)
 {
+  eventState.mouseButtonPrev = eventState.mouseButtonIsPressed;
+  eventState.keyDown = 0;
+  eventState.textInput = nullptr;
+
   eventState.mousePos = glm::vec3(mousePosition, 0.f);
 
-  eventState.event.type = SDL_MOUSEMOTION;
-  eventState.event.button.x = mousePosition.x;
-  eventState.event.button.y = mousePosition.y;
-
-  if (mouseLEFT && !eventState.mouseLeftPressed)
+  if (mouseLEFT && (eventState.mouseButtonPrev & SDL_BUTTON_LMASK) == 0)
   {
-    eventState.event.type = SDL_MOUSEBUTTONDOWN;
-    eventState.event.button.button = SDL_BUTTON_LEFT;
     eventState.mousePosPrev = eventState.mousePos;
+    eventState.mouseButtonIsPressed |= SDL_BUTTON_LMASK;
   }
-  else if (!mouseLEFT && eventState.mouseLeftPressed)
+  else if (!mouseLEFT && (eventState.mouseButtonPrev & SDL_BUTTON_LMASK) != 0)
   {
-    eventState.event.type = SDL_MOUSEBUTTONUP;
-    eventState.event.button.button = SDL_BUTTON_LEFT;
+    eventState.mouseButtonIsPressed &= ~SDL_BUTTON_LMASK;
   }
-  else if (mouseRIGHT && !eventState.mouseRightPressed)
+
+  if (mouseRIGHT && (eventState.mouseButtonPrev & SDL_BUTTON_RMASK) == 0)
   {
-    eventState.event.type = SDL_MOUSEBUTTONDOWN;
-    eventState.event.button.button = SDL_BUTTON_RIGHT;
     eventState.mousePosPrev = eventState.mousePos;
+    eventState.mouseButtonIsPressed |= SDL_BUTTON_RMASK;
   }
-  else if (!mouseRIGHT && eventState.mouseRightPressed)
+  else if (!mouseRIGHT && (eventState.mouseButtonPrev & SDL_BUTTON_RMASK) != 0)
   {
-    eventState.event.type = SDL_MOUSEBUTTONUP;
-    eventState.event.button.button = SDL_BUTTON_RIGHT;
+    eventState.mouseButtonIsPressed &= ~SDL_BUTTON_RMASK;
   }
 
-  eventState.mouseLeftPressed = mouseLEFT;
-  eventState.mouseRightPressed = mouseRIGHT;
-
-  bool accepted = false;
+  eventState.accepted = false;
 
   for (ui::window * curw : windowsList)
   {
@@ -672,14 +672,13 @@ bool baseUI3D::acceptEvent(glm::ivec2 mousePosition, bool mouseLEFT, bool mouseR
     ui::s_eventIntern eventIntern = eventState;
     eventIntern.mousePosPrev = projectWindowPointFromScreen(glm::vec2(eventState.mousePosPrev), curw->get_mat4());
     eventIntern.mousePos     = projectWindowPointFromScreen(glm::vec2(eventState.mousePos), curw->get_mat4());
-    eventIntern.accepted     = accepted;
 
     curw->acceptEvent(eventIntern);
 
-    accepted |= eventIntern.accepted;
+    eventState.accepted |= eventIntern.accepted;
   }
 
-  return accepted;
+  return eventState.accepted;
 }
 
 glm::vec3 baseUI3D::projectWindowPointFromScreen(const glm::vec2 &pixelCoords, const glm::mat4 &mModelWindow) const

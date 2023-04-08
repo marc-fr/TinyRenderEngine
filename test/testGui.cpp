@@ -209,44 +209,42 @@ bool s_uiManager::load(const s_loadArgs &args)
     menuWmain->create_widgetPicture(1,1)->set_texId(pic1_Slot);
     menuWmain->create_widgetPicture(1,2)->set_texId(pic1_Slot)->set_isactive(true);
 
-    menuWmain->create_widgetText(2,0)->set_text("- widget Bar min:");
+    menuWmain->create_widgetText(2,0)->set_text("- widget Bar:");
     menuWmain->create_widgetBar(2,1)->set_withborder(false);
     menuWmain->create_widgetBar(2,2)->set_withborder(false)->set_isactive(true);
     menuWmain->create_widgetBar(2,3)->set_withborder(false)->set_isactive(true)->set_iseditable(true);
 
     menuWmain->create_widgetText(3,0)->set_text("- widget Bar:");
-    menuWmain->create_widgetBar(3,1)->set_withthreshold(true)->set_valuethreshold(0.5f)->set_withtext(true)
-        ->set_value(0.4f);
-    menuWmain->create_widgetBar(3,2)->set_withthreshold(true)->set_valuethreshold(0.5f)->set_withtext(true)
-        ->set_value(0.4f)
-        ->set_isactive(true);
-    menuWmain->create_widgetBar(3,3)->set_withthreshold(true)->set_valuethreshold(0.5f)->set_withtext(true)
-        ->set_value(0.4f)
-        ->set_isactive(true)->set_iseditable(true);
+    menuWmain->create_widgetBar(3,1)->set_withthreshold(true)->set_valuethreshold(0.5f)->set_withtext(true)->set_value(0.4f);
+    menuWmain->create_widgetBar(3,2)->set_withthreshold(true)->set_valuethreshold(0.5f)->set_withtext(true)->set_value(0.4f)->set_isactive(true);
+    menuWmain->create_widgetBar(3,3)->set_withthreshold(true)->set_valuethreshold(0.5f)->set_withtext(true)->set_value(0.4f)->set_isactive(true)->set_iseditable(true);
 
-    menuWmain->create_widgetText(4,0)->set_text("- widget Line select:");
-    menuWmain->create_widgetLineChoice(4,1)->set_values({"Value 1", "2nd", "End"});
-    menuWmain->create_widgetLineChoice(4,2)->set_values({"Value 1", "2nd", "End"})->set_isactive(true);
-    menuWmain->create_widgetLineChoice(4,3)->set_values({"Value 1", "2nd", "End"})->set_isactive(true)->set_iseditable(true);
+    menuWmain->create_widgetText(4,0)->set_text("- widget Slider:");
+    menuWmain->create_widgetSlider(4,1)->set_value(0.3f);
+    menuWmain->create_widgetSlider(4,2)->set_value(0.3f)->set_isactive(true);
+    menuWmain->create_widgetSlider(4,3)->set_value(0.3f)->set_isactive(true)->set_iseditable(true);
 
-    menuWmain->create_widgetText(5,0)->set_text("- widget Check Box:");
-    menuWmain->create_widgetBoxCheck(5,1);
-    menuWmain->create_widgetBoxCheck(5,2)->set_isactive(true);
-    menuWmain->create_widgetBoxCheck(5,3)->set_isactive(true)->set_iseditable(true);
+    menuWmain->create_widgetText(5,0)->set_text("- widget Line select:");
+    menuWmain->create_widgetLineChoice(5,1)->set_values({"Value 1", "2nd", "End"});
+    menuWmain->create_widgetLineChoice(5,2)->set_values({"Value 1", "2nd", "End"})->set_isactive(true);
+    menuWmain->create_widgetLineChoice(5,3)->set_values({"Value 1", "2nd", "End"})->set_isactive(true)->set_iseditable(true);
 
-    menuWmain->create_widgetText(6,0)->set_text("- widget Text:");
-    menuWmain->create_widgetText(6,1)->set_text("info");
-    menuWmain->create_widgetText(6,2)->set_text("click")->set_isactive(true);
-    menuWmain->create_widgetTextEdit(6,3)->set_allowMultiLines(true)->set_text("edit me !");
+    menuWmain->create_widgetText(6,0)->set_text("- widget Check Box:");
+    menuWmain->create_widgetBoxCheck(6,1);
+    menuWmain->create_widgetBoxCheck(6,2)->set_isactive(true);
+    menuWmain->create_widgetBoxCheck(6,3)->set_isactive(true)->set_iseditable(true);
 
-    menuWmain->create_widgetText(7,0)->set_text("- widget Text fill:");
-    menuWmain->create_widgetText(7,1)->set_text("info")
-        ->set_withbackground(true)->set_withborder(true);
-    menuWmain->create_widgetText(7,2)->set_text("click")
-        ->set_withbackground(true)->set_withborder(true)->set_isactive(true);
+    menuWmain->create_widgetText(7,0)->set_text("- widget Text:");
+    menuWmain->create_widgetText(7,1)->set_text("info");
+    menuWmain->create_widgetText(7,2)->set_text("click")->set_isactive(true);
+    menuWmain->create_widgetTextEdit(7,3)->set_allowMultiLines(true)->set_text("edit me !");
 
-    const std::array<std::string, TRE_UI_NLANGUAGES> trTxt = {"Translate me !", "Traduit-moi !"};
-    menuWmain->create_widgetTextTranslatate(8,0, 1,99)->set_texts(trTxt);
+    menuWmain->create_widgetText(8,0)->set_text("- widget Text fill:");
+    menuWmain->create_widgetText(8,1)->set_text("info")->set_withbackground(true)->set_withborder(true);
+    menuWmain->create_widgetText(8,2)->set_text("click")->set_withbackground(true)->set_withborder(true)->set_isactive(true);
+
+    const std::array<std::string, TRE_UI_NLANGUAGES> trTxt = {"I'm translating myself!", "Je me traduis moi-même !"};
+    menuWmain->create_widgetTextTranslatate(9,0, 1,99)->set_texts(trTxt);
 
     tre::ui::widget *wSnapLines = new widgetCheckPixelSnap;
     menuWmain->set_widget(wSnapLines, 10, 0, 1, 55);
@@ -432,7 +430,7 @@ bool s_uiManager::load(const s_loadArgs &args)
 
     menuWoption->create_widgetText(19,0)->set_text("language");
     static const std::array<std::string, TRE_UI_NLANGUAGES> kLanguages = {"English", "Français"};
-    tre::ui::widget *wLanguage = menuWoption->create_widgetLineChoice(19,1)->set_values(kLanguages)->set_isactive(true)->set_iseditable(true);
+    tre::ui::widget *wLanguage = menuWoption->create_widgetLineChoice(19,1)->set_values(kLanguages)->set_cyclic(true)->set_isactive(true)->set_iseditable(true);
     wLanguage->wcb_modified_finished = [this] (tre::ui::widget *self)
     {
       menu.set_language(static_cast<tre::ui::widgetLineChoice*>(self)->get_selectedIndex());
