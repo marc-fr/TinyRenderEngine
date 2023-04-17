@@ -48,17 +48,17 @@ namespace textgenerator
   struct s_textInfoOut
   {
     glm::vec2 m_maxboxsize = glm::vec2(0.f); ///< native size (width, height) of the text (if no limit)
-    uint m_choosenFontSizePixel = 0; ///< font-size from the font that has been used
+    unsigned m_choosenFontSizePixel = 0; ///< font-size from the font that has been used
   };
 
-  inline uint geometry_VertexCount(const char *txt) { return 6 * std::strlen(txt); }
+  inline std::size_t geometry_VertexCount(const char *txt) { return 6 * std::strlen(txt); }
 
   /**
    * @brief Generate the geometry to render the text (when outMesh is not null) and fill out gemetric info (when outInfo is not null).
    * Either outMesh or outInfo can be null.
    * It will write to the outMesh the vertex count given from "geometry_VertexCount". (Trailing vertices will have a full-transparent color.)
    */
-  void generate(const s_textInfo &info, modelRaw2D *outMesh, uint outPartId, uint outOffset, s_textInfoOut *outInfo);
+  void generate(const s_textInfo &info, modelRaw2D *outMesh, unsigned outPartId, unsigned outOffset, s_textInfoOut *outInfo);
 };
 
 } // namespace

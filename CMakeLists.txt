@@ -41,24 +41,6 @@ set(SRC_LIST_LIB
 )
 add_library(${PROJECT_NAME} STATIC ${SRC_LIST_LIB})
 
-## Architecture
-
-if("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU")
-  target_compile_options(${PROJECT_NAME} PRIVATE $<$<CONFIG:Release>:-msse4.1>$<$<CONFIG:RelWithDebInfo>:-msse4.1>)
-  message(STATUS "${PROJECT_NAME}: Compiler GNU: target-architecture in release is SSE4.1.")
-elseif("${CMAKE_CXX_COMPILER_ID}" MATCHES "Intel")
-  target_compile_options(${PROJECT_NAME} PRIVATE $<$<CONFIG:Release>:/QxAVX>$<$<CONFIG:RelWithDebInfo>:/QxAVX>)
-  message(STATUS "${PROJECT_NAME}: Compiler Intel: target-architecture in release is AVX.")
-elseif("${CMAKE_CXX_COMPILER_ID}" MATCHES "MSVC")
-  target_compile_options(${PROJECT_NAME} PRIVATE $<$<CONFIG:Release>:/arch:SSE2>$<$<CONFIG:RelWithDebInfo>:/arch:SSE2>)
-  message(STATUS "${PROJECT_NAME}: Compiler MSVC: target-architecture in release is SSE2.")
-elseif("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
-  target_compile_options(${PROJECT_NAME} PRIVATE $<$<CONFIG:Release>:-msse4.1>$<$<CONFIG:RelWithDebInfo>:-msse4.1>)
-  message(STATUS "${PROJECT_NAME}: Compiler Clang: target-architecture in release is SSE4.1.")
-else()
-  message(WARNING "${PROJECT_NAME}: Compiler Id Unknown: target-architecture is not set.")
-endif()
-
 ## Build config (Debug, RelWithDebInfo, Release)
 
 target_compile_definitions(${PROJECT_NAME} PUBLIC $<$<CONFIG:Debug>:TRE_DEBUG;TRE_PRINTS;TRE_PROFILE>)

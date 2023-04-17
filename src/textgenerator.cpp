@@ -9,7 +9,7 @@ namespace textgenerator {
 
 // ============================================================================
 
-void generate(const s_textInfo &info, modelRaw2D *outMesh, uint outPartId, uint outOffset, s_textInfoOut *outInfo)
+void generate(const s_textInfo &info, modelRaw2D *outMesh, unsigned outPartId, unsigned outOffset, s_textInfoOut *outInfo)
 {
   TRE_ASSERT(info.m_font != nullptr);
   TRE_ASSERT(info.m_text != nullptr);
