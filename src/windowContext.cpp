@@ -63,12 +63,12 @@ bool windowContext::SDLCreateWindow(int initialWidth, int initialHeight, const c
 
 // ----------------------------------------------------------------------------
 
-bool windowContext::SDLEvent_onWindow(const SDL_Event & event)
+bool windowContext::SDLEvent_onWindow(const SDL_Event & event, const bool catchKeyF_Fullscreen)
 {
   switch(event.type)
   {
   case SDL_KEYDOWN:
-    if (SDL_IsTextInputActive() == SDL_FALSE && event.key.keysym.sym == SDLK_f)
+    if (catchKeyF_Fullscreen && SDL_IsTextInputActive() == SDL_FALSE && event.key.keysym.sym == SDLK_f)
     {
       SDLToggleFullScreen();
       return true;

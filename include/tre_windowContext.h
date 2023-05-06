@@ -34,7 +34,7 @@ public:
 
   void SDLEvent_newFrame() { m_viewportResized = false; }
 
-  bool SDLEvent_onWindow(const SDL_Event &event); ///< Process events
+  bool SDLEvent_onWindow(const SDL_Event &event, const bool catchKeyF_Fullscreen = true /* scaffolding */); ///< Process events
 
   void SDLToggleFullScreen();
 
