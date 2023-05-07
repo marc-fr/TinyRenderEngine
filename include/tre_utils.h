@@ -10,10 +10,26 @@
 
 #ifdef TRE_PRINTS
 
+#ifdef _WIN32
+
+#include <iostream>
+#include <sstream>
+
+namespace tre {
+  void debugPrint_Win32(const char *msg);
+}
+
+#define TRE_LOG(msg) { std::stringstream ss; ss << "TRE: " << msg << std::endl; tre::debugPrint_Win32(ss.str().c_str()); }
+#define TRE_FATAL(msg) { std::stringstream ss; ss << "TRE: error: " << msg << std::endl; tre::debugPrint_Win32(ss.str().c_str()); abort(); }
+
+#else
+
 #include <iostream>
 
 #define TRE_LOG(msg) std::cout << "TRE: " << msg << std::endl
 #define TRE_FATAL(msg) { std::cout << "TRE: error: " << msg << std::endl; abort(); }
+
+#endif
 
 #else
 

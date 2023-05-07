@@ -9,6 +9,26 @@ namespace tre {
 
 // ============================================================================
 
+#ifdef TRE_PRINTS
+#ifdef _WIN32
+
+#define NOMINMAX
+#include <windows.h>
+#include <debugapi.h>
+
+void debugPrint_Win32(const char *msg)
+{
+  OutputDebugStringA(msg);
+}
+
+#undef near;
+#undef far;
+
+#endif
+#endif
+
+// ============================================================================
+
 bool IsOpenGLok(const char * msg)
 {
   bool status = true;
