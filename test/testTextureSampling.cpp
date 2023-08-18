@@ -6,7 +6,6 @@
 #include "tiffio.h"
 #endif
 
-#include <iostream> // std::cout std::endl
 #include <string>
 
 #ifndef TESTIMPORTPATH
@@ -318,7 +317,7 @@ int main(int argc, char **argv)
   // Init SDL2
   if(SDL_Init(SDL_INIT_VIDEO) < 0)
   {
-    std::cout << "[debug] Fail to initialize SDL2 : " << SDL_GetError() << std::endl;
+    TRE_LOG("Fail to initialize SDL2 : " << SDL_GetError());
     SDL_Quit();
     return -1;
   }
@@ -331,7 +330,7 @@ int main(int argc, char **argv)
   int imgFlags = IMG_INIT_PNG;
   if( !( IMG_Init( imgFlags ) == imgFlags ) )
   {
-      std::cout << "[debug] Fail to initialize SDL_Image : " << IMG_GetError() << std::endl;
+      TRE_LOG("Fail to initialize SDL_Image : " << IMG_GetError());
       SDL_Quit();
       return -1;
   }

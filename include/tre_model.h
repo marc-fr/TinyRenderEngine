@@ -183,7 +183,6 @@ public:
   bool writeBase(std::ostream & outbuffer) const;
   virtual bool read(std::istream & inbuffer) = 0;
   virtual bool write(std::ostream & outbuffer) const = 0;
-  bool loadfromWavefront(const std::string & objfile, const std::string & mtlfile = "");
 protected:
   virtual void resizeVertex(std::size_t count) = 0;
   virtual void resizeIndex(std::size_t count) = 0;

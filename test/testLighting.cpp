@@ -1,7 +1,7 @@
 
 #include "tre_shader.h"
 #include "tre_rendertarget.h"
-#include "tre_model.h"
+#include "tre_model_importer.h"
 #include "tre_ui.h"
 #include "tre_font.h"
 #include "tre_windowContext.h"
@@ -48,7 +48,7 @@ int main(int argc, char **argv)
   tre::modelStaticIndexed3D meshes(tre::modelStaticIndexed3D::VB_NORMAL | tre::modelStaticIndexed3D::VB_UV);
   glm::mat4 mModel;
   {
-    if (!meshes.loadfromWavefront(meshFilePath))
+    if (!tre::modelImporter::addFromWavefront(meshes, meshFilePath))
     {
       TRE_LOG("Fail to load the mesh from file " << meshFilePath << ". Abort.");
       myWindow.OpenGLQuit();

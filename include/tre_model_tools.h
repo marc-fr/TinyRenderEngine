@@ -2,12 +2,14 @@
 #define MODEL_TOOLS_H
 
 #include "tre_utils.h"
-#include "tre_model.h"
 
 #include <vector>
 #include <functional>
 
 namespace tre {
+
+struct s_modelDataLayout;
+struct s_partInfo;
 
 /**
  * @namespace modelTools

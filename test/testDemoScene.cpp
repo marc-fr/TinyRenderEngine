@@ -1,7 +1,7 @@
 
 #include "tre_shader.h"
 #include "tre_rendertarget.h"
-#include "tre_model.h"
+#include "tre_model_importer.h"
 #include "tre_model_tools.h"
 #include "tre_textgenerator.h"
 #include "tre_profiler.h"
@@ -89,7 +89,7 @@ int main(int argc, char **argv)
                                       tre::modelStaticIndexed3D::VB_TANGENT |
                                       tre::modelStaticIndexed3D::VB_UV);
   {
-    if (!worldMesh.loadfromWavefront(TESTIMPORTPATH "resources/scenes.obj"))
+    if (!tre::modelImporter::addFromWavefront(worldMesh, TESTIMPORTPATH "resources/scenes.obj"))
     {
       TRE_LOG("Fail to load scenes.obj.");
       myWindow.OpenGLQuit();
@@ -108,7 +108,7 @@ int main(int argc, char **argv)
 
   tre::modelStaticIndexed3D worldObjects(tre::modelStaticIndexed3D::VB_NORMAL);
   {
-    if (!worldObjects.loadfromWavefront(TESTIMPORTPATH "resources/objects.obj", TESTIMPORTPATH "resources/objects.mtl"))
+    if (!tre::modelImporter::addFromWavefront(worldObjects, TESTIMPORTPATH "resources/objects.obj", TESTIMPORTPATH "resources/objects.mtl"))
     {
       TRE_LOG("Fail to load objects.obj");
       myWindow.OpenGLQuit();

@@ -1,5 +1,6 @@
 #include "tre_model_tools.h"
 
+#include "tre_model.h"
 #include "tre_contact_3D.h"
 
 #include <glm/gtx/component_wise.hpp>

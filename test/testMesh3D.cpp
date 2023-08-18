@@ -1,6 +1,6 @@
 
 #include "tre_shader.h"
-#include "tre_model.h"
+#include "tre_model_importer.h"
 #include "tre_model_tools.h"
 #include "tre_font.h"
 #include "tre_ui.h"
@@ -376,7 +376,7 @@ int main(int argc, char **argv)
     meshes.layout().m_normals.get<glm::vec3>(5) = -glm::normalize(meshes.layout().m_positions.get<glm::vec3>(5));
   }
 #elif TEST_ID == 0
-  if (!meshes.loadfromWavefront(meshFile))
+  if (!tre::modelImporter::addFromWavefront(meshes, meshFile))
   {
     TRE_LOG("Fail to load " << meshFile);
     myWindow.OpenGLQuit();

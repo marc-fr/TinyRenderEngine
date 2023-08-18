@@ -1,6 +1,6 @@
 
 #include "tre_baker.h"
-#include "tre_model.h"
+#include "tre_model_importer.h"
 #include "tre_texture.h"
 #include "tre_font.h"
 #include "tre_windowContext.h"
@@ -97,7 +97,7 @@ bool test_bakeMesh()
 
   tre::modelStaticIndexed3D mesh3D(tre::modelStaticIndexed3D::VB_NORMAL | tre::modelStaticIndexed3D::VB_COLOR);
 
-  status &= mesh3D.loadfromWavefront(TESTIMPORTPATH "resources/objects.obj", TESTIMPORTPATH "resources/objects.mtl");
+  status &= tre::modelImporter::addFromWavefront(mesh3D, TESTIMPORTPATH "resources/objects.obj", TESTIMPORTPATH "resources/objects.mtl");
   if (!status) return false;
 
   std::vector<std::string> partOrder;

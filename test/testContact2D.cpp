@@ -1,8 +1,6 @@
 #include "testContact2D.h"
 
-#include <iostream> // std::cout std::endl
-
-#include "tre_model.h"
+#include "tre_model_importer.h"
 #include "tre_model_tools.h"
 #include "tre_shader.h"
 #include "tre_contact_2D.h"
@@ -321,7 +319,7 @@ int main(int argc, char **argv)
   // Import mesh (optionnal)
   std::vector<glm::vec2> tmpMeshEnvelop;
   tre::modelStaticIndexed3D importedMesh;
-  bool importedMeshValid = importedMesh.loadfromWavefront(addmodel3D_path);
+  bool importedMeshValid = tre::modelImporter::addFromWavefront(importedMesh, addmodel3D_path);
   if (importedMeshValid) importedMeshValid = importedMesh.reorganizeParts({ addmodel3D_pname });
   if (importedMeshValid)
   {
@@ -349,7 +347,7 @@ int main(int argc, char **argv)
   myView2D.setKeyBinding(true);
   myView2D.setScreenBoundsMotion(true);
 
-  std::cout << "Start main loop ..." << std::endl;
+  TRE_LOG("Start main loop ...");
 
   while (!myWindow.m_quit && !myControls.m_quit)
   {
@@ -438,7 +436,7 @@ int main(int argc, char **argv)
   myWindow.OpenGLQuit();
   myWindow.SDLQuit();
 
-  std::cout << "SDL finalized with success" << std::endl;
+  TRE_LOG("SDL finalized with success");
 
   return 0;
 }

@@ -1,7 +1,6 @@
 #include "tre_model.h"
 #include "tre_model_tools.h"
 
-#include <map>
 #include <fstream>
 
 namespace tre {
@@ -268,7 +267,7 @@ std::size_t model::copyPart(std::size_t ipart, std::size_t pcount)
 
   const std::size_t    newpartId = m_partInfo.size();
   const std::string newpartName = std::string("copy of ") + m_partInfo[ipart].m_name;
-  m_partInfo.push_back(s_partInfo(newpartName));
+  m_partInfo.emplace_back(newpartName);
 
   const std::size_t vertexCurrCount = m_layout.m_vertexCount;
   std::size_t vertexAddCount = 0;
@@ -583,292 +582,6 @@ bool model::writeBase(std::ostream &outbuffer) const
   return result;
 }
 
-bool model::loadfromWavefront(const std::string & objfile, const std::string & mtlfile)
-{
-  // Get files handle
-  std::ifstream rawOBJ;
-  rawOBJ.open(objfile.c_str());
-  if (!rawOBJ)
-  {
-    TRE_LOG("Failed to load wavefront file " << objfile);
-    return false;
-  }
-  std::ifstream rawMTL;
-  if (!mtlfile.empty())
-  {
-    rawMTL.open((mtlfile.c_str()));
-    if (!rawMTL)
-    {
-      TRE_LOG("Warning: ignore material because it failed to load wavefront file " << mtlfile);
-    }
-  }
-  std::string line;
-
-  // Read colors
-  std::map<std::string, glm::vec4> colorMap;
-  if (rawMTL)
-  {
-    std::string curMat;
-    while (std::getline(rawMTL, line))
-    {
-      if      (line.substr(0,7) == "newmtl ")
-      {
-        curMat = line.substr(7);
-      }
-      else if (line.substr(0,3) == "Kd ")
-      {
-        float cx, cy, cz;
-        sscanf(line.substr(3).data(),"%f %f %f",&cx,&cy,&cz);
-        colorMap[curMat] = glm::vec4(cx, cy, cz, 1.f);
-      }
-    }
-  }
-  rawMTL.close();
-
-  // Append data to existing model
-  const std::size_t partMainOffset = m_partInfo.size();
-  const std::size_t vertexMainOffset = m_layout.m_vertexCount;
-  const std::size_t indexMainOffset = m_layout.m_indexCount;
-
-  // First pass: count
-  std::size_t nvertices(0), nnormals(0), nuvs(0), ntri(0);
-  std::vector<glm::vec4> partMatColor;
-  while (std::getline(rawOBJ, line))
-  {
-    if      (line.substr(0,2) == "o " || line.substr(0,2) == "g ")
-    {
-      m_partInfo.push_back(s_partInfo(line.substr(2)));
-      partMatColor.push_back(glm::vec4(0.f));
-    }
-    else if (line.substr(0,2) == "v " ) ++nvertices;
-    else if (line.substr(0,3) == "vn ") ++nnormals;
-    else if (line.substr(0,3) == "vt ") ++nuvs;
-    else if (line.substr(0,2) == "f " ) ++ntri;
-    else if (!colorMap.empty() && line.substr(0,7) == "usemtl ")
-    {
-      TRE_ASSERT(m_partInfo.size() > partMainOffset); // do not mess-up exising parts
-      partMatColor.back() = colorMap[line.substr(7)];
-    }
-  }
-  rawOBJ.clear();
-  rawOBJ.seekg(0,std::ios::beg);
-
-  // Allocations and checks
-  resizeIndex(indexMainOffset + ntri * 3);
-  resizeVertex(vertexMainOffset + ntri * 3);
-  TRE_ASSERT(m_layout.m_positions.m_size == 3); // only 3D mesh
-  const bool hasMatColor = !colorMap.empty() && (m_layout.m_colors.m_size == 4);
-#ifdef TRE_PRINTS
-  if (m_layout.m_normals.m_size == 3 && nnormals == 0)
-  {
-    TRE_LOG("Warning in model::loadfromWavefront: the model asks for normals, but the file does not contain normal data. The reader will fill normals with zeros.");
-  }
-  if (m_layout.m_uvs.m_size == 2 && nuvs == 0)
-  {
-    TRE_LOG("Warning in model::loadfromWavefront: the model asks for uvs, but the file does not contain uv data. The reader will fill uvs with zeros.");
-  }
-  if (m_layout.m_colors.m_size == 4 && !hasMatColor)
-  {
-    TRE_LOG("Warning in model::loadfromWavefront: the model asks for colors, but the file does not contain color data. The reader will fill colors with zeros.");
-  }
-#endif
-  if (m_partInfo.size() == partMainOffset)
-  {
-    TRE_LOG("No part parsed in wavefront file " << objfile);
-    rawOBJ.close();
-    return false;
-  }
-
-  // Second pass: read data and write index/vertex data
-  std::vector<std::size_t> vertexKey;
-  std::vector<glm::vec3> positionsRead, normalsRead;
-  std::vector<glm::vec2> uvsRead;
-  vertexKey.reserve(ntri * 3);
-  positionsRead.reserve(nvertices);
-  normalsRead.reserve(nnormals);
-  uvsRead.reserve(nuvs);
-  std::size_t iPart = partMainOffset;
-  std::size_t iIndex = indexMainOffset;
-  std::size_t iVertex = vertexMainOffset;
-  std::size_t iVertexAddOnPart = 0;
-  while (std::getline(rawOBJ,line))
-  {
-    if (line.substr(0,2) == "o " || line.substr(0,2) == "g ")
-    {
-      m_partInfo[iPart].m_offset = iIndex;
-      if (iPart != partMainOffset)
-        m_partInfo[iPart - 1].m_size = iIndex - m_partInfo[iPart - 1].m_offset;
-
-      ++iPart;
-      iVertex += iVertexAddOnPart;
-      iVertexAddOnPart = 0;
-    }
-    else if (line.substr(0,2) == "v ")
-    {
-      float x,y,z;
-      sscanf(line.substr(2).data(),"%f %f %f",&x,&y,&z);
-      positionsRead.emplace_back(x, y, z);
-      vertexKey.push_back(0u);
-    }
-    else if (nnormals != 0 && line.substr(0,3) == "vn ")
-    {
-      float x,y,z;
-      sscanf(line.substr(3).data(),"%f %f %f",&x,&y,&z);
-      normalsRead.emplace_back(x, y, z);
-    }
-    else if (nuvs != 0 && line.substr(0,3) == "vt ")
-    {
-      float x,y;
-      sscanf(line.substr(3).data(),"%f %f",&x,&y);
-      uvsRead.emplace_back(x, 1.f - y); // OpenGL uv coordinate-system.
-    }
-    else if (line.substr(0,2) == "f ")
-    {
-      std::array<int, 9> readBuffer;
-      uint readCount = 0;
-      for (std::size_t is = 2, iprev = 2, stop = line.size(); is < stop; ++is)
-      {
-        if (line[is] == '/' || line[is] == ' ' || is + 1 == stop)
-        {
-          if (is + 1 == stop) is = stop;
-          TRE_ASSERT(readCount < 9);
-          readBuffer[readCount++] = (iprev != is) ? std::stoi(line.substr(iprev, is - iprev)) : 0;
-          iprev = is + 1;
-        }
-      }
-      TRE_ASSERT(readCount % 3 == 0);
-      //
-      int pi = 0, pj = 0, pk = 0;
-      int ni = 0, nj = 0, nk = 0;
-      int ti = 0, tj = 0, tk = 0;
-      if (readCount == 3)
-      {
-        pi = readBuffer[0];
-        pj = readBuffer[1];
-        pk = readBuffer[2];
-      }
-      else if (readCount == 6)
-      {
-        pi = readBuffer[0]; ti = readBuffer[1];
-        pj = readBuffer[2]; tj = readBuffer[3];
-        pk = readBuffer[4]; tk = readBuffer[5];
-      }
-      else // (readCount == 9)
-      {
-        pi = readBuffer[0]; ti = readBuffer[1]; ni = readBuffer[2];
-        pj = readBuffer[3]; tj = readBuffer[4]; nj = readBuffer[5];
-        pk = readBuffer[6]; tk = readBuffer[7]; nk = readBuffer[8];
-      }
-      TRE_ASSERT(pi !=0 && pj != 0 && pk != 0);
-
-      // A same vertex "position" could be used multiple times. So we need to duplicate it if the "normal" or "uv" differ.
-
-      const uint ki = (pi & 0xFFFF) | ((ni & 0xFFF) << 16) | ((ti & 0xF) << 28);
-      const uint kj = (pj & 0xFFFF) | ((nj & 0xFFF) << 16) | ((tj & 0xF) << 28);
-      const uint kk = (pk & 0xFFFF) | ((nk & 0xFFF) << 16) | ((tk & 0xF) << 28);
-
-      pi = (pi < 0) ? uint(nvertices) + pi : pi - 1;
-      pj = (pj < 0) ? uint(nvertices) + pj : pj - 1;
-      pk = (pk < 0) ? uint(nvertices) + pk : pk - 1;
-
-      ni = (ni < 0) ? uint(nnormals) + ni  : ni - 1;
-      nj = (nj < 0) ? uint(nnormals) + nj  : nj - 1;
-      nk = (nk < 0) ? uint(nnormals) + nk  : nk - 1;
-
-      ti = (ti < 0) ? uint(nuvs) + ti      : ti - 1;
-      tj = (tj < 0) ? uint(nuvs) + tj      : tj - 1;
-      tk = (tk < 0) ? uint(nuvs) + tk      : tk - 1;
-
-      uint i = iVertex + pi;
-      uint j = iVertex + pj;
-      uint k = iVertex + pk;
-
-      if (vertexKey[i] != ki)
-      {
-        if (vertexKey[i] != 0) // duplicate
-        {
-          i = vertexKey.size();
-          vertexKey.push_back(ki);
-          ++iVertexAddOnPart;
-        }
-        vertexKey[i] = ki;
-        m_layout.m_positions.get<glm::vec3>(i) = positionsRead[pi];
-        if (m_layout.m_normals.m_size == 3) m_layout.m_normals.get<glm::vec3>(i) = (nnormals != 0 && ni != -1) ? normalsRead[ni] : glm::vec3(0.f);
-        if (m_layout.m_uvs.m_size == 2) m_layout.m_uvs.get<glm::vec2>(i) = (nuvs != 0 && ti != -1) ? uvsRead[ti] : glm::vec2(0.f);
-      }
-
-      if (vertexKey[j] != kj)
-      {
-        if (vertexKey[j] != 0) // duplicate
-        {
-          j = vertexKey.size();
-          vertexKey.push_back(kj);
-          ++iVertexAddOnPart;
-        }
-        vertexKey[j] = kj;
-        m_layout.m_positions.get<glm::vec3>(j) = positionsRead[pj];
-        if (m_layout.m_normals.m_size == 3) m_layout.m_normals.get<glm::vec3>(j) = (nnormals != 0 && nj != -1) ? normalsRead[nj] : glm::vec3(0.f);
-        if (m_layout.m_uvs.m_size == 2) m_layout.m_uvs.get<glm::vec2>(j) = (nuvs != 0 && tj != -1) ? uvsRead[tj] : glm::vec2(0.f);
-      }
-
-      if (vertexKey[k] != kk)
-      {
-        if (vertexKey[k] != 0) // duplicate
-        {
-          k = vertexKey.size();
-          vertexKey.push_back(kk);
-          ++iVertexAddOnPart;
-        }
-        vertexKey[k] = kk;
-        m_layout.m_positions.get<glm::vec3>(k) = positionsRead[pk];
-        if (m_layout.m_normals.m_size == 3) m_layout.m_normals.get<glm::vec3>(k) = (nnormals != 0 && nk != -1) ? normalsRead[nk] : glm::vec3(0.f);
-        if (m_layout.m_uvs.m_size == 2) m_layout.m_uvs.get<glm::vec2>(k) = (nuvs != 0 && tk != -1) ? uvsRead[tk] : glm::vec2(0.f);
-      }
-
-      m_layout.m_index[iIndex + 0] = i;
-      m_layout.m_index[iIndex + 1] = j;
-      m_layout.m_index[iIndex + 2] = k;
-
-      iIndex += 3;
-    }
-  }
-  TRE_ASSERT(iPart == m_partInfo.size());
-  m_partInfo[iPart - 1].m_size = iIndex - m_partInfo[iPart - 1].m_offset;
-  rawOBJ.close();
-
-  TRE_ASSERT(nvertices <= vertexKey.size() && vertexKey.size() <= 3 * ntri);
-  resizeVertex(vertexMainOffset + vertexKey.size());
-
-  // Apply color
-  if (hasMatColor)
-  {
-    for (std::size_t ip = partMainOffset; ip < iPart; ++ip)
-      colorizePart(ip, partMatColor[ip - partMainOffset]);
-  }
-
-  // Update bounding-Boxes
-  for (std::size_t ip = partMainOffset; ip < iPart; ++ip)
-  {
-    s_partInfo &part = m_partInfo[ip];
-    if (part.m_size > 0)
-    {
-      const std::size_t Svert = part.m_offset;
-      const std::size_t Evert = Svert + part.m_size;
-
-      part.m_bbox = s_boundbox(m_layout.m_positions.get<glm::vec3>(m_layout.m_index[Svert]));
-      for (std::size_t v = Svert ; v < Evert ; ++v)
-      {
-        part.m_bbox.addPointInBox(m_layout.m_positions.get<glm::vec3>(m_layout.m_index[v]));
-      }
-    }
-  }
-
-  // End
-  TRE_LOG("Load " << objfile << " model (add parts=" << m_partInfo.size() - partMainOffset <<
-               ", vertices=" << m_layout.m_vertexCount - vertexMainOffset <<
-               ", triangles=" << (m_layout.m_indexCount - indexMainOffset) / 3 << ")");
-  return true;
-}
 
 void model::drawcallAll(const bool bindVAO, GLenum mode) const
 {
@@ -887,7 +600,7 @@ std::size_t modelIndexed::copyPart(std::size_t ipart, std::size_t pcount)
 
   const std::size_t    newpartId = m_partInfo.size();
   const std::string newpartName = std::string("copy of ") + m_partInfo[ipart].m_name;
-  m_partInfo.push_back(s_partInfo(newpartName));
+  m_partInfo.emplace_back(newpartName);
 
   // get the index range
 
@@ -1029,7 +742,7 @@ std::size_t modelIndexed::createPart(std::size_t indiceCount, std::size_t vertex
   const std::size_t Nver0 = get_NextAvailable_vertex();
   // create the part
   const std::size_t newPartId = m_partInfo.size();
-  m_partInfo.push_back(s_partInfo());
+  m_partInfo.emplace_back();
   // reserve index-data
   resizePart(newPartId, indiceCount);
   // reserve vertex-data
@@ -1079,9 +792,7 @@ std::size_t modelIndexed::createRawPart(std::size_t count)
 {
   // create the part
   const std::size_t newPartId = m_partInfo.size();
-  m_partInfo.push_back(s_partInfo("no-name-rawPart"));
-  if (count == 0)
-    return newPartId;
+  m_partInfo.emplace_back("no-name-rawPart");
   // compute index-plage and fill index
   const std::size_t indexStart = get_NextAvailable_index();
   const std::size_t vertexStart = get_NextAvailable_vertex();
