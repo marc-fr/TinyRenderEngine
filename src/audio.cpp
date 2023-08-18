@@ -266,7 +266,7 @@ bool soundData::s_Opus::write(std::ostream &stream) const
   header[4] = 0;
   header[5] = k_freq; //freq
   header[6] = AUDIO_S16; // format
-  header[7] = m_blokcs.size();
+  header[7] = uint(m_blokcs.size());
   stream.write(reinterpret_cast<const char*>(&header), sizeof(header));
 
   // data

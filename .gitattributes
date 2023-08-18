@@ -6,15 +6,12 @@
 *.sh    text eol=lf
 *.cmake text eol=lf
 *.txt   text eol=lf
-*.sln   text eol=crlf -merge
-*.png filter=lfs diff=lfs merge=lfs binary
-*.jpg filter=lfs diff=lfs merge=lfs binary
-*.lib filter=lfs diff=lfs merge=lfs binary
-*.dll filter=lfs diff=lfs merge=lfs binary
+*.blend binary
+*.jpg   binary
+*.png  filter=lfs diff=lfs merge=lfs binary
 *.wav filter=lfs diff=lfs merge=lfs binary
 *.tif filter=lfs diff=lfs merge=lfs binary
 *.bmp filter=lfs diff=lfs merge=lfs binary
 *.ttf filter=lfs diff=lfs merge=lfs binary
 *.obj filter=lfs diff=lfs merge=lfs binary
-*.blend filter=lfs diff=lfs merge=lfs binary
 *.pdf filter=lfs diff=lfs merge=lfs binary

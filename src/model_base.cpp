@@ -178,7 +178,7 @@ void model::defragmentParts()
     // clear buffer plage [partOffset, partOffset + part.size] and move the part in this plage.
     while (true)
     {
-      int slotPart = -1;
+      std::size_t slotPart = std::size_t(-1);
 
       for (std::size_t jpart = ipart + 1; jpart < nparts; ++jpart)
       {
@@ -192,10 +192,10 @@ void model::defragmentParts()
         }
       }
 
-      if (slotPart == -1)
+      if (slotPart == std::size_t(-1))
         break;
 
-      TRE_ASSERT(slotPart > int(ipart));
+      TRE_ASSERT(slotPart > ipart);
       s_partInfo & partToMove = m_partInfo[slotPart];
       // move the part "slotPart" elsewhere
       int rpart = -1;

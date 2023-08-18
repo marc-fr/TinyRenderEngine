@@ -21,8 +21,8 @@ void debugPrint_Win32(const char *msg)
   OutputDebugStringA(msg);
 }
 
-#undef near;
-#undef far;
+#undef near
+#undef far
 
 #endif
 #endif

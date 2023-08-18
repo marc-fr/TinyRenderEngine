@@ -704,7 +704,7 @@ bool postFX_Blur::load(const int pwidth, const int pheigth)
   const glm::vec4 uv(0.f, 0.f, 1.f, 1.f);
   const glm::vec4 color(1.f);
 
-  const uint partId = m_quadFullScreen.createPart(6);
+  const std::size_t partId = m_quadFullScreen.createPart(6);
   m_quadFullScreen.fillDataRectangle(partId, 0, pos, color, uv);
 
   status &= m_quadFullScreen.loadIntoGPU();
@@ -907,7 +907,7 @@ bool postFX_ToneMapping::load()
   const glm::vec4 uv(0.f, 0.f, 1.f, 1.f);
   const glm::vec4 color(1.f);
 
-  const uint partId = m_quadFullScreen.createPart(6);
+  const std::size_t partId = m_quadFullScreen.createPart(6);
   m_quadFullScreen.fillDataRectangle(partId, 0, pos, color, uv);
 
   m_quadFullScreen.loadIntoGPU();

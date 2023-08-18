@@ -885,8 +885,8 @@ bool s_contact2D::circle_circle(s_contact2D &cntCircleA,
 bool s_contact2D::poly_poly(const std::vector<glm::vec2> ptsA,
                             const std::vector<glm::vec2> ptsB)
 {
-  const uint NptsA = ptsA.size();
-  const uint NptsB = ptsB.size();
+  const std::size_t NptsA = ptsA.size();
+  const std::size_t NptsB = ptsB.size();
 
   if (NptsA < 3 || NptsB < 3)
     return false;

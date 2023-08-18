@@ -393,7 +393,7 @@ bool font::load(const std::vector<s_fontCache> &fonts, const bool freeSurfaces)
 
   m_fontMaps.resize(fonts.size());
 
-  for (uint it = 0, istop = m_fontMaps.size(); it < istop; ++it)
+  for (std::size_t it = 0, istop = m_fontMaps.size(); it < istop; ++it)
   {
     const glm::vec2 uvOffset = glm::vec2(textureCoords[it]) * invFinalSize;
 

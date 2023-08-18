@@ -198,7 +198,7 @@ bool s_uiManager::load(const s_loadArgs &args)
     menuWmain->set_layoutGrid(12,5);
     menuWmain->set_cellMargin(tre::ui::s_size(m_sceneOption.m_ui_cellMargin, tre::ui::SIZE_PIXEL));
 
-    const uint pic1_Slot = menu.addTexture(args.picture1);
+    const std::size_t pic1_Slot = menu.addTexture(args.picture1);
 
     menuWmain->create_widgetText(0,0)->set_text("Widgets")->set_color(glm::vec4(1.f,1.f,0.f,1.f));
     menuWmain->create_widgetText(0,1)->set_text("Info")->set_color(glm::vec4(1.f,1.f,0.f,1.f));
