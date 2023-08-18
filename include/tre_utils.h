@@ -232,7 +232,7 @@ struct s_boundbox
 {
   glm::vec3 m_min;
   glm::vec3 m_max;
-  s_boundbox() : m_min(0.f), m_max(0.f) {}
+  s_boundbox() : m_min(std::numeric_limits<float>::infinity()), m_max(-std::numeric_limits<float>::infinity()) {}
   s_boundbox(float dx, float dy, float dz = 0.f) : m_min(glm::vec3(-dx, -dy, -dz)), m_max(glm::vec3(dx, dy, dz)) {}
   s_boundbox(const glm::vec3 &pt) : m_min(pt), m_max(pt) {}
   s_boundbox(const glm::vec3 &box_min, const glm::vec3 &box_max) : m_min(box_min), m_max(box_max) {}
@@ -243,6 +243,7 @@ struct s_boundbox
   void addPointInBox(const glm::vec3 &pt);
   void addPointInBox(float px, float py, float pz = 0.f) { addPointInBox(glm::vec3(px,py,pz)); }
 
+  inline bool valid() const { return glm::all(glm::lessThanEqual(m_min, m_max)); }
   inline glm::vec3 center() const { return 0.5f * (m_min + m_max); }
   inline glm::vec3 extend() const { return m_max - m_min; }
 
