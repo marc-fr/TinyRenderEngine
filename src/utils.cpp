@@ -36,17 +36,16 @@ bool IsOpenGLok(const char * msg)
   while ( (myglerror = glGetError()) != GL_NO_ERROR )
   {
 #ifdef TRE_PRINTS
-    if (msg!=nullptr) std::cout << "TRE: (" << msg << ") OpenGL Error code has been gerenated: " << myglerror;
-    else           std::cout << "TRE: OpenGL Error code has been gerenated: " << myglerror;
-    if      (myglerror==GL_INVALID_ENUM     ) std::cout << " (GL_INVALID_ENUM)";
-    else if (myglerror==GL_INVALID_VALUE    ) std::cout << " (GL_INVALID_VALUE)";
-    else if (myglerror==GL_INVALID_OPERATION) std::cout << " (GL_INVALID_OPERATION)";
-    else if (myglerror==GL_STACK_OVERFLOW   ) std::cout << " (GL_STACK_OVERFLOW)";
-    else if (myglerror==GL_STACK_UNDERFLOW  ) std::cout << " (GL_STACK_UNDERFLOW)";
-    else if (myglerror==GL_OUT_OF_MEMORY    ) std::cout << " (GL_OUT_OF_MEMORY)";
-    else if (myglerror==GL_INVALID_FRAMEBUFFER_OPERATION) std::cout << " (GL_INVALID_FRAMEBUFFER_OPERATION)";
-    else     std::cout << " (unkown error code)";
-    std::cout << std::endl;
+    const char *errorTxt = " (unkown error code)";
+    if      (myglerror==GL_INVALID_ENUM     ) errorTxt = " (GL_INVALID_ENUM)";
+    else if (myglerror==GL_INVALID_VALUE    ) errorTxt = " (GL_INVALID_VALUE)";
+    else if (myglerror==GL_INVALID_OPERATION) errorTxt = " (GL_INVALID_OPERATION)";
+    else if (myglerror==GL_STACK_OVERFLOW   ) errorTxt = " (GL_STACK_OVERFLOW)";
+    else if (myglerror==GL_STACK_UNDERFLOW  ) errorTxt = " (GL_STACK_UNDERFLOW)";
+    else if (myglerror==GL_OUT_OF_MEMORY    ) errorTxt = " (GL_OUT_OF_MEMORY)";
+    else if (myglerror==GL_INVALID_FRAMEBUFFER_OPERATION) errorTxt = " (GL_INVALID_FRAMEBUFFER_OPERATION)";
+    if (msg!=nullptr) { TRE_LOG("IsOpenGlok: (" << msg << ") OpenGL Error code has been gerenated: " << myglerror << errorTxt); }
+    else              { TRE_LOG("IsOpenGLok: OpenGL Error code has been gerenated: " << myglerror << errorTxt); }
 #endif
     status = false;
   }

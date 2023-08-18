@@ -47,7 +47,7 @@ bool shader::loadCustomShader(const s_layout & shaderLayout , const char * sourc
   //-- Do some corrections
 
   m_layout.hasBUF_Normal |= m_layout.hasBUF_TangentU;
-  m_layout.hasUNI_MModel |= m_layout.hasBUF_Normal;
+  m_layout.hasUNI_MModel |= m_layout.hasPIX_Position || m_layout.hasBUF_Normal;
   m_layout.hasUNI_MView  |= m_layout.hasPIX_Normal || m_layout.hasUBO_ptslight || m_layout.hasUBO_sunlight;
 
   //-- Create the shader source
@@ -82,8 +82,8 @@ bool shader::loadCustomShaderWithGeom(const s_layout & shaderLayout , const char
   //-- Do some corrections
 
   m_layout.hasBUF_Normal |= m_layout.hasBUF_TangentU;
-  m_layout.hasUNI_MModel |= m_layout.hasBUF_Normal;
-  m_layout.hasUNI_MView  |= m_layout.hasPIX_Position || m_layout.hasPIX_Normal || m_layout.hasUBO_ptslight || m_layout.hasUBO_sunlight;
+  m_layout.hasUNI_MModel |= m_layout.hasPIX_Position ||m_layout.hasBUF_Normal;
+  m_layout.hasUNI_MView  |=  m_layout.hasPIX_Normal || m_layout.hasUBO_ptslight || m_layout.hasUBO_sunlight;
 
   // Create the shader source
 
@@ -327,7 +327,7 @@ bool shader::linkProgram(const char *sourceVert, const char *sourceFrag)
         char *programErrorMessage = new char[infoLogLength + 1];
         programErrorMessage[infoLogLength] = 0x00;
         glGetProgramInfoLog(m_drawProgram, infoLogLength, nullptr, programErrorMessage);
-        std::cout << programErrorMessage << std::endl;
+        TRE_LOG(programErrorMessage);
         delete[] programErrorMessage;
       }
       TRE_LOG("Link shaders program failed (ID="<<m_drawProgram<<", name="<<m_name<<")");
@@ -399,7 +399,7 @@ bool shader::linkProgram(const char *sourceVert, const char *sourceGeom, const c
         char *programErrorMessage = new char[infoLogLength + 1];
         programErrorMessage[infoLogLength] = 0x00;
         glGetProgramInfoLog(m_drawProgram, infoLogLength, nullptr, programErrorMessage);
-        std::cout << programErrorMessage << std::endl;
+        TRE_LOG(programErrorMessage);
         delete[] programErrorMessage;
       }
       TRE_LOG("Link shaders program failed (ID="<<m_drawProgram<<", name="<<m_name<<")");
@@ -448,13 +448,13 @@ bool shader::compileShader(GLuint & shaderHandle, const GLenum shaderType, const
       char *programErrorMessage = new char[infoLogLength + 1];
       programErrorMessage[infoLogLength] = 0x00;
       glGetShaderInfoLog(shaderHandle, infoLogLength, nullptr, programErrorMessage);
-      std::cout << programErrorMessage << std::endl;
+      TRE_LOG(programErrorMessage);
       delete[] programErrorMessage;
     }
-    if      (shaderType==GL_VERTEX_SHADER  ) std::cout << "TRE: Vertex-shader building failed (part of "<<m_name<<")" << std::endl;
-    else if (shaderType==GL_GEOMETRY_SHADER) std::cout << "TRE: Geometry-shader building failed (part of "<<m_name<<")" << std::endl;
-    else if (shaderType==GL_FRAGMENT_SHADER) std::cout << "TRE: Fragment-shader building failed (part of "<<m_name<<")" << std::endl;
-    else                                     std::cout << "TRE: Generic-shader building failed (part of "<<m_name<<")" << std::endl;
+    if      (shaderType==GL_VERTEX_SHADER  ) { TRE_LOG("Vertex-shader building failed (part of "  << m_name << ")"); }
+    else if (shaderType==GL_GEOMETRY_SHADER) { TRE_LOG("Geometry-shader building failed (part of "<< m_name << ")"); }
+    else if (shaderType==GL_FRAGMENT_SHADER) { TRE_LOG("Fragment-shader building failed (part of "<< m_name << ")"); }
+    else                                     { TRE_LOG("Generic-shader building failed (part of " << m_name << ")"); }
 #endif
     return false;
   }

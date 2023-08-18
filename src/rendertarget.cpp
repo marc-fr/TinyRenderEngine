@@ -201,17 +201,11 @@ bool renderTarget::resize(const int pwidth, const int pheigth)
   GLenum glstatus = glCheckFramebufferStatus(GL_FRAMEBUFFER);
   if (glstatus != GL_FRAMEBUFFER_COMPLETE)
   {
-#ifdef TRE_PRINTS
-    std::cout << "[Debug] Error when creating frame-buffer " << m_drawFBO << std::endl;
-    if      (glstatus==GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT)
-      std::cout << "(GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT returned)" << std::endl;
-    else if (glstatus==GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER)
-      std::cout << "(GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER returned)" << std::endl;
-    else if (glstatus==GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT)
-      std::cout << "(GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT returned)" << std::endl;
-    else if (glstatus==GL_FRAMEBUFFER_UNSUPPORTED)
-      std::cout << "(GL_FRAMEBUFFER_UNSUPPORTED returned)" << std::endl;
-#endif
+    TRE_LOG("[Debug] Error when creating frame-buffer " << m_drawFBO);
+    if      (glstatus==GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT)         { TRE_LOG("(GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT returned)");         }
+    else if (glstatus==GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER)        { TRE_LOG("(GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER returned)");        }
+    else if (glstatus==GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT) { TRE_LOG("(GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT returned)"); }
+    else if (glstatus==GL_FRAMEBUFFER_UNSUPPORTED)                   { TRE_LOG("(GL_FRAMEBUFFER_UNSUPPORTED returned)");                   }
     myframebufferstatus=false;
   }
 
@@ -539,17 +533,11 @@ bool renderTarget_GBuffer::resize(const int pwidth, const int pheigth)
   GLenum glstatus = glCheckFramebufferStatus(GL_FRAMEBUFFER);
   if (glstatus != GL_FRAMEBUFFER_COMPLETE)
   {
-#ifdef TRE_PRINTS
-    std::cout << "[Debug] Error when creating frame-buffer " << m_drawFBO << std::endl;
-    if      (glstatus==GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT)
-      std::cout << "(GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT returned)" << std::endl;
-    else if (glstatus==GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER)
-      std::cout << "(GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER returned)" << std::endl;
-    else if (glstatus==GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT)
-      std::cout << "(GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT returned)" << std::endl;
-    else if (glstatus==GL_FRAMEBUFFER_UNSUPPORTED)
-      std::cout << "(GL_FRAMEBUFFER_UNSUPPORTED returned)" << std::endl;
-#endif
+    TRE_LOG("[Debug] Error when creating frame-buffer " << m_drawFBO);
+    if      (glstatus==GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT)         { TRE_LOG("(GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT returned)");         }
+    else if (glstatus==GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER)        { TRE_LOG("(GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER returned)");        }
+    else if (glstatus==GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT) { TRE_LOG("(GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT returned)"); }
+    else if (glstatus==GL_FRAMEBUFFER_UNSUPPORTED)                   { TRE_LOG("(GL_FRAMEBUFFER_UNSUPPORTED returned)");                   }
     myframebufferstatus=false;
   }
 

@@ -38,6 +38,11 @@ bool windowContext::SDLInit(Uint32 sdl_init_flags, int gl_depth_bits)
   SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE  , gl_depth_bits);
   // Misc
   SDL_StopTextInput();
+  // Check error
+  {
+    const char * mysdlerror = SDL_GetError();
+   if (*mysdlerror != '\0') { TRE_LOG(mysdlerror); }
+  }
   // End
   return true;
 }
