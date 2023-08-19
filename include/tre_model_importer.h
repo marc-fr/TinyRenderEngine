@@ -22,8 +22,8 @@ struct s_modelHierarchy;
  */
 struct s_modelHierarchy
 {
-  glm::mat4                     m_transform = glm::mat4(1.f);
-  std::vector<std::size_t>      m_parts;
+  glm::mat4                     m_transform;
+  std::size_t                   m_partId;
   std::vector<s_modelHierarchy> m_childs;
 };
 

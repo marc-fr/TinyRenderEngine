@@ -367,7 +367,7 @@ static bool readNumberList(std::ifstream &ins, std::string &out)
     ins.read(&cread, 1);
     if (ins.fail()) return false;
     if (cread == ']') return true;
-    if (cread == ' ' || cread == ',' || cread == '\n') cread = ' ';
+    if (cread < '+' || cread == ',' || cread > 'z') cread = ' ';
     if (!(cread == ' ' && clast == ' ')) out.push_back(cread);
     clast = cread;
   }
@@ -509,9 +509,41 @@ bool readFileBlock(std::ifstream &ins, std::vector<s_node> &out)
 
 // ----------------------------------------------------------------------------
 
-static void _GLTF_readNodes(const json::s_node &n, modelImporter::s_modelHierarchy &currentHierarchy)
+static void _numberList_to_Vector(const std::string &str, std::vector<std::size_t> &outV)
 {
-  // TODO
+  if (str.empty()) return;
+  std::size_t sep = str.find(' ');
+  std::size_t b = 0u;
+  while (sep != std::string::npos)
+  {
+    std::size_t vread = 0u;
+    sscanf(str.substr(b, sep - b).data(),"%lu",&vread);
+    outV.push_back(vread);
+    b = sep + 1;
+    sep = str.find(' ', b);
+  }
+  if (b < str.size())
+  {
+    std::size_t vread = 0u;
+    sscanf(str.substr(b).data(),"%lu",&vread);
+    outV.push_back(vread);
+  }
+}
+
+// ----------------------------------------------------------------------------
+
+static void _GLTF_readNode(const json::s_node &nns, std::size_t &meshId, glm::vec3 &tr, glm::quat &rot, std::vector<std::size_t> &children)
+{
+  TRE_ASSERT(nns.m_key.compare("list-element") == 0);
+  tr = glm::vec3(0.f);
+  rot = glm::quat(1.f, 0.f, 0.f, 0.f);
+  for (const json::s_node &nn : nns.m_list)
+  {
+    if      (nn.m_key.compare("mesh") == 0) sscanf(nn.m_valueStr.data(),"%lu",&meshId);
+    else if (nn.m_key.compare("translation") == 0) sscanf(nn.m_valueStr.data(),"%f %f %f",&tr.x, &tr.y, &tr.z);
+    else if (nn.m_key.compare("rotation") == 0) sscanf(nn.m_valueStr.data(),"%f %f %f %f",&rot.x, &rot.y, &rot.z,&rot.w);
+    else if (nn.m_key.compare("children") == 0) _numberList_to_Vector(nn.m_valueStr, children);
+  }
 }
 
 static void _GLTF_readAccessor(const json::s_node &na, std::size_t &bufferViewId, std::size_t &count, bool &isHalfPrecision, const char *expectedType)
@@ -641,6 +673,7 @@ bool modelImporter::addFromGLTF(modelIndexed &outModel, s_modelHierarchy &outHie
     return false;
   }
 
+  json::s_node *readScenes = nullptr;
   json::s_node *readNodes = nullptr;
   json::s_node *readMeshes = nullptr;
   json::s_node *readAccessors = nullptr;
@@ -649,7 +682,8 @@ bool modelImporter::addFromGLTF(modelIndexed &outModel, s_modelHierarchy &outHie
 
   for (json::s_node &n : readJsonNodes)
   {
-    if      (n.m_key.compare("nodes")       == 0) readNodes = &n;
+    if      (n.m_key.compare("scenes")      == 0) readScenes = &n;
+    else if (n.m_key.compare("nodes")       == 0) readNodes = &n;
     else if (n.m_key.compare("meshes")      == 0) readMeshes = &n;
     else if (n.m_key.compare("accessors")   == 0) readAccessors = &n;
     else if (n.m_key.compare("bufferViews") == 0) readBufferViews = &n;
@@ -924,10 +958,62 @@ bool modelImporter::addFromGLTF(modelIndexed &outModel, s_modelHierarchy &outHie
   }
 
   // read model hierarchy
-  if (readNodes != nullptr)
+  if (readScenes != nullptr && readNodes != nullptr)
   {
-    // TODO
+    struct s_nodeRead
+    {
+      std::size_t              m_meshId;
+      glm::mat4                m_tr;
+      std::vector<std::size_t> m_children;
+
+      static void appendNodeToHierarchy(const std::vector<s_nodeRead> &nr, const std::vector<s_partRead> &pr, std::size_t nid, s_modelHierarchy &out) // recursive
+      {
+        const s_nodeRead &nri = nr[nid];
+        out.m_partId = pr[nri.m_meshId].m_partId;
+        out.m_transform = nri.m_tr;
+        for (std::size_t cid : nri.m_children)
+        {
+          TRE_ASSERT(cid < nr.size());
+          out.m_childs.emplace_back();
+          appendNodeToHierarchy(nr, pr, cid, out.m_childs.back());
+        }
+      }
+    };
+    std::vector<s_nodeRead> nodeRead;
+
+    for (const json::s_node &nn : readNodes->m_list)
+    {
+      nodeRead.emplace_back();
+      glm::vec3 trs;
+      glm::quat rot;
+      _GLTF_readNode(nn, nodeRead.back().m_meshId, trs, rot, nodeRead.back().m_children);
+      nodeRead.back().m_tr = glm::mat4_cast(rot);
+      nodeRead.back().m_tr[3] = glm::vec4(trs, 1.f);
+      TRE_ASSERT(nodeRead.back().m_meshId < partRead.size());
+    }
+
+    for (const json::s_node &n : readScenes->m_list)
+    {
+      TRE_ASSERT(n.m_key.compare("list-element") == 0);
+
+      // read the scene
+      std::vector<std::size_t> sceneRootNodes;
+      for (const json::s_node &nn : n.m_list)
+      {
+        if (nn.m_key.compare("nodes") == 0) _numberList_to_Vector(nn.m_valueStr, sceneRootNodes);
+      }
+
+      for (std::size_t nid : sceneRootNodes)
+      {
+        TRE_ASSERT(nid < nodeRead.size());
+        outHierarchy.m_childs.emplace_back();
+        s_nodeRead::appendNodeToHierarchy(nodeRead, partRead, nid, outHierarchy.m_childs.back());
+      }
+    }
   }
+
+  outHierarchy.m_partId = std::size_t(-1);   // the root has no part-id,
+  outHierarchy.m_transform = glm::mat4(1.f); // neither transform
 
   // End
   TRE_LOG("Load " << gltffile << " (new parts=" << partRead.size() << ")" <<
