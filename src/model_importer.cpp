@@ -363,13 +363,30 @@ static bool readNumberList(std::ifstream &ins, std::string &out)
   char clast = 0;
   while (true)
   {
-    char cread;
+    char cread = 0;
     ins.read(&cread, 1);
     if (ins.fail()) return false;
     if (cread == ']') return true;
     if (cread < '+' || cread == ',' || cread > 'z') cread = ' ';
     if (!(cread == ' ' && clast == ' ')) out.push_back(cread);
     clast = cread;
+  }
+}
+
+static bool readStringList(std::ifstream &ins, std::string &out)
+{
+  while (true)
+  {
+    char cread = 0;
+    ins.read(&cread, 1);
+    if (ins.fail()) return false;
+    if (cread == ']') return true;
+    if (cread == '"')
+    {
+      out.push_back('"');
+      if (!readString(ins, out)) return false;
+      out.push_back('"');
+    }
   }
 }
 
@@ -384,11 +401,11 @@ struct s_node
 
   bool readNodeValue(std::ifstream &ins)
   {
-    // get the type: either a list, a singleton, a string or a number
+    // get the type: either a list, a singleton, a string, a number, a boolean
     int valueType = 0;
     while (true)
     {
-      char cread;
+      char cread = 0;
       ins.read(&cread, 1);
       if (ins.fail()) return false;
       if (cread == ' ' || cread == '\n') continue;
@@ -396,6 +413,7 @@ struct s_node
       else if (cread == '{') { valueType = 2; ins.seekg(-1, std::ios_base::cur); break; }
       else if (cread == '"') { valueType = 3; break; }
       else if (isNumber(cread)) { valueType = 4; ins.seekg(-1, std::ios_base::cur); break; }
+      else if (cread == 't' || cread == 'T' || cread == 'f' || cread == 'F') { valueType = 5; ins.seekg(-1, std::ios_base::cur); break; }
       else if (cread == ',' || cread == '}' || cread == '{' || cread == ':' || cread == ']') // invalid
       {
         _JSON_LOG("invalid value of node \"" << m_key << "\"");
@@ -407,17 +425,17 @@ struct s_node
     {
       case 1: // open a list
       {
-        _JSON_LOG("open a list");
-        char cread;
+        char cread = 0;
         while (true)
         {
           ins.read(&cread, 1);
           if (ins.fail()) return false;
-          if (cread == '{' || isNumber(cread)) break;
+          if (cread == '{' || cread == '"' || isNumber(cread)) break;
         }
         ins.seekg(-1, std::ios_base::cur);
         if (cread == '{')
         {
+          _JSON_LOG("open a list of nodes");
           while (true) // list of scopes
           {
             m_list.emplace_back();
@@ -431,11 +449,21 @@ struct s_node
               if (cread == ']') { closeList = true; break; }
               if (cread == ',') { break; }
             }
-            if (closeList) return true;
+            if (closeList)
+            {
+              _JSON_LOG("close a list of nodes");
+              return true;
+            }
           }
+        }
+        else if (cread == '"')
+        {
+          _JSON_LOG("open a list of strings");
+          return readStringList(ins, m_valueStr);
         }
         else
         {
+          _JSON_LOG("open a list of numbers");
           return readNumberList(ins, m_valueStr);
         }
       }
@@ -448,14 +476,30 @@ struct s_node
       break;
       case 3: // read a string
       {
-        _JSON_LOG("will read the value string");
+        _JSON_LOG("will read a value string");
         return readString(ins, m_valueStr);
       }
       break;
       case 4: // read a number
       {
-        _JSON_LOG("will read the number");
+        _JSON_LOG("will read a number");
         return readNumberStr(ins, m_valueStr);
+      }
+      break;
+      case 5:
+      {
+        _JSON_LOG("will read a boolean");
+        char cread = 0;
+        ins.read(&cread, 1);
+        if (ins.fail()) return false;
+        const bool isTrue = cread == 't' || cread == 'T';
+        ins.read(&cread, 1); // r a
+        ins.read(&cread, 1); // u l
+        ins.read(&cread, 1); // e s
+        if (!isTrue) ins.read(&cread, 1); // . e
+        if (cread != 'e' && cread != 'E') return false;
+        m_valueStr = isTrue ? "true" : "false";
+        return true;
       }
       break;
       default:
@@ -704,6 +748,7 @@ bool modelImporter::addFromGLTF(modelIndexed &outModel, s_modelHierarchy &outHie
     std::size_t m_vertexCount = std::size_t(-1);
     std::size_t m_bufferViewId_pos = std::size_t(-1);
     std::size_t m_bufferViewId_normal = std::size_t(-1);
+    std::size_t m_bufferViewId_uv = std::size_t(-1);
     std::size_t m_bufferViewId_index = std::size_t(-1);
     std::string m_name;
     bool        m_indiceHalf = false; // U16:true, U32:false
@@ -735,6 +780,7 @@ bool modelImporter::addFromGLTF(modelIndexed &outModel, s_modelHierarchy &outHie
             {
               if      (na.m_key.compare("POSITION") == 0) sscanf(na.m_valueStr.data(),"%lu",&curPartRead.m_bufferViewId_pos); // for now, it stores the accessor id.
               else if (na.m_key.compare("NORMAL") == 0) sscanf(na.m_valueStr.data(),"%lu",&curPartRead.m_bufferViewId_normal); // for now, it stores the accessor id.
+              else if (na.m_key.compare("TEXCOORD_0") == 0) sscanf(na.m_valueStr.data(),"%lu",&curPartRead.m_bufferViewId_uv); // for now, it stores the accessor id.
               else    { TRE_LOG("model::loadfromGLTF: unkown attribute \"" << na.m_key << "\""); }
             }
           }
@@ -779,6 +825,15 @@ bool modelImporter::addFromGLTF(modelIndexed &outModel, s_modelHierarchy &outHie
       std::size_t c = 0;
       bool dummy = false;
       _GLTF_readAccessor(na, curPartRead.m_bufferViewId_normal, c, dummy, "VEC3");
+    }
+    // -> uv
+    if (curPartRead.m_bufferViewId_uv < readAccessors->m_list.size())
+    {
+      const json::s_node &na = readAccessors->m_list[curPartRead.m_bufferViewId_uv];
+      curPartRead.m_bufferViewId_uv = std::size_t(-1); // reset
+      std::size_t c = 0;
+      bool dummy = false;
+      _GLTF_readAccessor(na, curPartRead.m_bufferViewId_uv, c, dummy, "VEC2");
     }
     // -> index
     if (curPartRead.m_bufferViewId_index < readAccessors->m_list.size())
@@ -885,6 +940,7 @@ bool modelImporter::addFromGLTF(modelIndexed &outModel, s_modelHierarchy &outHie
 
     const glm::vec3 *bufferPos = nullptr;
     const glm::vec3 *bufferNor = nullptr;
+    const glm::vec2 *bufferUV = nullptr;
     const uint32_t  *bufferInd32 = nullptr;
     const uint16_t  *bufferInd16 = nullptr;
 
@@ -910,7 +966,19 @@ bool modelImporter::addFromGLTF(modelIndexed &outModel, s_modelHierarchy &outHie
     }
     if (bufferNor == nullptr && outLayout.m_normals.hasData())
     {
-      TRE_LOG("model::loadfromGLTF: no normal-buffer found for mmesh \"" << curPartInfo.m_name << "\" but the model has normal-data. Zeros will be written.");
+      TRE_LOG("model::loadfromGLTF: no normal-buffer found for mesh \"" << curPartInfo.m_name << "\" but the model has normal-data. Zeros will be written.");
+    }
+
+    if (curPartRead.m_bufferViewId_uv < readBufferViews->m_list.size())
+    {
+      std::size_t bufIdx = 0, bufOffset = 0;
+      _GLTF_readBufferView(readBufferViews->m_list[curPartRead.m_bufferViewId_uv], bufIdx, bufOffset, curPartRead.m_vertexCount * 2 * sizeof(float));
+      if (bufOffset < readBuffersResolved[bufIdx].m_rawData.size())
+        bufferUV =  reinterpret_cast<const glm::vec2*>(& readBuffersResolved[bufIdx].m_rawData[bufOffset]);
+    }
+    if (bufferUV == nullptr && outLayout.m_uvs.hasData())
+    {
+      TRE_LOG("model::loadfromGLTF: no uv-buffer found for mesh \"" << curPartInfo.m_name << "\" but the model has uv-data. Zeros will be written.");
     }
 
     if (curPartRead.m_bufferViewId_index < readBufferViews->m_list.size())
@@ -931,6 +999,8 @@ bool modelImporter::addFromGLTF(modelIndexed &outModel, s_modelHierarchy &outHie
 
     const bool fillNor = (bufferNor != nullptr && outLayout.m_normals.hasData());
     const bool fillNor_zero = (bufferNor == nullptr && outLayout.m_normals.hasData());
+    const bool fillUV = (bufferUV != nullptr && outLayout.m_uvs.hasData());
+    const bool fillUV_zero = (bufferUV == nullptr && outLayout.m_uvs.hasData());
 
     // fill vertex-data
     for (std::size_t iv = 0; iv < curPartRead.m_vertexCount; ++iv)
@@ -942,6 +1012,9 @@ bool modelImporter::addFromGLTF(modelIndexed &outModel, s_modelHierarchy &outHie
 
       if (fillNor) outLayout.m_normals.get<glm::vec3>(vertexOffset + iv) = *bufferNor++;
       else if (fillNor_zero) outLayout.m_normals.get<glm::vec3>(vertexOffset + iv) = glm::vec3(0.f);
+
+      if (fillUV) outLayout.m_uvs.get<glm::vec2>(vertexOffset + iv) = *bufferUV++;
+      else if (fillUV_zero) outLayout.m_uvs.get<glm::vec2>(vertexOffset + iv) = glm::vec2(0.f);
     }
 
     // fill index-data
