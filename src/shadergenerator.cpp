@@ -727,7 +727,7 @@ void shaderGenerator::createShaderSource_Layout(std::string &sourceVertex, std::
     else
       createShaderFunctions_Light_BlinnPhong(sourceFragment);
 
-    if (m_layout.hasSMP_ShadowSun)
+    if (m_layout.hasSMP_ShadowSun || m_layout.hasSMP_ShadowPts)
       createShaderFunctions_Shadow(sourceFragment);
   }
 
