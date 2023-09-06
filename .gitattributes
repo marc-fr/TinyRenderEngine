@@ -13,5 +13,4 @@
 *.tif filter=lfs diff=lfs merge=lfs binary
 *.bmp filter=lfs diff=lfs merge=lfs binary
 *.ttf filter=lfs diff=lfs merge=lfs binary
-*.obj filter=lfs diff=lfs merge=lfs binary
-*.pdf filter=lfs diff=lfs merge=lfs binary
+*.bin   binary

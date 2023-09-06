@@ -19,7 +19,250 @@
 #define TESTIMPORTPATH ""
 #endif
 
-// =============================================================================
+// ============================================================================
+// Particles
+
+struct s_particleStream
+{
+  std::vector<glm::vec4> m_pos;    // pos(x,y,z) + size(w)
+  std::vector<glm::vec4> m_vel;    // dpos(x,y,z) + dsize(w)
+  std::vector<glm::vec2> m_life;   // life + invLifeRatio
+  std::vector<glm::vec4> m_rot;    // scalar rotation or quaternion
+  std::vector<glm::vec4> m_color;  // color
+  std::vector<unsigned>  m_meshId; // mesh-id (in [0,1])
+
+  std::array<unsigned, 2> m_countPerMeshId; // only 2 meshes supported.
+
+  const bool m_withRotation;
+  const bool m_withColor;
+  const bool m_withMeshId;
+
+  s_particleStream(bool withRotation, bool withColor, bool withMeshId) : m_withRotation(withRotation), m_withColor(withColor), m_withMeshId(withMeshId) {}
+
+  inline std::size_t size() const { return m_pos.size(); }
+
+  void resize(std::size_t count)
+  {
+    m_pos.resize(count);
+    m_vel.resize(count);
+    m_life.resize(count, glm::vec2(2.f, 1.f));
+    if (m_withRotation) m_rot.resize(count);
+    if (m_withColor) m_color.resize(count);
+    if (m_withMeshId) m_meshId.resize(count);
+  }
+};
+
+static void _particleUpdate(s_particleStream &worldParticlesBBStream, s_particleStream &worldParticlesMeshStream, float sceneDt)
+{
+  // particle evolve
+  {
+    TRE_PROFILEDSCOPE("evolve", particlesE);
+    for (std::size_t ip = 0; ip < worldParticlesBBStream.size(); ++ip)
+    {
+      worldParticlesBBStream.m_vel[ip] *= 0.99f;
+      worldParticlesBBStream.m_vel[ip] += glm::vec4(0.f, 0.1f, 0.f, 0.005f);
+      worldParticlesBBStream.m_pos[ip] += worldParticlesBBStream.m_vel[ip] * sceneDt;
+      worldParticlesBBStream.m_life[ip].x += sceneDt * worldParticlesBBStream.m_life[ip].y;
+    }
+    for (std::size_t ip = 0; ip < worldParticlesMeshStream.size(); ++ip)
+    {
+      worldParticlesMeshStream.m_vel[ip] *= 0.99f;
+      worldParticlesMeshStream.m_vel[ip] += sceneDt * glm::vec4(0.f, -1.f, 0.f, 0.01f);
+      worldParticlesMeshStream.m_pos[ip] += worldParticlesMeshStream.m_vel[ip] * sceneDt;
+      worldParticlesMeshStream.m_life[ip].x += sceneDt * worldParticlesMeshStream.m_life[ip].y;
+    }
+  }
+  // particle kill-born
+  {
+    TRE_PROFILEDSCOPE("kill-born", particlesKB);
+    for (std::size_t ip = 0; ip < worldParticlesBBStream.size(); ++ip)
+    {
+      if (worldParticlesBBStream.m_life[ip].x >= 1.f)
+      {
+        const float rand0 = (rand() * 2.f / RAND_MAX) - 1.f;
+        const float rand1 = (rand() * 2.f / RAND_MAX) - 1.f;
+        const float randL = rand() * 10.f / RAND_MAX;
+        const float randR = rand() * 6.28f / RAND_MAX;
+        worldParticlesBBStream.m_pos[ip] = glm::vec4(0.f, 2.f, 0.f, 0.04f);
+        worldParticlesBBStream.m_vel[ip] = glm::vec4(rand0 * 0.1f, 0.f, rand1 * 0.1f, 0.f);
+        worldParticlesBBStream.m_life[ip] = glm::vec2(0.f, 1.f / randL);
+        worldParticlesBBStream.m_rot[ip] = glm::vec4(randR, 0.f, 0.f, 0.f);
+      }
+    }
+    for (std::size_t ip = 0; ip < worldParticlesMeshStream.size(); ++ip)
+    {
+      if (worldParticlesMeshStream.m_life[ip].x >= 1.f)
+      {
+        const float rand0 = (rand() * 2.f / RAND_MAX) - 1.f;
+        const float rand1 = (rand() * 2.f / RAND_MAX) - 1.f;
+        const float randL = rand() * 10.f / RAND_MAX;
+        worldParticlesMeshStream.m_pos[ip] = glm::vec4(4.f, 6.f, 4.f, 0.1f);
+        worldParticlesMeshStream.m_vel[ip] = glm::vec4(rand0 * 0.1f, 0.5f * (rand0*rand0 + rand1*rand1), rand1 * 0.1f, 0.f);
+        worldParticlesMeshStream.m_rot[ip] = glm::vec4(cosf(rand0) * cosf(rand1), sinf(rand0) * cosf(rand1), 0.f, sinf(rand1));
+        worldParticlesMeshStream.m_life[ip] = glm::vec2(0.f, 1.f / randL);
+        worldParticlesMeshStream.m_color[ip] = glm::vec4(rand1, 1.f - rand0, 1.f - rand1, 1.f);
+        worldParticlesMeshStream.m_meshId[ip] = (rand() & 0x1);
+      }
+    }
+  }
+}
+
+// ============================================================================
+// Shadow-debug
+
+struct s_shadowDebug
+{
+  tre::shader     shader;
+  tre::shader     shaderCubeFace;
+  tre::modelRaw2D geom;
+  bool            _isLoaded = false;
+
+  void load()
+  {
+    tre::shader::s_layout shLayout(tre::shader::PRGM_2D, tre::shader::PRGM_TEXTURED);
+
+    const char * SourceShader2DTexturedDepth_FragmentMain =
+    "void main(){\n"
+    "  float d = texture(TexDiffuse, pixelUV).r;\n"
+    "  color = vec4(d,0.f,0.1f,1.f);\n"
+    "}\n";
+    if (!shader.loadCustomShader(shLayout, SourceShader2DTexturedDepth_FragmentMain, "2DTexDepth_debug"))
+      return;
+
+    tre::shader::s_layout shLayoutCubeFace(tre::shader::PRGM_2D, tre::shader::PRGM_TEXTURED);
+    shLayoutCubeFace.hasSMP_Diffuse = false;
+    shLayoutCubeFace.hasSMP_Cube = true;
+
+    const char * SourceShaderCubeTexturedDepth_FragmentMain =
+    "uniform int iface;\n"
+    "void main(){\n"
+    "  vec2 uv = pixelUV * 2.f - 1.f;\n"
+    "  vec3 uvw = vec3(0.f, 0.f, 0.f);\n"
+    "  if (iface == 0) uvw = vec3(1.f, uv.y, uv.x);\n"
+    "  if (iface == 1) uvw = vec3(-1.f, uv.y, -uv.x);\n"
+    "  if (iface == 2) uvw = vec3(uv.x, 1.f, uv.y);\n"
+    "  if (iface == 3) uvw = vec3(uv.x, -1.f, -uv.y);\n"
+    "  if (iface == 4) uvw = vec3(-uv.x, uv.y, 1.f);\n"
+    "  if (iface == 5) uvw = vec3(uv.x, uv.y, -1.f);\n"
+    "  float d = texture(TexCube, uvw).r;\n"
+    "  float dRemap = exp(30.f*(d-1.f)) * d;\n"
+    "  color = vec4(dRemap,0.f,0.1f,1.f);\n"
+    "}\n";
+    if (!shaderCubeFace.loadCustomShader(shLayoutCubeFace, SourceShaderCubeTexturedDepth_FragmentMain, "CubeTexDepth_debug"))
+      return;
+
+    // squared-map
+    geom.createPart(6);
+    geom.fillDataRectangle(0, 0, glm::vec4(-1.f, -1.f, 1.f, 1.f), glm::vec4(), glm::vec4(0.f, 0.f, 1.f, 1.f));
+
+    // cube-map
+    geom.createPart(6); //+X
+    geom.fillDataRectangle(1, 0, glm::vec4( 0.0f, 0.0f, 0.5f, 0.5f), glm::vec4(), glm::vec4(0.f, 0.f, 1.f, 1.f));
+    geom.createPart(6); //-X
+    geom.fillDataRectangle(2, 0, glm::vec4(-1.0f, 0.0f, -0.5f, 0.5f), glm::vec4(), glm::vec4(0.f, 0.f, 1.f, 1.f));
+    geom.createPart(6); //+Y
+    geom.fillDataRectangle(3, 0, glm::vec4(-0.5f, 0.5f, 0.0f, 1.0f), glm::vec4(), glm::vec4(0.f, 0.f, 1.f, 1.f));
+    geom.createPart(6); //-Y
+    geom.fillDataRectangle(4, 0, glm::vec4(-0.5f, -0.5f, 0.0f, 0.f), glm::vec4(), glm::vec4(0.f, 0.f, 1.f, 1.f));
+    geom.createPart(6); //+Z
+    geom.fillDataRectangle(5, 0, glm::vec4(0.5f, 0.0f, 1.0f, 0.5f), glm::vec4(), glm::vec4(0.f, 0.f, 1.f, 1.f));
+    geom.createPart(6); //-Z
+    geom.fillDataRectangle(6, 0, glm::vec4(-0.5f, 0.0f, 0.0f, 0.5f), glm::vec4(), glm::vec4(0.f, 0.f, 1.f, 1.f));
+
+    if (!geom.loadIntoGPU())
+      return;
+
+    _isLoaded = true;
+  }
+
+  void draw(const glm::mat3 &mProj2D)
+  {
+    if (!_isLoaded) return;
+
+    glUseProgram(shader.m_drawProgram);
+
+    glUniform1i(shader.getUniformLocation(tre::shader::TexDiffuse),2); // texture already bind
+
+    const glm::mat3 mModel_sunDebug = glm::mat3(0.3f, 0.0f, 0.f,
+                                                0.0f, 0.3f, 0.f,
+                                                1.0f, 0.6f, 1.f);
+
+    shader.setUniformMatrix(mProj2D * mModel_sunDebug);
+
+    geom.drawcall(0, 1);
+
+    glUseProgram(shaderCubeFace.m_drawProgram);
+
+    glUniform1i(shaderCubeFace.getUniformLocation(tre::shader::TexCube),3); // texture already bind
+
+    const glm::mat3 mModel_cubeDebug = glm::mat3(0.3f, 0.0f, 0.f,
+                                                 0.0f, 0.3f, 0.f,
+                                                 1.0f, -0.1f, 1.f);
+
+    shaderCubeFace.setUniformMatrix(mProj2D * mModel_cubeDebug);
+
+    for (unsigned iFace = 0; iFace < 6; ++iFace)
+    {
+      glUniform1i(shaderCubeFace.getUniformLocation("iface"),GLint(iFace));
+      geom.drawcall(1 + iFace, 1);
+    }
+  }
+
+  void clear()
+  {
+    shader.clearShader();
+    shaderCubeFace.clearShader();
+    geom.clearGPU();
+  }
+
+};
+
+// ============================================================================
+// Static scene
+
+struct s_worldScene
+{
+  tre::modelStaticIndexed3D mesh;
+  GLuint                    partId_Main = 0;
+  GLuint                    partId_Tower = 0;
+  GLuint                    partId_TreeTrunck = 0;
+  GLuint                    partId_TreeLeaves = 0;
+  GLuint                    partId_Sphere = 0;
+  tre::texture              texGrass;
+  tre::texture              texWall;
+  tre::texture              texWall_normal;
+  tre::texture              texWood;
+  tre::texture              texWood_normal;
+  tre::texture              texTreeTrunck;
+  tre::texture              texTreeLeaves;
+  tre::texture              texSteal;
+  tre::texture              texSteal_mr; // metallic-roughness
+  glm::mat4                 instance_Tower = glm::mat4(1.f);
+  std::vector<glm::mat4>    instances_Tree;
+  std::vector<glm::mat4>    instances_Sphere; // (rotation will evolve)
+
+  void clear()
+  {
+    mesh.clearGPU();
+    texGrass.clear();
+    texWall.clear();
+    texWall_normal.clear();
+    texWood.clear();
+    texWood_normal.clear();
+    texTreeTrunck.clear();
+    texTreeLeaves.clear();
+    texSteal.clear();
+    texSteal_mr.clear();
+  }
+
+  tre::s_boundbox getBoundingBox() const
+  {
+    return mesh.partInfo(partId_Main).m_bbox; // + wall + tower + extend to a tree's up-point
+  }
+};
+
+// ============================================================================
+// MAIN
 
 int main(int argc, char **argv)
 {
@@ -31,7 +274,7 @@ int main(int argc, char **argv)
   tre::windowContext::s_timer myTimings;
   tre::windowContext::s_view3D myView3D(&myWindow);
 
-  if (!myWindow.SDLInit(SDL_INIT_VIDEO))
+  if (!myWindow.SDLInit(SDL_INIT_VIDEO) || !myWindow.SDLImageInit(IMG_INIT_JPG))
     return -1;
 
   // Retreive display information
@@ -46,9 +289,10 @@ int main(int argc, char **argv)
     return -3;
 
   // - random generator
-  srand(time(nullptr));
 
-  // load meshes and textures
+  srand(time(nullptr)); // TODO: have proper c++11 rand generators
+
+  // load meshes
 
   tre::modelStaticIndexed3D worldSkyboxModel;
   {
@@ -74,6 +318,47 @@ int main(int argc, char **argv)
     worldSkyboxModel.loadIntoGPU();
   }
 
+  s_worldScene worldScene;
+
+  {
+    worldScene.mesh.setFlags(tre::modelStaticIndexed3D::VB_NORMAL | tre::modelStaticIndexed3D::VB_TANGENT | tre::modelStaticIndexed3D::VB_UV);
+    tre::modelImporter::s_modelHierarchy worldHierarchy;
+    if (tre::modelImporter::addFromGLTF(worldScene.mesh, worldHierarchy, TESTIMPORTPATH "resources/scene/scene.gltf"))
+    {
+      // get the part-ids (by looking at the flat part names)
+      worldScene.partId_Main = worldScene.mesh.getPartWithName("Grid");
+      worldScene.partId_Tower = worldScene.mesh.getPartWithName("watchtower");
+      worldScene.partId_Sphere = worldScene.mesh.getPartWithName("Ball");
+      worldScene.partId_TreeTrunck = worldScene.mesh.getPartWithName("treeT2");
+      worldScene.partId_TreeLeaves = worldScene.mesh.getPartWithName("leavesT2");
+
+      // get the object instances (tower + balls + trees)
+      for (const auto &mh : worldHierarchy.m_childs)
+      {
+        if (mh.m_partId == worldScene.partId_Sphere)
+          worldScene.instances_Sphere.push_back(mh.m_transform);
+        else if (mh.m_partId == worldScene.partId_TreeTrunck)
+          worldScene.instances_Tree.push_back(mh.m_transform);
+        else if (mh.m_partId == worldScene.partId_Tower)
+          worldScene.instance_Tower = mh.m_transform;
+      }
+
+      //tre::modelTools::computeTangentFromUV(worldScene.mesh.layout(), worldScene.mesh.partInfo(worldScene.partId_Main));
+      tre::modelTools::computeTangentFromUV(worldScene.mesh.layout(), worldScene.mesh.partInfo(worldScene.partId_Tower));
+    }
+    else
+    {
+      TRE_LOG("Fail to load scene/scene.gltf.");
+
+      worldScene.mesh.clearParts();
+      worldScene.mesh.createPartFromPrimitive_square(glm::mat4(1.f), 100.f);
+    }
+
+    worldScene.mesh.loadIntoGPU();
+  }
+
+  // load textures
+
   tre::texture worldSkyBoxTex;
   {
     const std::array<SDL_Surface*, 6> cubeFaces = { tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/cubemap_inside_UVcoords.xpos.bmp"),
@@ -85,78 +370,28 @@ int main(int argc, char **argv)
     worldSkyBoxTex.loadCube(cubeFaces, tre::texture::MMASK_MIPMAP | tre::texture::MMASK_COMPRESS, true);
   }
 
-  tre::modelStaticIndexed3D worldMesh(tre::modelStaticIndexed3D::VB_NORMAL |
-                                      tre::modelStaticIndexed3D::VB_TANGENT |
-                                      tre::modelStaticIndexed3D::VB_UV);
-  {
-    if (!tre::modelImporter::addFromWavefront(worldMesh, TESTIMPORTPATH "resources/scenes.obj"))
-    {
-      TRE_LOG("Fail to load scenes.obj.");
-      myWindow.OpenGLQuit();
-      myWindow.SDLQuit();
-      return -3;
-    }
-    std::vector<std::string> reOrg;
-    reOrg.push_back(std::string("SceneGround"));
-    reOrg.push_back(std::string("SceneWall"));
-    reOrg.push_back(std::string("SceneCube"));
-    worldMesh.reorganizeParts(reOrg);
-    tre::modelTools::computeTangentFromUV(worldMesh.layout(), worldMesh.partInfo(0));
-    worldMesh.mergeParts(1,2);
-    worldMesh.loadIntoGPU();
-  }
+  if (!worldScene.texGrass.load(tre::texture::loadTextureFromFile(TESTIMPORTPATH "resources/scene/wispy-grass-meadow_albedo.jpg"), tre::texture::MMASK_MIPMAP | tre::texture::MMASK_ANISOTROPIC, true))
+    worldScene.texGrass.loadWhite();
 
-  tre::modelStaticIndexed3D worldObjects(tre::modelStaticIndexed3D::VB_NORMAL);
-  {
-    if (!tre::modelImporter::addFromWavefront(worldObjects, TESTIMPORTPATH "resources/objects.obj", TESTIMPORTPATH "resources/objects.mtl"))
-    {
-      TRE_LOG("Fail to load objects.obj");
-      myWindow.OpenGLQuit();
-      myWindow.SDLQuit();
-      return -3;
-    }
-    std::vector<std::string> reOrg;
-    reOrg.push_back("CubeFlat");
-    reOrg.push_back("Icosphere");
-    if (!worldObjects.reorganizeParts(reOrg))
-    {
-      TRE_LOG("Fail to get the mesh parts in objects.obj");
-      myWindow.OpenGLQuit();
-      myWindow.SDLQuit();
-      return -4;
-    }
-    worldObjects.loadIntoGPU();
-  }
+  if (!worldScene.texWood.load(tre::texture::loadTextureFromFile(TESTIMPORTPATH "resources/scene/Wood_Tower_Col.jpg"), tre::texture::MMASK_MIPMAP | tre::texture::MMASK_ANISOTROPIC, true))
+    worldScene.texWood.loadWhite();
 
-  tre::texture worldGroundColor;
-  worldGroundColor.load(tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/Asphalt_004_COLOR.bmp"), tre::texture::MMASK_MIPMAP | tre::texture::MMASK_ANISOTROPIC, true);
+  if (!worldScene.texWood_normal.load(tre::texture::loadTextureFromFile(TESTIMPORTPATH "resources/scene/Wood_Tower_Nor_jpg.jpg"), tre::texture::MMASK_MIPMAP | tre::texture::MMASK_ANISOTROPIC, true))
+    worldScene.texWood_normal.loadColor(0xFF8080FF);
 
-  tre::texture worldGroundNormal;
-  worldGroundNormal.load(tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/Asphalt_004_NRM.bmp"), tre::texture::MMASK_MIPMAP, true);
+  if (!worldScene.texSteal.load(tre::texture::loadTextureFromFile(TESTIMPORTPATH "resources/scene/rusted-steel_albedo.jpg"), tre::texture::MMASK_MIPMAP | tre::texture::MMASK_ANISOTROPIC, true))
+    worldScene.texSteal.loadWhite();
 
-  tre::texture worldGroundMetalRough;
-  {
-    SDL_Surface *texM = tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/Asphalt_004_METALLIC.bmp");
-    SDL_Surface *texR = tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/Asphalt_004_ROUGH.bmp");
-    if (texM != nullptr && texR != nullptr)
-    {
-      SDL_Surface *texMR = tre::texture::combine(texM, texR);
-      worldGroundMetalRough.load(texMR, tre::texture::MMASK_RG_ONLY | tre::texture::MMASK_MIPMAP, true);
-    }
-    if (texM != nullptr) SDL_FreeSurface(texM);
-    if (texR != nullptr) SDL_FreeSurface(texR);
-  }
+  if (!worldScene.texSteal_mr.load(tre::texture::loadTextureFromFile(TESTIMPORTPATH "resources/scene/rusted-steel_metallic-rusted-steel_roughness.jpg"), tre::texture::MMASK_MIPMAP | tre::texture::MMASK_ANISOTROPIC | tre::texture::MMASK_RG_ONLY, true))
+    worldScene.texSteal_mr.loadWhite();
 
-  tre::texture worldTex_UVcoords;
-  {
-    const std::array<SDL_Surface*, 6> cubeFaces = { tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/cubemap_outside_UVcoords.xpos.bmp"),
-                                                    tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/cubemap_outside_UVcoords.xneg.bmp"),
-                                                    tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/cubemap_outside_UVcoords.ypos.bmp"),
-                                                    tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/cubemap_outside_UVcoords.yneg.bmp"),
-                                                    tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/cubemap_outside_UVcoords.zpos.bmp"),
-                                                    tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/cubemap_outside_UVcoords.zneg.bmp"), };
-    worldTex_UVcoords.loadCube(cubeFaces, tre::texture::MMASK_MIPMAP, true);
-  }
+  if (!worldScene.texTreeTrunck.load(tre::texture::loadTextureFromFile(TESTIMPORTPATH "resources/scene/BarkDecidious0194_7_S_jpg.jpg"), tre::texture::MMASK_MIPMAP | tre::texture::MMASK_ANISOTROPIC, true))
+    worldScene.texTreeTrunck.loadWhite();
+
+  if (!worldScene.texTreeLeaves.load(tre::texture::loadTextureFromFile(TESTIMPORTPATH "resources/scene/Leaves0120_35_S_png.jpg"), tre::texture::MMASK_MIPMAP | tre::texture::MMASK_ANISOTROPIC, true))
+    worldScene.texTreeLeaves.loadWhite();
+
+  // load Particles
 
   tre::modelInstancedBillboard worldParticlesBB(tre::modelInstanced::VI_COLOR | tre::modelInstanced::VI_ROTATION);
   worldParticlesBB.createBillboard();
@@ -168,43 +403,16 @@ int main(int argc, char **argv)
   worldParticlesMesh.loadIntoGPU();
 
   tre::texture  worldParticlesTex;
-  worldParticlesTex.load(tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/quad.bmp"), tre::texture::MMASK_MIPMAP | tre::texture::MMASK_FORCE_NO_ALPHA, true);
-
-  struct s_particleStream
-  {
-    std::vector<glm::vec4> m_pos;    // pos(x,y,z) + size(w)
-    std::vector<glm::vec4> m_vel;    // dpos(x,y,z) + dsize(w)
-    std::vector<glm::vec2> m_life;   // life + invLifeRatio
-    std::vector<glm::vec4> m_rot;    // scalar rotation or quaternion
-    std::vector<glm::vec4> m_color;  // color
-    std::vector<unsigned>  m_meshId; // mesh-id (in [0,1])
-
-    std::array<unsigned, 2> m_countPerMeshId; // only 2 meshes supported.
-
-    const bool m_withRotation;
-    const bool m_withColor;
-    const bool m_withMeshId;
-
-    s_particleStream(bool withRotation, bool withColor, bool withMeshId) : m_withRotation(withRotation), m_withColor(withColor), m_withMeshId(withMeshId) {}
-
-    inline std::size_t size() const { return m_pos.size(); }
-
-    void resize(std::size_t count)
-    {
-      m_pos.resize(count);
-      m_vel.resize(count);
-      m_life.resize(count, glm::vec2(2.f, 1.f));
-      if (m_withRotation) m_rot.resize(count);
-      if (m_withColor) m_color.resize(count);
-      if (m_withMeshId) m_meshId.resize(count);
-    }
-  };
+  if (!worldParticlesTex.load(tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/quad.bmp"), tre::texture::MMASK_MIPMAP | tre::texture::MMASK_FORCE_NO_ALPHA, true))
+    worldParticlesTex.loadWhite();
 
   s_particleStream worldParticlesBBStream(true, false, false);
   worldParticlesBBStream.resize(1024);
 
   s_particleStream worldParticlesMeshStream(true, true, true);
   worldParticlesMeshStream.resize(512);
+
+  // load HUD
 
   tre::font          worldHUDFont;
 
@@ -235,27 +443,61 @@ int main(int argc, char **argv)
   tre::shader  shaderSkybox;
   shaderSkybox.loadShader(tre::shader::PRGM_3D, tre::shader::PRGM_CUBEMAPED);
 
-  tre::shader shaderMaterialUni;
-  shaderMaterialUni.setShadowSunSamplerCount(1);
-  shaderMaterialUni.setShadowPtsSamplerCount(1);
-  shaderMaterialUni.loadShader(tre::shader::PRGM_3D,
-                               tre::shader::PRGM_UNICOLOR |
+  tre::shader shaderMaterialFlat;
+  shaderMaterialFlat.setShadowSunSamplerCount(1);
+  shaderMaterialFlat.setShadowPtsSamplerCount(1);
+  shaderMaterialFlat.loadShader(tre::shader::PRGM_3D,
+                               tre::shader::PRGM_TEXTURED |
                                tre::shader::PRGM_LIGHT_SUN | tre::shader::PRGM_SHADOW_SUN |
                                tre::shader::PRGM_LIGHT_PTS | tre::shader::PRGM_SHADOW_PTS |
                                tre::shader::PRGM_UNIBRDF);
 
-  tre::shader shaderMaterialMapped;
-  shaderMaterialMapped.setShadowSunSamplerCount(1);
-  shaderMaterialMapped.setShadowPtsSamplerCount(1);
-  shaderMaterialMapped.loadShader(tre::shader::PRGM_3D,
+  tre::shader shaderMaterialBumped;
+  shaderMaterialBumped.setShadowSunSamplerCount(1);
+  shaderMaterialBumped.setShadowPtsSamplerCount(1);
+  shaderMaterialBumped.loadShader(tre::shader::PRGM_3D,
                                   tre::shader::PRGM_TEXTURED | tre::shader::PRGM_MAPNORMAL |
                                   tre::shader::PRGM_LIGHT_SUN | tre::shader::PRGM_SHADOW_SUN |
                                   tre::shader::PRGM_LIGHT_PTS | tre::shader::PRGM_SHADOW_PTS |
-                                  tre::shader::PRGM_MAPBRDF);
+                                  tre::shader::PRGM_UNIBRDF);
+
+  tre::shader shaderMaterialBrdf;
+  shaderMaterialBrdf.setShadowSunSamplerCount(1);
+  shaderMaterialBrdf.setShadowPtsSamplerCount(1);
+  shaderMaterialBrdf.loadShader(tre::shader::PRGM_3D,
+                                tre::shader::PRGM_TEXTURED |
+                                tre::shader::PRGM_LIGHT_SUN | tre::shader::PRGM_SHADOW_SUN |
+                                tre::shader::PRGM_LIGHT_PTS | tre::shader::PRGM_SHADOW_PTS |
+                                tre::shader::PRGM_MAPBRDF);
+
+  tre::shader shaderMetarialDsidedMask;
+  {
+    const char *shSource = "void main()\n"
+                           "{\n"
+                           " vec3 cDiffuse = texture(TexDiffuse, pixelUV).xyz;\n"
+                           " if (cDiffuse.g < 0.05f) discard; // MASK\n"
+                           "vec3 V = - normalize((MView * vec4(pixelPosition, 1.f)).xyz);\n"
+                           "vec3 rawN = normalize(pixelNormal);\n"
+                           "vec3 N = normalize((MView * vec4(pixelNormal, 0.f)).xyz);\n"
+                           "vec2 matMetalRough = uniBRDF;\n"
+                           "vec3 L = - normalize((MView * vec4(m_sunlight.direction, 0.f)).xyz);\n"
+                           "vec3 Ndsided = (dot(N,L) >= 0.f ? 1.f : -1.f) * N;\n"
+                           "float tanTheta = tan(acos(clamp(dot(rawN,normalize(-m_sunlight.direction)), 1.e-3f, 1.f)));\n"
+                           "float islighted_sun = ShadowOcclusion_sun(tanTheta, rawN);\n"
+                           "vec3 lsun = BRDFLighting(cDiffuse, m_sunlight.color, Ndsided, L, V, uniBRDF.x, uniBRDF.y);\n"
+                           "vec3 lamb = BRDFLighting_ambiante(cDiffuse, m_sunlight.colorAmbiant, Ndsided, V, uniBRDF.x, uniBRDF.y);\n"
+                           " color.xyz = lsun * islighted_sun + lamb;\n"
+                           " color.w = 1.f;\n"
+                           "}\n";
+
+    shaderMetarialDsidedMask.setShadowSunSamplerCount(1);
+    tre::shaderGenerator::s_layout sl(tre::shader::PRGM_3D, tre::shader::PRGM_TEXTURED | tre::shader::PRGM_LIGHT_SUN | tre::shader::PRGM_SHADOW_SUN | tre::shader::PRGM_UNIBRDF);
+    shaderMetarialDsidedMask.loadCustomShader(sl, shSource, "3d_leaves");
+  }
 
   tre::shader::s_UBOdata_sunLight sunLight_Data;
-  sunLight_Data.color = glm::vec3(0.9f,0.9f,0.9f);
-  sunLight_Data.colorAmbiant = glm::vec3(0.1f,0.1f,0.1f);
+  sunLight_Data.color = glm::vec3(1.8f);
+  sunLight_Data.colorAmbiant = glm::vec3(0.4f);
 
   tre::shader::s_UBOdata_sunShadow sunShadow_Data;
   sunShadow_Data.nShadow = 1;
@@ -267,15 +509,6 @@ int main(int argc, char **argv)
 
   tre::shader shaderShadow;
   shaderShadow.loadShader(tre::shader::PRGM_3D_DEPTH,0);
-
-  tre::shader  shaderSphere;
-  shaderSphere.setShadowSunSamplerCount(1);
-  shaderSphere.setShadowPtsSamplerCount(1);
-  shaderSphere.loadShader(tre::shader::PRGM_3D,
-                          tre::shader::PRGM_CUBEMAPED |
-                          tre::shader::PRGM_LIGHT_SUN | tre::shader::PRGM_SHADOW_SUN |
-                          tre::shader::PRGM_LIGHT_PTS | tre::shader::PRGM_SHADOW_PTS |
-                          tre::shader::PRGM_UNIBRDF);
 
   tre::shader shaderInstancedBB;
   shaderInstancedBB.setShadowSunSamplerCount(1);
@@ -290,78 +523,17 @@ int main(int argc, char **argv)
   shaderInstancedMesh.setShadowSunSamplerCount(1);
   shaderInstancedMesh.loadShader(tre::shader::PRGM_3D,
                                  tre::shader::PRGM_LIGHT_SUN | tre::shader::PRGM_SHADOW_SUN | tre::shader::PRGM_NO_SELF_SHADOW |
+                                 tre::shader::PRGM_UNIPHONG |
                                  tre::shader::PRGM_INSTANCED | tre::shader::PRGM_INSTCOLOR | tre::shader::PRGM_ORIENTATION);
-
-  tre::shader shaderSolid2D;
-  shaderSolid2D.loadShader(tre::shader::PRGM_2D, tre::shader::PRGM_COLOR);
 
   tre::shader shaderText2D;
   shaderText2D.loadShader(tre::shader::PRGM_2D, tre::shader::PRGM_COLOR | tre::shader::PRGM_TEXTURED);
 
   // debug shadow
 
-  struct
-  {
-    tre::shader     shader;
-    tre::shader     shaderCubeFace;
-    tre::modelRaw2D geom;
-  } sunShadow_debug;
-  {
-    tre::shader::s_layout shLayout(tre::shader::PRGM_2D, tre::shader::PRGM_TEXTURED);
+  s_shadowDebug sunShadow_debug;
 
-    const char * SourceShader2DTexturedDepth_FragmentMain =
-    "void main(){\n"
-    "  float d = texture(TexDiffuse, pixelUV).r;\n"
-    "  color = vec4(d,0.f,0.1f,1.f);\n"
-    "}\n";
-    sunShadow_debug.shader.loadCustomShader(shLayout,
-                                            SourceShader2DTexturedDepth_FragmentMain,
-                                            "2DTexDepth_debug");
-
-    tre::shader::s_layout shLayoutCubeFace(tre::shader::PRGM_2D, tre::shader::PRGM_TEXTURED);
-    shLayoutCubeFace.hasSMP_Diffuse = false;
-    shLayoutCubeFace.hasSMP_Cube = true;
-
-    const char * SourceShaderCubeTexturedDepth_FragmentMain =
-    "uniform int iface;\n"
-    "void main(){\n"
-    "  vec2 uv = pixelUV * 2.f - 1.f;\n"
-    "  vec3 uvw = vec3(0.f, 0.f, 0.f);\n"
-    "  if (iface == 0) uvw = vec3(1.f, uv.y, uv.x);\n"
-    "  if (iface == 1) uvw = vec3(-1.f, uv.y, -uv.x);\n"
-    "  if (iface == 2) uvw = vec3(uv.x, 1.f, uv.y);\n"
-    "  if (iface == 3) uvw = vec3(uv.x, -1.f, -uv.y);\n"
-    "  if (iface == 4) uvw = vec3(-uv.x, uv.y, 1.f);\n"
-    "  if (iface == 5) uvw = vec3(uv.x, uv.y, -1.f);\n"
-    "  float d = texture(TexCube, uvw).r;\n"
-    "  float dRemap = exp(30.f*(d-1.f)) * d;\n"
-    "  color = vec4(dRemap,0.f,0.1f,1.f);\n"
-    "}\n";
-    sunShadow_debug.shaderCubeFace.loadCustomShader(shLayoutCubeFace,
-                                                     SourceShaderCubeTexturedDepth_FragmentMain,
-                                                     "CubeTexDepth_debug");
-
-
-    // squared-map
-    sunShadow_debug.geom.createPart(6);
-    sunShadow_debug.geom.fillDataRectangle(0, 0, glm::vec4(-1.f, -1.f, 1.f, 1.f), glm::vec4(), glm::vec4(0.f, 0.f, 1.f, 1.f));
-
-    // cube-map
-    sunShadow_debug.geom.createPart(6); //+X
-    sunShadow_debug.geom.fillDataRectangle(1, 0, glm::vec4( 0.0f, 0.0f, 0.5f, 0.5f), glm::vec4(), glm::vec4(0.f, 0.f, 1.f, 1.f));
-    sunShadow_debug.geom.createPart(6); //-X
-    sunShadow_debug.geom.fillDataRectangle(2, 0, glm::vec4(-1.0f, 0.0f, -0.5f, 0.5f), glm::vec4(), glm::vec4(0.f, 0.f, 1.f, 1.f));
-    sunShadow_debug.geom.createPart(6); //+Y
-    sunShadow_debug.geom.fillDataRectangle(3, 0, glm::vec4(-0.5f, 0.5f, 0.0f, 1.0f), glm::vec4(), glm::vec4(0.f, 0.f, 1.f, 1.f));
-    sunShadow_debug.geom.createPart(6); //-Y
-    sunShadow_debug.geom.fillDataRectangle(4, 0, glm::vec4(-0.5f, -0.5f, 0.0f, 0.f), glm::vec4(), glm::vec4(0.f, 0.f, 1.f, 1.f));
-    sunShadow_debug.geom.createPart(6); //+Z
-    sunShadow_debug.geom.fillDataRectangle(5, 0, glm::vec4(0.5f, 0.0f, 1.0f, 0.5f), glm::vec4(), glm::vec4(0.f, 0.f, 1.f, 1.f));
-    sunShadow_debug.geom.createPart(6); //-Z
-    sunShadow_debug.geom.fillDataRectangle(6, 0, glm::vec4(-0.5f, 0.0f, 0.0f, 0.5f), glm::vec4(), glm::vec4(0.f, 0.f, 1.f, 1.f));
-
-    sunShadow_debug.geom.loadIntoGPU();
-  }
+  sunShadow_debug.load();
 
   // Profiler
 
@@ -384,7 +556,7 @@ int main(int argc, char **argv)
 
   tre::renderTarget_ShadowMap sunLight_ShadowMap;
   sunLight_ShadowMap.load(2048,2048);
-  sunLight_ShadowMap.setSceneBox(worldMesh.partInfo(0).m_bbox + worldMesh.partInfo(1).m_bbox);
+  sunLight_ShadowMap.setSceneBox(worldScene.getBoundingBox());
 
   tre::renderTarget_ShadowCubeMap ptsLight_ShadowMap;
   ptsLight_ShadowMap.load(1024);
@@ -411,13 +583,9 @@ int main(int argc, char **argv)
 
   tre::IsOpenGLok("main: initialization");
 
-  tre::checkLayoutMatch_Shader_Model(&shaderShadow, &worldMesh);
-  tre::checkLayoutMatch_Shader_Model(&shaderShadow, &worldObjects);
+  tre::checkLayoutMatch_Shader_Model(&shaderShadow, &worldScene.mesh);
   tre::checkLayoutMatch_Shader_Model(&shaderSkybox, &worldSkyboxModel);
-  tre::checkLayoutMatch_Shader_Model(&shaderMaterialMapped, &worldMesh);
-  tre::checkLayoutMatch_Shader_Model(&shaderMaterialUni, &worldMesh);
-  tre::checkLayoutMatch_Shader_Model(&shaderMaterialUni, &worldObjects);
-  tre::checkLayoutMatch_Shader_Model(&shaderSphere, &worldObjects);
+  tre::checkLayoutMatch_Shader_Model(&shaderMaterialBumped, &worldScene.mesh);
   tre::checkLayoutMatch_Shader_Model(&shaderInstancedBB, &worldParticlesBB);
   tre::checkLayoutMatch_Shader_Model(&shaderInstancedMesh, &worldParticlesMesh);
 
@@ -490,61 +658,35 @@ int main(int argc, char **argv)
 
     if (!myControls.m_pause)
     {
-      TRE_PROFILEDSCOPE("particles", particles);
+      TRE_PROFILEDSCOPE("evolve", evolve);
 
-      // particle evolve
+      // sun and lights
       {
-        TRE_PROFILEDSCOPE("evolve", particlesE);
-        const float sceneDt = myTimings.frametime;
-        for (std::size_t ip = 0; ip < worldParticlesBBStream.size(); ++ip)
+        const float sunTheta = myTimings.scenetime*6.28f*0.02f;
+        sunLight_Data.direction = glm::normalize( glm::vec3( 0.2f, -fabsf(cosf(sunTheta)), sinf(sunTheta) ) );
+
+        const float ptsLightTheta = myTimings.scenetime*6.28f*0.11f;
+        const glm::vec3 ptsLightPos = glm::vec3(-3.f * cosf(ptsLightTheta), 3.f + 1.f * cosf(sunTheta), 3.f * sinf(ptsLightTheta));
+
+        ptsLight_Data.col(0) = glm::vec4(1.0f, 1.0f, 0.2f, 9.0f);
+        ptsLight_Data.pos(0) = glm::vec4(ptsLightPos, 1.f);
+      }
+
+      // spheres
+      {
+        for (auto &si : worldScene.instances_Sphere)
         {
-          worldParticlesBBStream.m_vel[ip] *= 0.99f;
-          worldParticlesBBStream.m_vel[ip] += glm::vec4(0.f, 0.1f, 0.f, 0.005f);
-          worldParticlesBBStream.m_pos[ip] += worldParticlesBBStream.m_vel[ip] * sceneDt;
-          worldParticlesBBStream.m_life[ip].x += sceneDt * worldParticlesBBStream.m_life[ip].y;
-        }
-        for (std::size_t ip = 0; ip < worldParticlesMeshStream.size(); ++ip)
-        {
-          worldParticlesMeshStream.m_vel[ip] *= 0.99f;
-          worldParticlesMeshStream.m_vel[ip] += sceneDt * glm::vec4(0.f, -1.f, 0.f, 0.01f);
-          worldParticlesMeshStream.m_pos[ip] += worldParticlesMeshStream.m_vel[ip] * sceneDt;
-          worldParticlesMeshStream.m_life[ip].x += sceneDt * worldParticlesMeshStream.m_life[ip].y;
+          const glm::vec3 rAxis = glm::normalize(glm::vec3(si[3]) + glm::vec3(0.f, 0.f, 0.4f));
+          si = glm::rotate(si, myTimings.frametime * 6.28f*0.2f, rAxis);
         }
       }
-      // particle kill-born
+
+      // particle simulation
       {
-        TRE_PROFILEDSCOPE("kill-born", particlesKB);
-        for (std::size_t ip = 0; ip < worldParticlesBBStream.size(); ++ip)
-        {
-          if (worldParticlesBBStream.m_life[ip].x >= 1.f)
-          {
-            const float rand0 = (rand() * 2.f / RAND_MAX) - 1.f;
-            const float rand1 = (rand() * 2.f / RAND_MAX) - 1.f;
-            const float randL = rand() * 10.f / RAND_MAX;
-            const float randR = rand() * 6.28f / RAND_MAX;
-            worldParticlesBBStream.m_pos[ip] = glm::vec4(0.f, 2.f, 0.f, 0.04f);
-            worldParticlesBBStream.m_vel[ip] = glm::vec4(rand0 * 0.1f, 0.f, rand1 * 0.1f, 0.f);
-            worldParticlesBBStream.m_life[ip] = glm::vec2(0.f, 1.f / randL);
-            worldParticlesBBStream.m_rot[ip] = glm::vec4(randR, 0.f, 0.f, 0.f);
-          }
-        }
-        for (std::size_t ip = 0; ip < worldParticlesMeshStream.size(); ++ip)
-        {
-          if (worldParticlesMeshStream.m_life[ip].x >= 1.f)
-          {
-            const float rand0 = (rand() * 2.f / RAND_MAX) - 1.f;
-            const float rand1 = (rand() * 2.f / RAND_MAX) - 1.f;
-            const float randL = rand() * 10.f / RAND_MAX;
-            worldParticlesMeshStream.m_pos[ip] = glm::vec4(4.f, 6.f, 4.f, 0.1f);
-            worldParticlesMeshStream.m_vel[ip] = glm::vec4(rand0 * 0.1f, 0.5f * (rand0*rand0 + rand1*rand1), rand1 * 0.1f, 0.f);
-            worldParticlesMeshStream.m_rot[ip] = glm::vec4(cosf(rand0) * cosf(rand1), sinf(rand0) * cosf(rand1), 0.f, sinf(rand1));
-            worldParticlesMeshStream.m_life[ip] = glm::vec2(0.f, 1.f / randL);
-            worldParticlesMeshStream.m_color[ip] = glm::vec4(rand1, 1.f - rand0, 1.f - rand1, 1.f);
-            worldParticlesMeshStream.m_meshId[ip] = (rand() & 0x1);
-          }
-        }
+        _particleUpdate(worldParticlesBBStream, worldParticlesMeshStream, myTimings.frametime);
       }
-      // update data
+
+      // particle pre-render (fill GPU buffer + sort transparent billboards)
       {
         TRE_PROFILEDSCOPE_COLORED("gpu-buffers", particlesDATA, glm::vec4(0.4f, 0.2f, 0.9f, 1.f));
         {
@@ -564,10 +706,6 @@ int main(int argc, char **argv)
             const float plifeR = worldParticlesBBStream.m_life[ip].x;
             *colIt++ = glm::vec4(1.f, 1.f, 1.f, 0.5f - plifeR * plifeR * 0.3f);
             *rotIt++ = worldParticlesBBStream.m_rot[ip].x;
-          }
-          {
-            TRE_PROFILEDSCOPE("upload", upload);
-            worldParticlesBB.updateIntoGPU();
           }
         }
         {
@@ -601,11 +739,14 @@ int main(int argc, char **argv)
             *localBufferX4++ = glm::vec4(qxy2 + qw2.z       , 1.f - qq2.x - qq2.z, qyz2 - qw2.x       , 0.f);
             *localBufferX4++ = glm::vec4(qxz2 - qw2.y       , qyz2 + qw2.x       , 1.f - qq2.x - qq2.y, 0.f);
           }
-          {
-            TRE_PROFILEDSCOPE("upload", upload);
-            worldParticlesMesh.updateIntoGPU();
-          }
         }
+      }
+
+      // upload to GPU
+      {
+        TRE_PROFILEDSCOPE("upload", upload);
+        worldParticlesBB.updateIntoGPU();
+        worldParticlesMesh.updateIntoGPU();
       }
     }
 
@@ -614,33 +755,16 @@ int main(int argc, char **argv)
     {
       TRE_PROFILEDSCOPE("prepare", prepare)
 
-      const float sunTheta = myTimings.scenetime*6.28f*0.02f;
-      sunLight_Data.direction = glm::normalize( glm::vec3( 0.2f, -fabsf(cosf(sunTheta)), sinf(sunTheta) ) );
-
       sunLight_ShadowMap.computeUBO_forMap(sunLight_Data, sunShadow_Data, 0);
 
       tre::shader::updateUBO_sunLight(sunLight_Data);
       tre::shader::updateUBO_sunShadow(sunShadow_Data);
-
-      const float ptsLightTheta = myTimings.scenetime*6.28f*0.11f;
-      const glm::vec3 ptsLightPos = glm::vec3(-3.f * cosf(ptsLightTheta), 3.f + 1.f * cosf(sunTheta), 3.f * sinf(ptsLightTheta));
-
-      ptsLight_Data.col(0) = glm::vec4(1.0f, 1.0f, 0.2f, 9.0f);
-      ptsLight_Data.pos(0) = glm::vec4(ptsLightPos, 1.f);
 
       ptsLight_ShadowMap.computeUBO_forMap(ptsLight_Data, 0, ptsShadow_Data);
 
       tre::shader::updateUBO_ptsLight(ptsLight_Data);
       tre::shader::updateUBO_ptsShadow(ptsShadow_Data);
     }
-
-    glm::mat4 mModelCube;
-    mModelCube = glm::translate(glm::mat4(1.f),glm::vec3(0.f,2.5f,0.f));
-    mModelCube = glm::rotate(mModelCube,myTimings.scenetime*6.28f*0.2f,glm::vec3(0.8f,0.f,0.6f));
-
-    glm::mat4 mModelSphere;
-    mModelSphere = glm::translate(glm::mat4(1.f),glm::vec3(7.f,2.5f,0.f));
-    mModelSphere = glm::rotate(mModelSphere,myTimings.scenetime*6.28f*0.2f,glm::vec3(0.8f,0.f,0.6f));
 
     const glm::mat4 mPV = myWindow.m_matProjection3D * myView3D.m_matView;
 
@@ -664,17 +788,23 @@ int main(int argc, char **argv)
 
         shaderShadow.setUniformMatrix(localMPV);
 
-        worldMesh.drawcallAll();
+        worldScene.mesh.drawcall(worldScene.partId_Main, 1, true);
 
-        shaderShadow.setUniformMatrix(localMPV * mModelCube, mModelCube);
+        shaderShadow.setUniformMatrix(localMPV * worldScene.instance_Tower);
+        worldScene.mesh.drawcall(worldScene.partId_Tower, 1, false);
 
-        worldObjects.drawcall(0,1);
+        for (const auto &ti : worldScene.instances_Tree)
+        {
+          shaderShadow.setUniformMatrix(localMPV * ti);
+          worldScene.mesh.drawcall(worldScene.partId_TreeTrunck, 1, false);
+          worldScene.mesh.drawcall(worldScene.partId_TreeLeaves, 1, false);
+        }
 
-        shaderShadow.setUniformMatrix(localMPV * mModelSphere, mModelSphere);
-
-        worldObjects.drawcall(1,1,false);
-
-        // TODO: mesh-particles should cast shadow from the sun light.
+        for (const auto &si : worldScene.instances_Sphere)
+        {
+          shaderShadow.setUniformMatrix(localMPV * si);
+          worldScene.mesh.drawcall(worldScene.partId_Sphere, 1, false);
+        }
       }
 
       tre::IsOpenGLok("shadow-map render pass");
@@ -693,17 +823,23 @@ int main(int argc, char **argv)
 
         shaderShadow.setUniformMatrix(localMPV);
 
-        worldMesh.drawcallAll();
+        worldScene.mesh.drawcall(worldScene.partId_Main, 1, true);
 
-        shaderShadow.setUniformMatrix(localMPV * mModelCube, mModelCube);
+        shaderShadow.setUniformMatrix(localMPV * worldScene.instance_Tower);
+        worldScene.mesh.drawcall(worldScene.partId_Tower, 1, false);
 
-        worldObjects.drawcall(0,1);
+        for (const auto &ti : worldScene.instances_Tree)
+        {
+          shaderShadow.setUniformMatrix(localMPV * ti);
+          worldScene.mesh.drawcall(worldScene.partId_TreeTrunck, 1, false);
+          //worldScene.mesh.drawcall(worldScene.partId_TreeLeaves, 1, false);
+        }
 
-        shaderShadow.setUniformMatrix(localMPV * mModelSphere, mModelSphere);
-
-        worldObjects.drawcall(1,1,false);
-
-        // optim: mesh-particles don't cast shadow form the point-light.
+        for (const auto &si : worldScene.instances_Sphere)
+        {
+          shaderShadow.setUniformMatrix(localMPV * si);
+          worldScene.mesh.drawcall(worldScene.partId_Sphere, 1, false);
+        }
       }
 
       tre::IsOpenGLok("shadow-cubemap render passes");
@@ -741,89 +877,97 @@ int main(int argc, char **argv)
 
       tre::IsOpenGLok("opaque render pass - draw SkyBox");
 
-      glEnable(GL_DEPTH_TEST);
-
-      glUseProgram(shaderMaterialMapped.m_drawProgram);
-
       glActiveTexture(GL_TEXTURE2);
       glBindTexture(GL_TEXTURE_2D,sunLight_ShadowMap.depthHandle());
-      glUniform1i(shaderMaterialMapped.getUniformLocation(tre::shader::TexShadowSun0),2);
 
       glActiveTexture(GL_TEXTURE3);
       glBindTexture(GL_TEXTURE_CUBE_MAP, ptsLight_ShadowMap.depthHandle());
-      glUniform1i(shaderMaterialMapped.getUniformLocation(tre::shader::TexShadowPts0),3);
 
       glActiveTexture(GL_TEXTURE4);
-      glBindTexture(GL_TEXTURE_2D,worldGroundColor.m_handle);
-      glUniform1i(shaderMaterialMapped.getUniformLocation(tre::shader::TexDiffuse),4);
+      glBindTexture(GL_TEXTURE_2D, worldScene.texGrass.m_handle);
 
       glActiveTexture(GL_TEXTURE5);
-      glBindTexture(GL_TEXTURE_2D,worldGroundNormal.m_handle);
-      glUniform1i(shaderMaterialMapped.getUniformLocation(tre::shader::TexNormal),5);
+      glBindTexture(GL_TEXTURE_2D,worldScene.texWood.m_handle);
 
       glActiveTexture(GL_TEXTURE6);
-      glBindTexture(GL_TEXTURE_2D,worldGroundMetalRough.m_handle);
-      glUniform1i(shaderMaterialMapped.getUniformLocation(tre::shader::TexBRDF),6);
-
-      shaderMaterialMapped.setUniformMatrix(mPV, glm::mat4(1.f), myView3D.m_matView);
-
-      worldMesh.drawcall(0, 1);
-
-      const glm::vec4 ucolorMain(0.5f,0.5f,0.5f,1.f);
-
-      glUseProgram(shaderMaterialUni.m_drawProgram);
-
-      glUniform1i(shaderMaterialUni.getUniformLocation(tre::shader::TexShadowSun0),2);
-      glUniform1i(shaderMaterialUni.getUniformLocation(tre::shader::TexShadowPts0),3);
-
-      shaderMaterialUni.setUniformMatrix(mPV, glm::mat4(1.f), myView3D.m_matView);
-
-      glUniform2f(shaderMaterialUni.getUniformLocation(tre::shader::uniBRDF), 0.f, 0.7f);
-
-      glUniform4fv(shaderMaterialUni.getUniformLocation(tre::shader::uniColor), 1, glm::value_ptr(ucolorMain));
-
-      worldMesh.drawcall(1, 1, false);
-
-      tre::IsOpenGLok("opaque render pass - draw Room");
-
-      const glm::vec4 ucolorMove(0.2f,1.0f,0.2f,1.f);
-
-      shaderMaterialUni.setUniformMatrix(mPV * mModelCube, mModelCube, myView3D.m_matView);
-
-      glUniform2f(shaderMaterialUni.getUniformLocation(tre::shader::uniBRDF), 1.f, 0.1f);
-
-      glUniform4fv(shaderMaterialUni.getUniformLocation(tre::shader::uniColor), 1, glm::value_ptr(ucolorMove));
-
-      worldObjects.drawcall(0,1);
-
-      tre::IsOpenGLok("opaque render pass - draw Object");
-
-      glUseProgram(shaderSphere.m_drawProgram);
-
-      glUniform1i(shaderSphere.getUniformLocation(tre::shader::TexShadowSun0),2);
-      glUniform1i(shaderSphere.getUniformLocation(tre::shader::TexShadowPts0),3);
+      glBindTexture(GL_TEXTURE_2D,worldScene.texWood_normal.m_handle);
 
       glActiveTexture(GL_TEXTURE7);
-      glBindTexture(GL_TEXTURE_CUBE_MAP,worldTex_UVcoords.m_handle);
-      glUniform1i(shaderSphere.getUniformLocation(tre::shader::TexCube),7);
+      glBindTexture(GL_TEXTURE_2D,worldScene.texTreeTrunck.m_handle);
 
-      glUniform2f(shaderSphere.getUniformLocation(tre::shader::uniBRDF), 0.f, 0.5f);
+      glActiveTexture(GL_TEXTURE8);
+      glBindTexture(GL_TEXTURE_2D,worldScene.texTreeLeaves.m_handle);
 
-      shaderSphere.setUniformMatrix(mPV * mModelSphere, mModelSphere, myView3D.m_matView);
+      glActiveTexture(GL_TEXTURE9);
+      glBindTexture(GL_TEXTURE_2D,worldScene.texSteal.m_handle);
 
-      worldObjects.drawcall(1,1);
+      glActiveTexture(GL_TEXTURE10);
+      glBindTexture(GL_TEXTURE_2D,worldScene.texSteal_mr.m_handle);
 
-      tre::IsOpenGLok("opaque render pass - draw Object");
+      tre::IsOpenGLok("opaque render pass - bind textures");
+
+      glEnable(GL_DEPTH_TEST);
+
+      glUseProgram(shaderMaterialFlat.m_drawProgram);
+      glUniform1i(shaderMaterialFlat.getUniformLocation(tre::shader::TexShadowSun0),2);
+      glUniform1i(shaderMaterialFlat.getUniformLocation(tre::shader::TexShadowPts0),3);
+      glUniform1i(shaderMaterialFlat.getUniformLocation(tre::shader::TexDiffuse),4);
+      glUniform2f(shaderMaterialFlat.getUniformLocation(tre::shader::uniBRDF), 0.f, 0.98f);
+      shaderMaterialFlat.setUniformMatrix(mPV, glm::mat4(1.f), myView3D.m_matView);
+      worldScene.mesh.drawcall(worldScene.partId_Main, 1, true);
+
+      glUseProgram(shaderMaterialBumped.m_drawProgram);
+      glUniform1i(shaderMaterialBumped.getUniformLocation(tre::shader::TexShadowSun0),2);
+      glUniform1i(shaderMaterialBumped.getUniformLocation(tre::shader::TexShadowPts0),3);
+      glUniform1i(shaderMaterialBumped.getUniformLocation(tre::shader::TexDiffuse),5);
+      glUniform1i(shaderMaterialBumped.getUniformLocation(tre::shader::TexNormal),6);
+      glUniform2f(shaderMaterialBumped.getUniformLocation(tre::shader::uniBRDF), 0.f, 0.5f);
+      shaderMaterialBumped.setUniformMatrix(mPV * worldScene.instance_Tower, worldScene.instance_Tower, myView3D.m_matView);
+      worldScene.mesh.drawcall(worldScene.partId_Tower, 1, false);
+
+      glUseProgram(shaderMaterialFlat.m_drawProgram);
+      glUniform1i(shaderMaterialFlat.getUniformLocation(tre::shader::TexShadowSun0),2);
+      glUniform1i(shaderMaterialFlat.getUniformLocation(tre::shader::TexShadowPts0),3);
+      glUniform1i(shaderMaterialFlat.getUniformLocation(tre::shader::TexDiffuse),7);
+      glUniform2f(shaderMaterialFlat.getUniformLocation(tre::shader::uniBRDF), 0.f, 0.9f);
+      for (const auto &ti : worldScene.instances_Tree)
+      {
+        shaderMaterialFlat.setUniformMatrix(mPV * ti, ti, myView3D.m_matView);
+        worldScene.mesh.drawcall(worldScene.partId_TreeTrunck, 1, false);
+      }
+
+      glUseProgram(shaderMetarialDsidedMask.m_drawProgram);
+      glUniform1i(shaderMetarialDsidedMask.getUniformLocation(tre::shader::TexShadowSun0),2);
+      //glUniform1i(shaderMetarialDsidedMask.getUniformLocation(tre::shader::TexShadowPts0),3);
+      glUniform1i(shaderMetarialDsidedMask.getUniformLocation(tre::shader::TexDiffuse),8);
+      glUniform2f(shaderMetarialDsidedMask.getUniformLocation(tre::shader::uniBRDF), 0.f, 0.5f);
+      for (const auto &ti : worldScene.instances_Tree)
+      {
+        shaderMetarialDsidedMask.setUniformMatrix(mPV * ti, ti, myView3D.m_matView);
+        worldScene.mesh.drawcall(worldScene.partId_TreeLeaves, 1, false);
+      }
+
+      glUseProgram(shaderMaterialBrdf.m_drawProgram);
+      glUniform1i(shaderMaterialBrdf.getUniformLocation(tre::shader::TexShadowSun0),2);
+      glUniform1i(shaderMaterialBrdf.getUniformLocation(tre::shader::TexShadowPts0),3);
+      glUniform1i(shaderMaterialBrdf.getUniformLocation(tre::shader::TexDiffuse),9);
+      glUniform1i(shaderMaterialBrdf.getUniformLocation(tre::shader::TexBRDF),10);
+      for (const auto &si : worldScene.instances_Sphere)
+      {
+        shaderMaterialBrdf.setUniformMatrix(mPV * si, si, myView3D.m_matView);
+        worldScene.mesh.drawcall(worldScene.partId_Sphere, 1, false);
+      }
+
+      tre::IsOpenGLok("opaque render pass - draw Scene");
 
       glUseProgram(shaderInstancedMesh.m_drawProgram);
-
-      glUniform1i(shaderInstancedMesh.getUniformLocation(tre::shader::TexShadowSun0),2); // sunLight_ShadowMap already bound to GL_TEXTURE2
-
-      shaderInstancedMesh.setUniformMatrix(mPV);
-
+      glUniform1i(shaderInstancedMesh.getUniformLocation(tre::shader::TexShadowSun0),2);
+      glUniform3f(shaderInstancedMesh.getUniformLocation(tre::shader::uniPhong), 2.f, 0.7f, 0.8f);
+      shaderInstancedMesh.setUniformMatrix(mPV, glm::mat4(1.f), myView3D.m_matView);
       worldParticlesMesh.drawInstanced(0, 0, worldParticlesMeshStream.m_countPerMeshId[0], true);
       worldParticlesMesh.drawInstanced(1, worldParticlesMeshStream.m_countPerMeshId[0], worldParticlesMeshStream.m_countPerMeshId[1], false);
-      tre::IsOpenGLok("opaque render pass - draw Particle Mesh");
+
+      tre::IsOpenGLok("opaque render pass - draw Particle (Mesh)");
     }
 
     // transparent render pass ------
@@ -846,7 +990,7 @@ int main(int argc, char **argv)
 
       glUseProgram(shaderInstancedBB.m_drawProgram);
 
-      glUniform1i(shaderInstancedBB.getUniformLocation(tre::shader::TexShadowSun0),2); // sunLight_ShadowMap already bound to GL_TEXTURE2
+      glUniform1i(shaderInstancedBB.getUniformLocation(tre::shader::TexShadowSun0),2);
 
       glActiveTexture(GL_TEXTURE4);
       glBindTexture(GL_TEXTURE_2D,worldParticlesTex.m_handle);
@@ -905,34 +1049,7 @@ int main(int argc, char **argv)
 
       if (showShadowMaps)
       {
-        glUseProgram(sunShadow_debug.shader.m_drawProgram);
-
-        glUniform1i(sunShadow_debug.shader.getUniformLocation(tre::shader::TexDiffuse),2); // texture already bind
-
-        const glm::mat3 mModel_sunDebug = glm::mat3(0.3f, 0.0f, 0.f,
-                                                    0.0f, 0.3f, 0.f,
-                                                    1.0f, 0.6f, 1.f);
-
-        sunShadow_debug.shader.setUniformMatrix(myWindow.m_matProjection2D * mModel_sunDebug);
-
-        sunShadow_debug.geom.drawcall(0, 1);
-
-        glUseProgram(sunShadow_debug.shaderCubeFace.m_drawProgram);
-
-        glUniform1i(sunShadow_debug.shaderCubeFace.getUniformLocation(tre::shader::TexCube),3); // texture already bind
-
-        const glm::mat3 mModel_cubeDebug = glm::mat3(0.3f, 0.0f, 0.f,
-                                                     0.0f, 0.3f, 0.f,
-                                                     1.0f, -0.1f, 1.f);
-
-        sunShadow_debug.shaderCubeFace.setUniformMatrix(myWindow.m_matProjection2D * mModel_cubeDebug);
-
-        for (unsigned iFace = 0; iFace < 6; ++iFace)
-        {
-          glUniform1i(sunShadow_debug.shaderCubeFace.getUniformLocation("iface"),GLint(iFace));
-          sunShadow_debug.geom.drawcall(1 + iFace, 1);
-        }
-
+        sunShadow_debug.draw(myWindow.m_matProjection2D);
       }
 
       if (true)
@@ -991,18 +1108,15 @@ int main(int argc, char **argv)
   TRE_LOG("Average frame elapsed-time needed for each frame (Vsync enabled): " << myTimings.frametime_average * 1000 << " ms");
 
   // Finalize
+
   worldSkyboxModel.clearGPU();
-  worldMesh.clearGPU();
-  worldObjects.clearGPU();
   worldParticlesBB.clearGPU();
   worldParticlesMesh.clearGPU();
 
+  worldScene.clear();
+
   worldSkyBoxTex.clear();
-  worldTex_UVcoords.clear();
   worldParticlesTex.clear();
-  worldGroundColor.clear();
-  worldGroundNormal.clear();
-  worldGroundMetalRough.clear();
 
   worldHUDModel.clearGPU();
   worldHUDFont.clear();
@@ -1010,21 +1124,19 @@ int main(int argc, char **argv)
   tre::profiler_clearGPU();
   tre::profiler_clearShader();
 
+  shaderShadow.clearShader();
   shaderSkybox.clearShader();
-  shaderMaterialUni.clearShader();
-  shaderMaterialMapped.clearShader();
-  shaderSphere.clearShader();
+  shaderMaterialFlat.clearShader();
+  shaderMaterialBumped.clearShader();
+  shaderMaterialBrdf.clearShader();
+  shaderMetarialDsidedMask.clearShader();
   shaderInstancedBB.clearShader();
   shaderInstancedMesh.clearShader();
-  shaderSolid2D.clearShader();
   shaderText2D.clearShader();
-  shaderShadow.clearShader();
 
   tre::shader::clearUBO();
 
-  sunShadow_debug.shader.clearShader();
-  sunShadow_debug.shaderCubeFace.clearShader();
-  sunShadow_debug.geom.clearGPU();
+  sunShadow_debug.clear();
 
   sunLight_ShadowMap.clear();
   ptsLight_ShadowMap.clear();
@@ -1035,6 +1147,7 @@ int main(int argc, char **argv)
   rtAfterBlur.clear();
 
   myWindow.OpenGLQuit();
+  myWindow.SDLImageQuit();
   myWindow.SDLQuit();
 
   TRE_LOG("Program finalized with success");

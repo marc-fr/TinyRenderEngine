@@ -21,11 +21,11 @@
 
 // Default resources
 
-static const std::vector<std::string> texturesPathDefault = { TESTIMPORTPATH "resources/Asphalt_004_COLOR.bmp",
-                                                              TESTIMPORTPATH "resources/Asphalt_004_NRM.bmp",
-                                                              TESTIMPORTPATH "resources/quad.bmp",
+static const std::vector<std::string> texturesPathDefault = { TESTIMPORTPATH "resources/quad.bmp",
                                                               TESTIMPORTPATH "resources/font_arial_88.bmp",
                                                               TESTIMPORTPATH "resources/debug.png",
+                                                              TESTIMPORTPATH "resources/scene/wispy-grass-meadow_albedo.jpg",
+                                                              TESTIMPORTPATH "resources/cubemap_inside_UVcoords.xneg.bmp",
                                                             };
 
 // Other resources
