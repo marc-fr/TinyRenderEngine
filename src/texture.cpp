@@ -372,13 +372,13 @@ bool texture::loadCube(const std::array<SDL_Surface *, 6> &cubeFaces, int modema
 
 //-----------------------------------------------------------------------------
 
-bool texture::loadWhite()
+bool texture::loadColor(const uint32_t cARGB)
 {
   SDL_Surface *tmpSurface = SDL_CreateRGBSurface(0, 4, 4, 32, 0, 0, 0, 0);
   if (tmpSurface == nullptr) return false;
 
   uint *p0 = static_cast<uint*>(tmpSurface->pixels);
-  for (uint ip = 0; ip < 16; ++ip) p0[ip] = 0xFFFFFFFF;
+  for (uint ip = 0; ip < 16; ++ip) p0[ip] = cARGB;
 
   return load(tmpSurface, 0, true);
 }
