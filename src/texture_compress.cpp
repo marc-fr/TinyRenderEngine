@@ -684,7 +684,7 @@ uint texture::_rawCompress(const s_SurfaceTemp &surf, GLenum targetFormat)
   uint8_t       *outBuffer = surf.pixels;
   static_assert (sizeof(uint64_t) == 8, "bad size of uint64_t");
 
-  if (targetFormat == GL_COMPRESSED_RGB_S3TC_DXT1_EXT)
+  if (targetFormat == GL_COMPRESSED_RGB_S3TC_DXT1_EXT || targetFormat == GL_COMPRESSED_SRGB_S3TC_DXT1_EXT)
   {
     formatS3TC::s_compressionReport report;
     for (uint ih = 0; ih < surf.h; ih += 4)
@@ -697,7 +697,7 @@ uint texture::_rawCompress(const s_SurfaceTemp &surf, GLenum targetFormat)
     }
     report.print();
   }
-  else if (targetFormat == GL_COMPRESSED_RGBA_S3TC_DXT3_EXT)
+  else if (targetFormat == GL_COMPRESSED_RGBA_S3TC_DXT3_EXT || targetFormat == GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT3_EXT)
   {
     formatS3TC::s_compressionReport report;
     TRE_ASSERT(surf.pxByteSize == 4);
@@ -720,7 +720,7 @@ uint texture::_rawCompress(const s_SurfaceTemp &surf, GLenum targetFormat)
 
 #ifdef TRE_OPENGL_ES
 
-  else if (targetFormat == GL_COMPRESSED_RGB8_ETC2)
+  else if (targetFormat == GL_COMPRESSED_RGB8_ETC2 || targetFormat == GL_COMPRESSED_SRGB8_ETC2)
   {
     formatETC::s_compressionReport report;
     for (uint ih = 0; ih < surf.h; ih += 4)
@@ -733,7 +733,7 @@ uint texture::_rawCompress(const s_SurfaceTemp &surf, GLenum targetFormat)
     }
     report.print();
   }
-  else if (targetFormat == GL_COMPRESSED_RGBA8_ETC2_EAC)
+  else if (targetFormat == GL_COMPRESSED_RGBA8_ETC2_EAC || targetFormat == GL_COMPRESSED_SRGB8_ALPHA8_ETC2_EAC)
   {
     formatETC::s_compressionReport report;
     TRE_ASSERT(surf.pxByteSize == 4);

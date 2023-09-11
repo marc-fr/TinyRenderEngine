@@ -248,7 +248,7 @@ public:
 protected:
   modelRaw2D m_quadFullScreen;
   shader     m_shaderToneMap;
-  glm::vec4  m_params = glm::vec4(1.4f, 0.f, 0.f, 0.f); ///< packed parameters: (exposure, gamma, saturation-modifier, <unsued>)
+  glm::vec4  m_params = glm::vec4(1.4f, 1.f, 0.f, 0.f); ///< packed parameters: (exposure, gamma, saturation-modifier, <unsued>)
   glm::vec4  m_vignettingParams = glm::vec4(0.5f, 0.2f, 0.8f, 0.5f); ///< packed parameters: (color-intensity, desaturation-intensity, roundness, smoothness)
   glm::vec3  m_vignetteColor = glm::vec3(0.f);
 };

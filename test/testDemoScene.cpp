@@ -370,25 +370,25 @@ int main(int argc, char **argv)
     worldSkyBoxTex.loadCube(cubeFaces, tre::texture::MMASK_MIPMAP | tre::texture::MMASK_COMPRESS, true);
   }
 
-  if (!worldScene.texGrass.load(tre::texture::loadTextureFromFile(TESTIMPORTPATH "resources/scene/wispy-grass-meadow_albedo.jpg"), tre::texture::MMASK_MIPMAP | tre::texture::MMASK_ANISOTROPIC, true))
+  if (!worldScene.texGrass.load(tre::texture::loadTextureFromFile(TESTIMPORTPATH "resources/scene/wispy-grass-meadow_albedo.jpg"), tre::texture::MMASK_MIPMAP | tre::texture::MMASK_ANISOTROPIC | tre::texture::MMASK_GAMMACORRECTION, true))
     worldScene.texGrass.loadWhite();
 
-  if (!worldScene.texWood.load(tre::texture::loadTextureFromFile(TESTIMPORTPATH "resources/scene/Wood_Tower_Col.jpg"), tre::texture::MMASK_MIPMAP | tre::texture::MMASK_ANISOTROPIC, true))
+  if (!worldScene.texWood.load(tre::texture::loadTextureFromFile(TESTIMPORTPATH "resources/scene/Wood_Tower_Col.jpg"), tre::texture::MMASK_MIPMAP | tre::texture::MMASK_ANISOTROPIC | tre::texture::MMASK_GAMMACORRECTION, true))
     worldScene.texWood.loadWhite();
 
   if (!worldScene.texWood_normal.load(tre::texture::loadTextureFromFile(TESTIMPORTPATH "resources/scene/Wood_Tower_Nor_jpg.jpg"), tre::texture::MMASK_MIPMAP | tre::texture::MMASK_ANISOTROPIC, true))
     worldScene.texWood_normal.loadColor(0xFF8080FF);
 
-  if (!worldScene.texSteal.load(tre::texture::loadTextureFromFile(TESTIMPORTPATH "resources/scene/rusted-steel_albedo.jpg"), tre::texture::MMASK_MIPMAP | tre::texture::MMASK_ANISOTROPIC, true))
+  if (!worldScene.texSteal.load(tre::texture::loadTextureFromFile(TESTIMPORTPATH "resources/scene/rusted-steel_albedo.jpg"), tre::texture::MMASK_MIPMAP | tre::texture::MMASK_ANISOTROPIC | tre::texture::MMASK_GAMMACORRECTION, true))
     worldScene.texSteal.loadWhite();
 
   if (!worldScene.texSteal_mr.load(tre::texture::loadTextureFromFile(TESTIMPORTPATH "resources/scene/rusted-steel_metallic-rusted-steel_roughness.jpg"), tre::texture::MMASK_MIPMAP | tre::texture::MMASK_ANISOTROPIC | tre::texture::MMASK_RG_ONLY, true))
     worldScene.texSteal_mr.loadWhite();
 
-  if (!worldScene.texTreeTrunck.load(tre::texture::loadTextureFromFile(TESTIMPORTPATH "resources/scene/BarkDecidious0194_7_S_jpg.jpg"), tre::texture::MMASK_MIPMAP | tre::texture::MMASK_ANISOTROPIC, true))
+  if (!worldScene.texTreeTrunck.load(tre::texture::loadTextureFromFile(TESTIMPORTPATH "resources/scene/BarkDecidious0194_7_S_jpg.jpg"), tre::texture::MMASK_MIPMAP | tre::texture::MMASK_ANISOTROPIC | tre::texture::MMASK_GAMMACORRECTION, true))
     worldScene.texTreeTrunck.loadWhite();
 
-  if (!worldScene.texTreeLeaves.load(tre::texture::loadTextureFromFile(TESTIMPORTPATH "resources/scene/Leaves0120_35_S_png.jpg"), tre::texture::MMASK_MIPMAP | tre::texture::MMASK_ANISOTROPIC, true))
+  if (!worldScene.texTreeLeaves.load(tre::texture::loadTextureFromFile(TESTIMPORTPATH "resources/scene/Leaves0120_35_S_png.jpg"), tre::texture::MMASK_MIPMAP | tre::texture::MMASK_ANISOTROPIC | tre::texture::MMASK_GAMMACORRECTION, true))
     worldScene.texTreeLeaves.loadWhite();
 
   // load Particles
@@ -497,7 +497,7 @@ int main(int argc, char **argv)
 
   tre::shader::s_UBOdata_sunLight sunLight_Data;
   sunLight_Data.color = glm::vec3(1.8f);
-  sunLight_Data.colorAmbiant = glm::vec3(0.4f);
+  sunLight_Data.colorAmbiant = glm::vec3(0.1f);
 
   tre::shader::s_UBOdata_sunShadow sunShadow_Data;
   sunShadow_Data.nShadow = 1;
@@ -562,21 +562,23 @@ int main(int argc, char **argv)
   ptsLight_ShadowMap.load(1024);
   ptsLight_ShadowMap.setRenderingLimits(0.2f, 20.f);
 
-  tre::renderTarget rtMultisampled(tre::renderTarget::RT_COLOR_AND_DEPTH | tre::renderTarget::RT_MULTISAMPLED /*| tre::renderTarget::RT_COLOR_HDR : TODO: fix PBR material with Roughness = 0 that causes visual glitch.*/);
+  tre::renderTarget rtMultisampled(tre::renderTarget::RT_COLOR_AND_DEPTH | tre::renderTarget::RT_MULTISAMPLED | tre::renderTarget::RT_COLOR_HDR);
   const bool canMSAA = rtMultisampled.load(myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
 
-  tre::renderTarget rtResolveMSAA(tre::renderTarget::RT_COLOR_AND_DEPTH | tre::renderTarget::RT_SAMPLABLE /*| tre::renderTarget::RT_COLOR_HDR : TODO: fix PBR material with Roughness = 0 that causes visual glitch.*/);
+  tre::renderTarget rtResolveMSAA(tre::renderTarget::RT_COLOR_AND_DEPTH | tre::renderTarget::RT_SAMPLABLE | tre::renderTarget::RT_COLOR_HDR);
   rtResolveMSAA.load(myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
 
   tre::postFX_Blur postEffectBlur(3, 7, false /*true: TODO: have tre::renderTarget::RT_COLOR_HDR*/);
-  postEffectBlur.set_threshold(0.7f);
+  postEffectBlur.set_threshold(0.95f);
   postEffectBlur.set_multiplier(2.f);
   postEffectBlur.load(myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
 
-  tre::renderTarget rtAfterBlur(tre::renderTarget::RT_COLOR | tre::renderTarget::RT_COLOR_SAMPLABLE /*| tre::renderTarget::RT_COLOR_HDR : TODO: fix PBR material with Roughness = 0 that causes visual glitch.*/);
+  tre::renderTarget rtAfterBlur(tre::renderTarget::RT_COLOR | tre::renderTarget::RT_COLOR_SAMPLABLE | tre::renderTarget::RT_COLOR_HDR);
   rtAfterBlur.load(myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
 
   tre::postFX_ToneMapping postEffectToneMapping;
+  postEffectToneMapping.set_gamma(2.2f);
+  postEffectToneMapping.set_exposure(1.1f);
   postEffectToneMapping.load();
 
   // End Init

@@ -21,13 +21,14 @@ public:
 
   enum textureInfoType { TI_NONE, TI_2D, TI_2DARRAY, TI_CUBEMAP };
 
-  static const int MMASK_MIPMAP             = 0x01;
-  static const int MMASK_COMPRESS           = 0x02;
-  static const int MMASK_ANISOTROPIC        = 0x04;
-  static const int MMASK_ALPHA_ONLY         = 0x10;
-  static const int MMASK_RG_ONLY            = 0x20;
-  static const int MMASK_FORCE_NO_ALPHA     = 0x40;
-  static const int MMASK_NEAREST_MAG_FILTER = 0x80; ///< By default, the mag-filter is "linear".
+  static const int MMASK_MIPMAP             = 0x0001;
+  static const int MMASK_COMPRESS           = 0x0002;
+  static const int MMASK_ANISOTROPIC        = 0x0004;
+  static const int MMASK_GAMMACORRECTION    = 0x0008;
+  static const int MMASK_NEAREST_MAG_FILTER = 0x0010; ///< By default, the mag-filter is "linear".
+  static const int MMASK_ALPHA_ONLY         = 0x1000;
+  static const int MMASK_RG_ONLY            = 0x2000;
+  static const int MMASK_FORCE_NO_ALPHA     = 0x4000;
 
   texture() {}
   texture(const texture &) = delete;
@@ -76,11 +77,13 @@ protected:
 
   uint m_components = 0; ///< Nbr of components, between 1 and 4 included. "1" is specific: it means alpha-only, so the shader will resolve the color with (r=1,b=1,g=1,a=value).
   textureInfoType m_type = TI_NONE;
-  bool m_useMipmap = false;
-  bool m_useCompress = false;
-  bool m_useAnisotropic = false;
-  bool m_useMagFilterNearest = false;
+  uint m_mask = 0;
 
+  bool useMipmap()           const { return (m_mask & MMASK_MIPMAP) != 0; }
+  bool useCompress()         const { return (m_mask & MMASK_COMPRESS) != 0; }
+  bool useAnisotropic()      const { return (m_mask & MMASK_ANISOTROPIC) != 0; }
+  bool useGammeCorreciton()  const { return (m_mask & MMASK_GAMMACORRECTION) != 0; }
+  bool useMagFilterNearest() const { return (m_mask & MMASK_NEAREST_MAG_FILTER) != 0; }
 
 private:
 
@@ -102,6 +105,7 @@ private:
   static void _rawPack_RG8(s_SurfaceTemp &surf);
   static void _rawPack_RemoveAlpha8(s_SurfaceTemp &surf);
   static void _rawUnpack_A8_to_RGBA8(std::vector<char> &pixelData);
+  static void _rawExtend_AddAlpha8(s_SurfaceTemp &surf);
   static uint _rawCompress(const s_SurfaceTemp &surf, GLenum targetFormat); ///< compress textures on CPU (inplace, erase the surface's pixels). Returns the buffer byte-size, or zero on failure.
 };
 

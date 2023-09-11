@@ -6,6 +6,11 @@
 #include "tre_font.h"
 #include "tre_windowContext.h"
 
+#ifdef TRE_EMSCRIPTEN
+#include <emscripten.h>
+#include <emscripten/html5.h>
+#endif
+
 #include <math.h>
 #include <string>
 
@@ -18,11 +23,24 @@
 
 // =============================================================================
 
+static tre::windowContext             myWindow;
+static tre::windowContext::s_controls myControls;
+
+static tre::modelStaticIndexed3D meshes;
+
+static tre::texture texAsphaltColor;
+static tre::texture texAsphaltNormal;
+static tre::texture texSkyboxColor;
+
+static tre::shader shaderPhong;
+static tre::shader shaderBRDF;
+static tre::shader shaderFresnelValue;
+static tre::shader shaderScreenSpaceNormal;
+
+// =============================================================================
+
 int main(int argc, char **argv)
 {
-  tre::windowContext myWindow;
-  tre::windowContext::s_controls myControls;
-
   if (!myWindow.SDLInit(SDL_INIT_VIDEO))
     return -1;
 
@@ -45,7 +63,7 @@ int main(int argc, char **argv)
 
   // Resources: Mesh
 
-  tre::modelStaticIndexed3D meshes(tre::modelStaticIndexed3D::VB_NORMAL | tre::modelStaticIndexed3D::VB_UV);
+  meshes.setFlags(tre::modelStaticIndexed3D::VB_NORMAL | tre::modelStaticIndexed3D::VB_UV);
   glm::mat4 mModel;
   {
     if (!tre::modelImporter::addFromWavefront(meshes, meshFilePath))
@@ -60,30 +78,22 @@ int main(int argc, char **argv)
 
   // Resources: Textures
 
-  tre::texture texAsphaltColor;
   texAsphaltColor.load(tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/Asphalt_004_COLOR.bmp"), tre::texture::MMASK_FORCE_NO_ALPHA | tre::texture::MMASK_MIPMAP, true);
-
-  tre::texture texAsphaltNormal;
   texAsphaltNormal.load(tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/Asphalt_004_NRM.bmp"), tre::texture::MMASK_FORCE_NO_ALPHA | tre::texture::MMASK_MIPMAP, true);
-
-  tre::texture texSkyboxColor;
   texSkyboxColor.load(tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/cubemap_inside_UVcoords"), tre::texture::MMASK_MIPMAP, true);
 
   // Material (shader)
 
-  tre::shader shaderPhong;
   shaderPhong.loadShader(tre::shader::PRGM_3D,
                          tre::shader::PRGM_UNICOLOR |
                          tre::shader::PRGM_LIGHT_SUN |
                          tre::shader::PRGM_UNIPHONG);
 
-  tre::shader shaderBRDF;
   shaderBRDF.loadShader(tre::shader::PRGM_3D,
                         tre::shader::PRGM_UNICOLOR |
                         tre::shader::PRGM_LIGHT_SUN |
                         tre::shader::PRGM_UNIBRDF);
 
-  tre::shader shaderFresnelValue;
   {
     tre::shader::s_layout layout(tre::shader::PRGM_3D, tre::shader::PRGM_UNICOLOR | tre::shader::PRGM_LIGHT_SUN | tre::shader::PRGM_UNIBRDF);
 
@@ -104,7 +114,6 @@ int main(int argc, char **argv)
     shaderFresnelValue.loadCustomShader(layout, srcFrag, "FresnelValue");
   }
 
-  tre::shader shaderScreenSpaceNormal;
   {
     tre::shader::s_layout layout(tre::shader::PRGM_3D /*, tre::shader::PRGM_MAPNORMAL*/);
     layout.hasBUF_Normal = true;
@@ -122,13 +131,14 @@ int main(int argc, char **argv)
 
   // Post Effects
 
-  tre::renderTarget rtMultisampled(tre::renderTarget::RT_COLOR | tre::renderTarget::RT_DEPTH | tre::renderTarget::RT_MULTISAMPLED);
+  tre::renderTarget rtMultisampled(tre::renderTarget::RT_COLOR | tre::renderTarget::RT_DEPTH | tre::renderTarget::RT_MULTISAMPLED | tre::renderTarget::RT_COLOR_HDR);
   rtMultisampled.load(myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
 
-  tre::renderTarget rtResolveMSAA(tre::renderTarget::RT_COLOR | tre::renderTarget::RT_COLOR_SAMPLABLE);
+  tre::renderTarget rtResolveMSAA(tre::renderTarget::RT_COLOR | tre::renderTarget::RT_COLOR_SAMPLABLE | tre::renderTarget::RT_COLOR_HDR);
   rtResolveMSAA.load(myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
 
   tre::postFX_ToneMapping postEffectToneMapping;
+  postEffectToneMapping.set_gamma(2.2f);
   postEffectToneMapping.load();
 
   // Scene variables + initialisation
@@ -177,7 +187,7 @@ int main(int argc, char **argv)
       wmat[2][1] = 0.99f;
       worldWin->set_mat3(wmat);
     }
-    worldWin->set_layoutGrid(14,2);
+    worldWin->set_layoutGrid(16,2);
 
     worldWin->create_widgetText(0, 0)->set_text("model (F1:F4):")->set_fontsizeModifier(1.2f)->set_color(glm::vec4(1.f, 1.f, 0.2f, 1.f));
     worldWin->create_widgetText(0, 1); // model name
@@ -215,16 +225,24 @@ int main(int argc, char **argv)
 
     worldWin->create_widgetText(10, 0, 1, 2)->set_text("environment (F9:F12):")->set_fontsizeModifier(1.2f)->set_color(glm::vec4(1.f, 1.f, 0.2f, 1.f));
 
-    worldWin->create_widgetText(11, 0)->set_text("light intensity");
-    tre::ui::widget * wEI = worldWin->create_widgetBar(11, 1)->set_value(0.9f)->set_withtext(true)->set_withborder(true)->set_iseditable(true)->set_isactive(true);
+    worldWin->create_widgetText(11, 0)->set_text("gamma correction");
+    tre::ui::widget * wGC = worldWin->create_widgetBoxCheck(11, 1)->set_value(true)->set_iseditable(true)->set_isactive(true);
+    wGC->wcb_modified_ongoing = [&postEffectToneMapping](tre::ui::widget* myself) { postEffectToneMapping.set_gamma(static_cast<tre::ui::widgetBoxCheck*>(myself)->get_value() ? 2.2f : 1.f); };
+
+    worldWin->create_widgetText(12, 0)->set_text("exposure");
+    tre::ui::widget * wEP = worldWin->create_widgetBar(12, 1)->set_value(1.4)->set_valuemax(2.f)->set_iseditable(true)->set_isactive(true);
+    wEP->wcb_modified_ongoing = [&postEffectToneMapping](tre::ui::widget* myself) { postEffectToneMapping.set_exposure(static_cast<tre::ui::widgetBar*>(myself)->get_value()); };
+
+    worldWin->create_widgetText(13, 0)->set_text("light intensity");
+    tre::ui::widget * wEI = worldWin->create_widgetBar(13, 1)->set_value(0.9f)->set_withtext(true)->set_withborder(true)->set_iseditable(true)->set_isactive(true);
     wEI->wcb_modified_ongoing = [&sunLight, &sunLightColor](tre::ui::widget* myself) { sunLight.color = sunLightColor * static_cast<tre::ui::widgetBar*>(myself)->get_value(); };
 
-    worldWin->create_widgetText(12, 0)->set_text("ambiant intensity");
-    tre::ui::widget * wEA = worldWin->create_widgetBar(12, 1)->set_value(0.2f)->set_withtext(true)->set_withborder(true)->set_iseditable(true)->set_isactive(true);
+    worldWin->create_widgetText(14, 0)->set_text("ambiant intensity");
+    tre::ui::widget * wEA = worldWin->create_widgetBar(14, 1)->set_value(0.2f)->set_withtext(true)->set_withborder(true)->set_iseditable(true)->set_isactive(true);
     wEA->wcb_modified_ongoing = [&sunLight, &ambiantLightColor](tre::ui::widget* myself) { sunLight.colorAmbiant = ambiantLightColor * static_cast<tre::ui::widgetBar*>(myself)->get_value(); };
 
-    worldWin->create_widgetText(13, 0)->set_text("sky-box Map (F10)");
-    worldWin->create_widgetBoxCheck(13, 1)->set_value(false);
+    worldWin->create_widgetText(15, 0)->set_text("sky-box Map (F10)");
+    worldWin->create_widgetBoxCheck(15, 1)->set_value(false);
 
     // load
     worldUI.loadIntoGPU();

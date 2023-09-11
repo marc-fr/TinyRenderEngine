@@ -876,8 +876,7 @@ static const char * SourcePostProcess_FragMain_ToneMapping =
 "uniform float aspectRatio;\n"
 "void main(){\n"
 "  vec3 colorORIGIN = texture(TexDiffuse,pixelUV).rgb;\n"
-"  vec3 colorMAPPED = 1.f - exp(-colorORIGIN * paramsToneMapping.x);\n"
-"  //vec3 colorGAMMA = pow(colorMAPPED, 1.f/paramsToneMapping.y);\n"
+"  vec3 colorMAPPED = 1.f - exp(-colorORIGIN * paramsToneMapping.x); // tone-mapping\n"
 "  float greyIntensity = 0.2126 * colorMAPPED.r + 0.7152 * colorMAPPED.g + 0.0722 * colorMAPPED.b;\n"
 "  vec3 colorSAT = clamp( greyIntensity + (colorMAPPED - greyIntensity) * (1.f + paramsToneMapping.z), vec3(0.f), vec3(1.f));\n"
 "  vec2 uvFactor = aspectRatio > 1.f ? vec2(1.f / aspectRatio, 1.f) : vec2(1.f, aspectRatio);\n"
@@ -888,6 +887,7 @@ static const char * SourcePostProcess_FragMain_ToneMapping =
 "  float weightColor =  1.f - paramsVignetting.x * cursor;\n"
 "  float weightDesat = 1.f - paramsVignetting.y * cursor;\n"
 "  vec3 colorVIGN = weightColor * (weightDesat * colorSAT + (1.f - weightDesat) * greyIntensity) + (1.f - weightColor) * vignetteColor;\n"
+"  if (paramsToneMapping.y != 1.f) colorVIGN = pow(colorVIGN, 1.f/paramsToneMapping.yyy); // gamma-correction\n"
 "  color = vec4(colorVIGN, 1.f);\n"
 "}\n";
 
