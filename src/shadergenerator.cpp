@@ -13,8 +13,6 @@ shaderGenerator::s_layout::s_layout(const e_category cat, const int flags)
   // do some checks
 
   TRE_ASSERT(is2D() || is3D());
-  TRE_ASSERT(!(flags & PRGM_MASK_BRDF) || (flags & PRGM_MASK_LIGHT)); // cannot have BRDF-lghting without LIGHT
-  TRE_ASSERT(!(flags & PRGM_UNIPHONG) || (flags & PRGM_MASK_LIGHT)); // cannot have Phong-lghting without LIGHT
 
   // fill layout ...
 

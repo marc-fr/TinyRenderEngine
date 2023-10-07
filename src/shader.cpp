@@ -15,6 +15,9 @@ bool shader::loadShader(e_category cat, int flags, const char *pname)
   if (flags & PRGM_SHADOW_SUN) flags |= PRGM_LIGHT_SUN;
   if (flags & PRGM_SHADOW_PTS) flags |= PRGM_LIGHT_PTS;
 
+  TRE_ASSERT(!(flags & PRGM_MASK_BRDF) || (flags & PRGM_MASK_LIGHT)); // cannot have BRDF-lghting without LIGHT
+  TRE_ASSERT(!(flags & PRGM_UNIPHONG) || (flags & PRGM_MASK_LIGHT)); // cannot have Phong-lghting without LIGHT
+
   m_layout = s_layout(cat, flags);
 
   //-- Create the shader source
@@ -491,6 +494,7 @@ void shader::compute_name(e_category cat, int flags, const char * pname)
   else if (flags & PRGM_MASK_LIGHT) m_name += "_Phong";
   if (flags & PRGM_UNIBRDF) m_name += "u";
   if (flags & PRGM_MAPBRDF) m_name += "m";
+  if (flags & PRGM_MAPNORMAL) m_name += "n";
 
   std::string pre_light;
   if (flags & PRGM_LIGHT_SUN) pre_light += "s";
