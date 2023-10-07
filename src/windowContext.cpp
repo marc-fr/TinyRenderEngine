@@ -37,6 +37,7 @@ bool windowContext::SDLInit(Uint32 sdl_init_flags, int gl_depth_bits)
   SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
   SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE  , gl_depth_bits);
   // Misc
+  SDL_SetRelativeMouseMode(SDL_FALSE);
   SDL_StopTextInput();
   // Check error
   {
@@ -318,19 +319,17 @@ bool windowContext::s_controls::treatSDLEvent(const SDL_Event & event)
   case SDL_MOUSEBUTTONDOWN:
     if      (event.button.button == SDL_BUTTON_LEFT ) m_mouseLEFT  = s_controls::MASK_BUTTON_PRESSED;
     else if (event.button.button == SDL_BUTTON_RIGHT) m_mouseRIGHT = s_controls::MASK_BUTTON_PRESSED;
-    m_mouse.x = event.button.x;
-    m_mouse.y = event.button.y;
+    if (SDL_GetRelativeMouseMode() != SDL_TRUE) { m_mouse.x  = event.button.x;    m_mouse.y  = event.button.y;    }
     m_mousePrev = m_mouse;
     return true;
   case SDL_MOUSEBUTTONUP:
     if      (event.button.button == SDL_BUTTON_LEFT ) m_mouseLEFT  = s_controls::MASK_BUTTON_RELEASED;
     else if (event.button.button == SDL_BUTTON_RIGHT) m_mouseRIGHT = s_controls::MASK_BUTTON_RELEASED;
-    m_mouse.x = event.button.x;
-    m_mouse.y = event.button.y;
+    if (SDL_GetRelativeMouseMode() != SDL_TRUE) { m_mouse.x  = event.button.x;    m_mouse.y  = event.button.y;    }
     return true;
   case SDL_MOUSEMOTION:
-    m_mouse.x = event.button.x;
-    m_mouse.y = event.button.y;
+    if (SDL_GetRelativeMouseMode() == SDL_TRUE) { m_mouse.x += event.motion.xrel; m_mouse.y += event.motion.yrel; }
+    else                                        { m_mouse.x  = event.button.x;    m_mouse.y  = event.button.y;    }
     return true;
   case SDL_MOUSEWHEEL:
     m_mouse.z = - event.wheel.y;
@@ -401,31 +400,16 @@ void windowContext::s_view2D::treatControlEvent(const s_controls &control, const
 
   if (m_mouseBound)
   {
-#ifdef TRE_EMSCRIPTEN
-    if (!m_mouseBoundPrev)
-    {
-      m_mousePrev = mouseCurr_viewSpace;
-      m_matViewPrev = m_matView;
-    }
-    else
-    {
-      m_matView[2] = m_matViewPrev[2] + glm::vec3(mouseCurr_viewSpace - m_mousePrev, 0.f);
-    }
-#else
-    if (!m_mouseBoundPrev)
-    {
-      m_mousePrev = glm::vec2(0.f);
-      m_matViewPrev = m_matView;
-    }
-    else
-    {
-      m_mousePrev -= mouseCurr_viewSpace;
-      m_matView[2] = m_matViewPrev[2] + glm::vec3(- m_mousePrev, 0.f);
-    }
-    SDL_WarpMouseInWindow(m_parentWindow->m_window, m_parentWindow->m_resolutioncurrent.x / 2, m_parentWindow->m_resolutioncurrent.y / 2);
-#endif
+    m_mousePrev -= mouseCurr_viewSpace;
+    m_matView[2] = m_matViewPrev[2] + glm::vec3(- m_mousePrev, 0.f);
   }
-  else if (m_mouveOnBounds && m_parentWindow->m_window_isfullscreen)
+  else
+  {
+    m_mousePrev = mouseCurr_viewSpace;
+    m_matViewPrev = m_matView;
+  }
+
+  if (!m_mouseBound && m_mouveOnBounds && m_parentWindow->m_window_isfullscreen)
   {
     const float power = dt * (control.m_keySHIFT ? 20.f : 1.f);
 
@@ -438,13 +422,6 @@ void windowContext::s_view2D::treatControlEvent(const s_controls &control, const
     else if (mouseCurr_clipSpace.y >  0.8f)
       m_matView[2].y += (0.8f - mouseCurr_clipSpace.y) * 5.f * m_mouseSensitivity.y * power;
   }
-
-#ifndef TRE_EMSCRIPTEN
-  if (m_mouseBoundPrev != m_mouseBound)
-    SDL_ShowCursor(m_mouseBoundPrev);
-#endif
-
-  m_mouseBoundPrev = m_mouseBound;
 
   if (m_keyBound)
   {
@@ -488,34 +465,17 @@ void windowContext::s_view3D::treatControlEvent(const s_controls &control, const
 
   if (m_mouseBound)
   {
-#ifdef TRE_EMSCRIPTEN
-    if (!m_mouseBoundPrev)
-    {
-      m_mousePrev = mouseCurr_clipSpace;
-      m_matViewPrev = m_matView;
-    }
-    else
-    {
-      const glm::vec2 deltaMouse = mouseCurr_clipSpace - m_mousePrev;
-#else
-    if (!m_mouseBoundPrev)
-    {
-      m_mousePrev = glm::vec2(0.f);
-      m_matViewPrev = m_matView;
-    }
-    else
-    {
-      m_mousePrev -= mouseCurr_clipSpace;
-      const glm::vec2 deltaMouse = - m_mousePrev;
-#endif
-      m_matView = glm::rotate(glm::mat4(1.f), deltaMouse.x, glm::vec3(m_matViewPrev[1])) * m_matViewPrev;
-      m_matView = glm::rotate(glm::mat4(1.f), deltaMouse.y, glm::vec3(-1.f,0.f,0.f)) * m_matView;
-    }
-#ifndef TRE_EMSCRIPTEN
-    SDL_WarpMouseInWindow(m_parentWindow->m_window, m_parentWindow->m_resolutioncurrent.x / 2, m_parentWindow->m_resolutioncurrent.y / 2);
-#endif
+    const glm::vec2 deltaMouse = mouseCurr_clipSpace - m_mousePrev;
+    m_matView = glm::rotate(glm::mat4(1.f), deltaMouse.x, glm::vec3(m_matViewPrev[1])) * m_matViewPrev;
+    m_matView = glm::rotate(glm::mat4(1.f), deltaMouse.y, glm::vec3(-1.f,0.f,0.f)) * m_matView;
   }
-  else if (m_mouveOnBounds && m_parentWindow->m_window_isfullscreen)
+  else
+  {
+    m_mousePrev = mouseCurr_clipSpace;
+    m_matViewPrev = m_matView;
+  }
+
+  if (!m_mouseBound && m_mouveOnBounds && m_parentWindow->m_window_isfullscreen)
   {
     if      (mouseCurr_clipSpace.x < -0.8f)
       m_matView[3] += (0.8f + mouseCurr_clipSpace.x) * 5.f * m_mouseSensitivity.x * dt * glm::vec4(-1.f,0.f,0.f,0.f);
@@ -526,13 +486,6 @@ void windowContext::s_view3D::treatControlEvent(const s_controls &control, const
     else if (mouseCurr_clipSpace.y >  0.8f)
       m_matView[3] += (0.8f - mouseCurr_clipSpace.y) * 5.f * m_mouseSensitivity.y * dt * glm::vec4(0.f,1.f,0.f,0.f);
   }
-
-#ifndef TRE_EMSCRIPTEN
-  if (m_mouseBoundPrev != m_mouseBound)
-    SDL_ShowCursor(m_mouseBoundPrev);
-#endif
-
-  m_mouseBoundPrev = m_mouseBound;
 
   if (m_keyBound)
   {

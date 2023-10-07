@@ -275,6 +275,7 @@ static void app_update()
 
     if (myControls.m_mouseRIGHT & myControls.MASK_BUTTON_RELEASED)
       myView3D.setMouseBinding(!myView3D.m_mouseBound);
+    // Note: with Emscripten, the user needs to left click on the canvas to have the mouse lock active (after that the bounding is requested)
 
     if (myWindow.m_viewportResized)
     {
