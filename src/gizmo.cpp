@@ -261,18 +261,19 @@ void gizmo::_transformReset()
   }
 
   // also compute the sign to have the Gizmo facing the camera ...
+  if (m_Type != GMODE_SHOWAXIS)
+  {
+    const glm::vec4 camToPos = m_parentTransform * m_transform[3] - glm::vec4(m_cameraPosition, 1.f);
 
-  const glm::vec4 camToPos = m_parentTransform * m_transform[3] - glm::vec4(m_cameraPosition, 1.f);
+    if (glm::dot(camToPos, m_transform[0]) > 0.f)
+        m_transform[0] = -m_transform[0];
 
-  if (glm::dot(camToPos, m_transform[0]) > 0.f)
-      m_transform[0] = -m_transform[0];
+    if (glm::dot(camToPos, m_transform[1]) > 0.f)
+        m_transform[1] = -m_transform[1];
 
-  if (glm::dot(camToPos, m_transform[1]) > 0.f)
-      m_transform[1] = -m_transform[1];
-
-  if (glm::dot(camToPos, m_transform[2]) > 0.f)
-      m_transform[2] = -m_transform[2];
-
+    if (glm::dot(camToPos, m_transform[2]) > 0.f)
+        m_transform[2] = -m_transform[2];
+  }
 
   // Build View-space transform for rotation handles
   if (m_Type == GMODE_ROTATING)
