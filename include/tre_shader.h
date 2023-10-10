@@ -39,9 +39,11 @@ public:
   /// @name Compile
   /// @{
 public:
-  bool loadShader(e_category cat, int flags, const char *pname = nullptr); ///< Create and link a shader into the GPU
-  bool loadCustomShader(const s_layout & shaderLayout , const char * sourceMainFrag, const char *pname); ///< Create and link a custom shader
-  bool loadCustomShaderWithGeom(const s_layout & shaderLayout , const char * sourceFullGeom, const char * sourceFullFrag, const char *pname); ///< Create and link a custom shader, with the "geometry" stage
+  bool loadShader(e_category cat, int flags, const char *pname = nullptr); ///< compile and load a shader into the GPU
+  bool loadCustomShader(const s_layout & shaderLayout, const char * sourceMainFrag, const char *pname); ///< compile and load a shader, with a custom fragment stage
+  bool loadCustomShaderVF(const s_layout & shaderLayout, const char * sourceMainVert, const char * sourceMainFrag, const char *pname); ///< compile and load a shader, with a custom vertex and fragment stages
+  bool loadCustomShaderGF(const s_layout & shaderLayout, const char * sourceFullGeom, const char * sourceFullFrag, const char *pname); ///< compile and load a shader, with a custom geometry and fragment stages
+  bool loadCustomShaderVGF(const s_layout & shaderLayout, const char * sourceMainVert, const char * sourceFullGeom, const char * sourceFullFrag, const char *pname); ///< compile and load a shader, with custom stages.
 
   const std::string & getName() const { return m_name; }
 

@@ -548,15 +548,8 @@ int main(int argc, char **argv)
     shLayout.hasUNI_MModel = true;
     shLayout.hasUNI_uniColor = true;
     shLayout.hasOUT_Color0 = true;
-    shaderWireframe.loadCustomShaderWithGeom(shLayout,
-                                             srcGeom_Wireframe_line,
-                                             srcFrag_Wireframe,
-                                            "wirefrime_line");
-
-    shaderWireframePlain.loadCustomShaderWithGeom(shLayout,
-                                                  srcGeom_Wireframe_plain,
-                                                  srcFrag_Wireframe,
-                                                 "wirefrime_plain");
+    shaderWireframe.loadCustomShaderGF(shLayout, srcGeom_Wireframe_line, srcFrag_Wireframe, "wirefrime_line");
+    shaderWireframePlain.loadCustomShaderGF(shLayout, srcGeom_Wireframe_plain, srcFrag_Wireframe, "wirefrime_plain");
   }
 
   tre::shader shaderDataVisu;

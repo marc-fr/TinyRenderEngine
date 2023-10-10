@@ -73,7 +73,42 @@ bool shader::loadCustomShader(const s_layout & shaderLayout , const char * sourc
 
 // ----------------------------------------------------------------------------
 
-bool shader::loadCustomShaderWithGeom(const s_layout & shaderLayout , const char * sourceFullGeom, const char * sourceFullFrag, const char * pname)
+bool shader::loadCustomShaderVF(const s_layout &shaderLayout, const char *sourceMainVert, const char *sourceMainFrag, const char *pname)
+{
+  TRE_ASSERT(m_drawProgram == 0);
+
+  //-- Layout
+
+  m_layout = shaderLayout;
+
+  //-- Do some corrections
+
+  m_layout.hasBUF_Normal |= m_layout.hasBUF_TangentU;
+  m_layout.hasUNI_MModel |= m_layout.hasPIX_Position || m_layout.hasBUF_Normal;
+  m_layout.hasUNI_MView  |= m_layout.hasPIX_Normal;
+
+  //-- Create the shader source
+
+  std::string sourceVert,sourceFrag;
+  sourceVert.reserve(4096);
+  sourceFrag.reserve(4096);
+
+  createShaderSource_Layout(sourceVert, sourceFrag);
+  TRE_ASSERT(sourceMainVert != nullptr);
+  sourceVert += sourceMainVert;
+  TRE_ASSERT(sourceMainFrag != nullptr);
+  sourceFrag += sourceMainFrag;
+
+  //-- compile and load it
+
+  compute_name(m_layout.category, 0, pname);
+
+  return linkProgram(sourceVert.data(), sourceFrag.data());
+}
+
+// ----------------------------------------------------------------------------
+
+bool shader::loadCustomShaderGF(const s_layout & shaderLayout , const char * sourceFullGeom, const char * sourceFullFrag, const char * pname)
 {
   TRE_ASSERT(m_drawProgram == 0);
 
@@ -85,8 +120,8 @@ bool shader::loadCustomShaderWithGeom(const s_layout & shaderLayout , const char
   //-- Do some corrections
 
   m_layout.hasBUF_Normal |= m_layout.hasBUF_TangentU;
-  m_layout.hasUNI_MModel |= m_layout.hasPIX_Position ||m_layout.hasBUF_Normal;
-  m_layout.hasUNI_MView  |=  m_layout.hasPIX_Normal || m_layout.hasUBO_ptslight || m_layout.hasUBO_sunlight;
+  m_layout.hasUNI_MModel |= m_layout.hasPIX_Position || m_layout.hasBUF_Normal;
+  m_layout.hasUNI_MView  |= m_layout.hasPIX_Normal;
 
   // Create the shader source
 
@@ -107,6 +142,55 @@ bool shader::loadCustomShaderWithGeom(const s_layout & shaderLayout , const char
   //-- compile and load it
 
   compute_name(m_layout.category, 0, pname);
+
+#ifdef TRE_OPENGL_ES
+  TRE_LOG("shader::loadCustomShaderGF : OpenGL ES does not have GEOMETRY_SHADER. Skip shader " << m_name);
+  return false;
+#endif
+
+  return linkProgram(sourceVert.data(), sourceGeom.data(), sourceFrag.data());
+}
+
+// ----------------------------------------------------------------------------
+
+bool shader::loadCustomShaderVGF(const s_layout &shaderLayout, const char *sourceMainVert, const char *sourceFullGeom, const char *sourceFullFrag, const char *pname)
+{
+  //-- Layout
+
+  m_layout = shaderLayout;
+  m_layout.hasPIP_Geom = true;
+
+  //-- Do some corrections
+
+  m_layout.hasBUF_Normal |= m_layout.hasBUF_TangentU;
+  m_layout.hasUNI_MModel |= m_layout.hasPIX_Position || m_layout.hasBUF_Normal;
+  m_layout.hasUNI_MView  |= m_layout.hasPIX_Normal;
+
+  // Create the shader source
+
+  std::string sourceVert, sourceGeom, sourceFrag;
+  sourceVert.reserve(4096);
+  sourceGeom.reserve(4096);
+  sourceFrag.reserve(4096);
+
+  createShaderSource_Layout(sourceVert, sourceFrag);
+  TRE_ASSERT(sourceFrag.empty());
+  sourceFrag.clear();
+  TRE_ASSERT(sourceMainVert != nullptr);
+  sourceVert += sourceMainVert;
+  TRE_ASSERT(sourceFullGeom != nullptr);
+  sourceGeom += sourceFullGeom;
+  TRE_ASSERT(sourceFullFrag != nullptr);
+  sourceFrag += sourceFullFrag;
+
+  //-- compile and load it
+
+  compute_name(m_layout.category, 0, pname);
+
+#ifdef TRE_OPENGL_ES
+  TRE_LOG("shader::loadCustomShaderVGF : OpenGL ES does not have GEOMETRY_SHADER. Skip shader " << m_name);
+  return false;
+#endif
 
   return linkProgram(sourceVert.data(), sourceGeom.data(), sourceFrag.data());
 }
