@@ -17,7 +17,7 @@ namespace tre
 
 // soundData::s_RawSDL ========================================================
 
-bool soundData::s_RawSDL::loadSoundFromWAV(const std::string & wavFile)
+bool soundData::s_RawSDL::loadFromWAV(const std::string & wavFile)
 {
   // Load the WAV
   SDL_AudioSpec wavSpec; // "format", "freq" and "channels" are filled
@@ -110,7 +110,11 @@ bool soundData::s_RawSDL::read(std::istream &stream)
   uint header[8];
   stream.read(reinterpret_cast<char*>(&header), sizeof(header));
   TRE_ASSERT(header[0] == SOUND_BIN_VERSION);
-  TRE_ASSERT(header[3] == 0);
+  if (header[3] != 0)
+  {
+    TRE_LOG("s_RawSDL::read: incompatible object-type " << header[3] << " (expected 0)");
+    return false;
+  }
 
   m_nSamples  = header[1];
   m_stereo    = (header[2] == 2);
@@ -172,21 +176,188 @@ bool soundData::s_RawSDL::convertTo(int freq, SDL_AudioFormat format)
 
 // soundData::s_Opus ==========================================================
 
-const int soundData::s_Opus::k_freq;
-const unsigned soundData::s_Opus::k_blockSampleCount;
+const int soundData::s_Opus::m_freq;
 
 // ----------------------------------------------------------------------------
 
-bool soundData::s_Opus::compress(soundData::s_RawSDL &rawData, unsigned bitrate)
+struct s_oggPage
+{
+  uint64_t ogg_granPos;
+  uint32_t ogg_pageId;
+  uint8_t  ogg_segmentNbr;
+  uint8_t  ogg_headerType;
+  std::vector<uint8_t> ogg_segmentTable;
+
+  bool read(std::istream &ins)
+  {
+    uint32_t ogg_magicNnbr = 0u;
+    uint8_t  ogg_version = 0u;
+    ins.read(reinterpret_cast<char*>(&ogg_magicNnbr) , sizeof(ogg_magicNnbr));  // "OggS"
+    ins.read(reinterpret_cast<char*>(&ogg_version)   , sizeof(ogg_version));    // 0
+    if (ogg_magicNnbr != 0x5367674f || ogg_version != 0) return false;
+    uint32_t ogg_serialNbr;
+    uint32_t ogg_CRCsum;
+    ins.read(reinterpret_cast<char*>(&ogg_headerType), sizeof(ogg_headerType)); // 0x1: append from previous page, 0x2: first page(bos), 0x4: last page (eos)
+    ins.read(reinterpret_cast<char*>(&ogg_granPos)   , sizeof(ogg_granPos));    // global pos
+    ins.read(reinterpret_cast<char*>(&ogg_serialNbr) , sizeof(ogg_serialNbr));
+    ins.read(reinterpret_cast<char*>(&ogg_pageId)    , sizeof(ogg_pageId));     // page id
+    ins.read(reinterpret_cast<char*>(&ogg_CRCsum)    , sizeof(ogg_CRCsum));
+    ins.read(reinterpret_cast<char*>(&ogg_segmentNbr), sizeof(ogg_segmentNbr)); // nbr of segment in this page
+    if (ogg_segmentNbr != 0)
+    {
+      ogg_segmentTable.resize(ogg_segmentNbr);
+      ins.read(reinterpret_cast<char*>(ogg_segmentTable.data()), ogg_segmentNbr);
+    }
+    else
+    {
+      ogg_segmentTable.clear();
+    }
+    return true;
+  }
+};
+
+bool soundData::s_Opus::loadFromOPUS(const std::string &filename)
+{
+#ifdef TRE_WITH_OPUS
+
+  std::ifstream readerOpus;
+  readerOpus.open(filename.c_str(), std::ios_base::binary);
+  if (!readerOpus)
+  {
+    TRE_LOG("Failed to load OPUS file " << filename);
+    return false;
+  }
+
+  s_oggPage oggPage;
+
+  if (!oggPage.read(readerOpus)) // page that contains the Opus-head
+  {
+    TRE_LOG("loadFromOPUS: invalid ogg header for the OpusHead section in file " << filename);
+    return false;
+  }
+  if (oggPage.ogg_headerType != 2u || oggPage.ogg_pageId != 0u || oggPage.ogg_segmentNbr != 1u)
+  {
+    TRE_LOG("loadFromOPUS: invalid ogg BOS page in file " << filename);
+    return false;
+  }
+
+  // read of the Opus Head
+  uint8_t  opusH_chanCount = 0u;
+  uint16_t opusH_preSkip = 0u;
+  uint32_t opusH_freq = 0u;
+  {
+    uint64_t opusH_magicNbr;  readerOpus.read(reinterpret_cast<char*>(&opusH_magicNbr) , sizeof(opusH_magicNbr));  // "OpusHead"
+    uint8_t  opusH_version;   readerOpus.read(reinterpret_cast<char*>(&opusH_version)  , sizeof(opusH_version));   // 1, but can be in [0,15] range
+                              readerOpus.read(reinterpret_cast<char*>(&opusH_chanCount), sizeof(opusH_chanCount));
+                              readerOpus.read(reinterpret_cast<char*>(&opusH_preSkip)  , sizeof(opusH_preSkip));
+                              readerOpus.read(reinterpret_cast<char*>(&opusH_freq)     , sizeof(opusH_freq));      // sampling rate (Hz) before encoding
+    int16_t  opusH_gainBd;    readerOpus.read(reinterpret_cast<char*>(&opusH_gainBd)   , sizeof(opusH_gainBd));    // value * 10^(gain/(20*256))
+    uint8_t  opusH_mapFamily; readerOpus.read(reinterpret_cast<char*>(&opusH_mapFamily), sizeof(opusH_mapFamily));
+    if (opusH_magicNbr != 0x646165487375704F)
+    {
+      TRE_LOG("loadFromOPUS: invalid opus header (magic number must be 'OpusHead')");
+      return false;
+    }
+    if (opusH_version != 1 || opusH_chanCount == 0 || opusH_mapFamily != 0 /* TODO ? */ || opusH_chanCount >= 3 /* enforced with family == 0 */ || opusH_freq != m_freq)
+    {
+      TRE_LOG("loadFromOPUS: invalid or not-supported opus configuration");
+      return false;
+    }
+  }
+
+  if (!oggPage.read(readerOpus)) // page that contains the Opus-Tags
+  {
+    TRE_LOG("loadFromOPUS: invalid ogg header for the OpusTags section in file " << filename);
+    return false;
+  }
+  {
+    uint64_t opusT_magicNbr;   readerOpus.read(reinterpret_cast<char*>(&opusT_magicNbr)  , sizeof(opusT_magicNbr));    // "OpusTags"
+    if (opusT_magicNbr != 0x736761547375704F)
+    {
+      TRE_LOG("loadFromOPUS: invalid opus header (magic number must be 'OpusHead')");
+      return false;
+    }
+    // ignore the rest of the data: seek foward
+    int soffset = 0;
+    for (const uint8_t lacing : oggPage.ogg_segmentTable) soffset += lacing;
+    soffset -= 8;
+    TRE_ASSERT(soffset > 0);
+    readerOpus.seekg(soffset, std::ios_base::cur);
+  }
+
+  m_stereo = (opusH_chanCount == 2);
+  m_nSamples = 0;
+  m_blokcs.clear();
+
+  int  sampleOffset = -opusH_preSkip;
+  bool appendSegement = false;
+
+  while (true)
+  {
+    if (!oggPage.read(readerOpus)) // page that contains the audio data
+      return false;
+
+    for (uint8_t is = 0; is < oggPage.ogg_segmentNbr; ++is)
+    {
+      const uint8_t bufSize = oggPage.ogg_segmentTable[is];
+      if (!appendSegement)
+      {
+        TRE_ASSERT(m_blokcs.empty() || !m_blokcs.back().m_data.empty()); // no empty block
+        m_blokcs.emplace_back();
+        m_blokcs.back().m_sampleStart = sampleOffset;
+      }
+      s_block &currentBlock = m_blokcs.back();
+      if (bufSize != 0)
+      {
+        const std::size_t oldSize = currentBlock.m_data.size();
+        currentBlock.m_data.resize(oldSize + bufSize);
+        readerOpus.read(reinterpret_cast<char *>(&currentBlock.m_data[oldSize]), bufSize);
+      }
+      if (bufSize == 255)
+      {
+        appendSegement = true;
+        continue;
+      }
+      appendSegement = false;
+
+      const int ns = opus_packet_get_nb_samples(currentBlock.m_data.data(), bufSize, m_freq);
+      sampleOffset += ns;
+    }
+
+    if ((oggPage.ogg_headerType & 0x4) != 0)
+    {
+      m_nSamples = oggPage.ogg_granPos - opusH_preSkip;
+      break; // last page
+    }
+  }
+  TRE_ASSERT(!appendSegement);
+
+  if (m_nSamples == 0)
+  {
+    TRE_LOG("s_Opus::loadFromOPUS: the last ogg page was not recognized, the nbr of samples will be higher than the audio source length (" << filename <<")");
+    m_nSamples = sampleOffset;
+  }
+
+  TRE_LOG("Audio loaded: samples = " << m_nSamples << ", freq = " << m_freq / 1000 << " kHz, compressed-audio-pages = " << m_blokcs.size());
+  return true;
+#else
+  TRE_LOG("s_Opus::loadFromOPUS: FAILED (the current build does not include OPUS) on the file " << filename);
+  return false;
+#endif
+}
+
+// ----------------------------------------------------------------------------
+
+bool soundData::s_Opus::loadFromRaw(soundData::s_RawSDL &rawData, unsigned bitrate)
 {
   TRE_ASSERT(rawData.m_nSamples > 0);
   TRE_ASSERT(bitrate != 0);
 
 #ifdef TRE_WITH_OPUS
 
-  if (rawData.m_freq != k_freq || rawData.m_format != AUDIO_S16) // supported format by OPUS
+  if (rawData.m_freq != m_freq || rawData.m_format != AUDIO_S16) // supported format by OPUS
   {
-    if (!rawData.convertTo(k_freq, AUDIO_S16))
+    if (!rawData.convertTo(m_freq, AUDIO_S16))
       return false;
   }
 
@@ -200,24 +371,25 @@ bool soundData::s_Opus::compress(soundData::s_RawSDL &rawData, unsigned bitrate)
   if (bitrate != 0)
   {
     int errorCode = 0;
-    audioEncoder = opus_encoder_create(k_freq, nchans, OPUS_APPLICATION_AUDIO, &errorCode);
+    audioEncoder = opus_encoder_create(m_freq, nchans, OPUS_APPLICATION_AUDIO, &errorCode);
     TRE_ASSERT(audioEncoder != nullptr && errorCode == 0);
     opus_encoder_ctl(audioEncoder, OPUS_SET_BITRATE(bitrate));
   }
 
   // encode
-  const int bufferEncodeByteSize = k_blockSampleCount * sizeof(int16_t) * nchans;
+  const int blockSampleCount = 2880; // 60ms of sound at 48 kHz.
+  const int bufferEncodeByteSize = blockSampleCount * sizeof(int16_t) * nchans;
 
   std::vector<uint8_t> bufferEncode;
   bufferEncode.resize(bufferEncodeByteSize);
 
-  m_blokcs.reserve(1 + (rawData.m_nSamples - 1) / k_blockSampleCount);
+  m_blokcs.reserve(1 + (rawData.m_nSamples - 1) / blockSampleCount);
 
   opus_encoder_ctl(audioEncoder, OPUS_RESET_STATE);
 
   {
     // prevent to read garbage when encoding the last chunk.
-    const unsigned rawData_AlignedByteSize = ((rawData.m_nSamples + k_blockSampleCount - 1) / k_blockSampleCount) * k_blockSampleCount * sizeof(int16_t) * nchans;
+    const unsigned rawData_AlignedByteSize = ((rawData.m_nSamples + blockSampleCount - 1) / blockSampleCount) * blockSampleCount * sizeof(int16_t) * nchans;
     rawData.m_rawData.resize((rawData_AlignedByteSize + 3) / 4, 0);
   }
 
@@ -227,7 +399,7 @@ bool soundData::s_Opus::compress(soundData::s_RawSDL &rawData, unsigned bitrate)
   uint totalDataBytes = 0;
   while (encodedSamples < rawData.m_nSamples)
   {
-    const int bufferWriteSize = opus_encode(audioEncoder, audioBufferSrc, k_blockSampleCount, bufferEncode.data(), bufferEncodeByteSize);
+    const int bufferWriteSize = opus_encode(audioEncoder, audioBufferSrc, blockSampleCount, bufferEncode.data(), bufferEncodeByteSize);
     TRE_ASSERT(bufferWriteSize > 0);
 
     m_blokcs.emplace_back();
@@ -237,8 +409,8 @@ bool soundData::s_Opus::compress(soundData::s_RawSDL &rawData, unsigned bitrate)
     curBlock.m_data.resize(bufferWriteSize);
     memcpy(curBlock.m_data.data(), bufferEncode.data(), bufferWriteSize);
 
-    encodedSamples += k_blockSampleCount;
-    audioBufferSrc += k_blockSampleCount * nchans;
+    encodedSamples += blockSampleCount;
+    audioBufferSrc += blockSampleCount * nchans;
     totalDataBytes += bufferWriteSize;
   }
 
@@ -248,7 +420,7 @@ bool soundData::s_Opus::compress(soundData::s_RawSDL &rawData, unsigned bitrate)
 
   return true;
 #else
-  TRE_LOG("s_Opus::compress: FAILED (the current build does not include OPUS)");
+  TRE_LOG("s_Opus::loadFromRaw: FAILED (the current build does not include OPUS)");
   return false;
 #endif
 }
@@ -264,7 +436,7 @@ bool soundData::s_Opus::write(std::ostream &stream) const
   header[2] = m_stereo ? 2 : 1;
   header[3] = 1; // Opus
   header[4] = 0;
-  header[5] = k_freq; //freq
+  header[5] = m_freq; //freq
   header[6] = AUDIO_S16; // format
   header[7] = uint(m_blokcs.size());
   stream.write(reinterpret_cast<const char*>(&header), sizeof(header));
@@ -272,7 +444,7 @@ bool soundData::s_Opus::write(std::ostream &stream) const
   // data
   for (const s_block &b : m_blokcs)
   {
-    stream.write(reinterpret_cast<const char*>(&b.m_sampleStart), sizeof(unsigned));
+    stream.write(reinterpret_cast<const char*>(&b.m_sampleStart), sizeof(int));
     unsigned dsize = b.m_data.size();
     TRE_ASSERT(dsize != 0);
     stream.write(reinterpret_cast<const char*>(&dsize), sizeof(unsigned));
@@ -290,7 +462,16 @@ bool soundData::s_Opus::read(std::istream &stream)
   uint header[8];
   stream.read(reinterpret_cast<char*>(&header), sizeof(header));
   TRE_ASSERT(header[0] == SOUND_BIN_VERSION);
-  TRE_ASSERT(header[3] == 1);
+  if (header[3] != 1)
+  {
+    TRE_LOG("s_Opus::read: incompatible object-type " << header[3] << " (expected 1)");
+    return false;
+  }
+  if (header[5] != m_freq)
+  {
+    TRE_LOG("s_Opus::read: incompatible audio frequence " << header[5] << " (expected " << m_freq << " Hz)");
+    return false;
+  }
 
   m_nSamples  = header[1];
   m_stereo    = (header[2] == 2);
@@ -300,7 +481,7 @@ bool soundData::s_Opus::read(std::istream &stream)
   // data
   for (s_block &b : m_blokcs)
   {
-    stream.read(reinterpret_cast<char*>(&b.m_sampleStart), sizeof(unsigned));
+    stream.read(reinterpret_cast<char*>(&b.m_sampleStart), sizeof(int));
     unsigned dsize = 0;
     stream.read(reinterpret_cast<char*>(&dsize), sizeof(unsigned));
     TRE_ASSERT(dsize != 0);
@@ -313,6 +494,18 @@ bool soundData::s_Opus::read(std::istream &stream)
 #endif
 
   return true;
+}
+
+// ----------------------------------------------------------------------------
+
+unsigned soundData::s_Opus::getBlockAtSampleId(int sid) const
+{
+  for (unsigned ib = 0; ib < m_blokcs.size(); ++ib)
+  {
+    if (sid < m_blokcs[ib].m_sampleStart)
+      return unsigned(ib - 1);
+  }
+  return unsigned(m_blokcs.size() - 1);
 }
 
 // soundSampler ===============================================================
@@ -340,23 +533,27 @@ bool soundSampler::s_sampler_Opus::decodeSlot(const soundData::s_Opus &data, uns
   if (m_decoder == nullptr)
   {
     int error;
-    m_decoder = opus_decoder_create(48000, 2, &error);
+    m_decoder = opus_decoder_create(soundData::s_Opus::m_freq, 2, &error);
     if (m_decoder == nullptr)
       return false;
     opus_decoder_ctl(m_decoder, OPUS_RESET_STATE);
   }
-  TRE_ASSERT(m_decoder != nullptr);
-  TRE_ASSERT(slot < data.m_blokcs.size());
-
+  if (slot == unsigned(-1) || slot >= data.m_blokcs.size())
+    return false;
   if (slot == m_decompressedSlot)
     return true;
 
-  const int ret = opus_decode(m_decoder, data.m_blokcs[slot].m_data.data(), data.m_blokcs[slot].m_data.size(), m_decompressedBuffer.data(), soundData::s_Opus::k_blockSampleCount, 0);
+  const int blockSampleCount = opus_packet_get_nb_samples(data.m_blokcs[slot].m_data.data(), data.m_blokcs[slot].m_data.size(), soundData::s_Opus::m_freq);
+  if (blockSampleCount < 0 || blockSampleCount > 2880)
+    return false;
+
+  const int ret = opus_decode(m_decoder, data.m_blokcs[slot].m_data.data(), data.m_blokcs[slot].m_data.size(), m_decompressedBuffer.data(), blockSampleCount, 0);
   m_decompressedSlot = slot;
+  m_decompressedCount = blockSampleCount;
 
   // copy last data (LR)
-  m_decompressedBuffer[soundData::s_Opus::k_blockSampleCount * 2 + 0] = m_decompressedBuffer[soundData::s_Opus::k_blockSampleCount * 2 - 2 + 0];
-  m_decompressedBuffer[soundData::s_Opus::k_blockSampleCount * 2 + 1] = m_decompressedBuffer[soundData::s_Opus::k_blockSampleCount * 2 - 2 + 1];
+  m_decompressedBuffer[blockSampleCount * 2 + 0] = m_decompressedBuffer[blockSampleCount * 2 - 2 + 0];
+  m_decompressedBuffer[blockSampleCount * 2 + 1] = m_decompressedBuffer[blockSampleCount * 2 - 2 + 1];
 
   return (ret > 0);
 #else

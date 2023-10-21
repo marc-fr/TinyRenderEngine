@@ -95,7 +95,8 @@ public:
     objsolid.fillDataLine(adPart, adOffset, pA, pB, glm::vec4(0.3f, 1.f, 0.3f, 1.f));
   }
 
-  static void genWaveForm(const tre::soundData::s_RawSDL &data, SDL_Surface *tex, uint y0, uint y1)
+  template<class _soundData, class _soundSampler>
+  static void genWaveForm(const _soundData &data, SDL_Surface *tex, uint y0, uint y1)
   {
     TRE_ASSERT(tex->format->BytesPerPixel == 4);
     const uint halfHeight_px = (y1 - y0 - 1) / 2;
@@ -104,11 +105,12 @@ public:
     uint32_t * __restrict pixels = reinterpret_cast<uint32_t*>(tex->pixels);
 
     const uint samples = data.m_nSamples;
+    if (samples == 0) return;
     const uint samplesPerPixel = std::max(1u, samples / width);
     std::vector<float> buffer;
     buffer.resize(samplesPerPixel * 2);
 
-    tre::soundSampler::s_sampler_Raw sampler;
+    _soundSampler                    sampler;
     tre::soundSampler::s_noControl   samplerControl;
 
     sampler.m_repet = false;
@@ -121,10 +123,7 @@ public:
 
       memset(buffer.data(), 0, samplesPerPixel * 2 * sizeof(float));
 
-      if (data.m_format == AUDIO_S16)
-        sampler.sample<tre::soundSampler::s_noControl, int16_t>(data, samplerControl, samplerControl, buffer.data(), samplesPerPixel, data.m_freq);
-      else if (data.m_format == AUDIO_S32)
-        sampler.sample<tre::soundSampler::s_noControl, int32_t>(data, samplerControl, samplerControl, buffer.data(), samplesPerPixel, data.m_freq);
+      sampler.sample(data, samplerControl, samplerControl, buffer.data(), samplesPerPixel, data.m_freq);
 
       float valuePeak = sampler.m_valuePeak;
       float valueRMS = sampler.m_valueRMS;
@@ -156,18 +155,25 @@ static bool withAudio = true;
 
 static const std::string                nameClick = "music-click.wav";
 static const std::string                nameWave = "sin440Hz.wav";
-static const std::array<std::string, 4> nameTracks = { "music-base.wav", "music-clav.wav", "music-strings.wav", "music-piano.wav" };
+static const std::string                namePiano = "music-piano.opus";
+static const std::array<std::string, 3> nameTracks = { "music-base.wav", "music-clav.wav", "music-strings.wav" };
 
-std::array<tre::soundData::s_RawSDL, 6> audioDataRaw;
+std::array<tre::soundData::s_RawSDL, 5> audioDataRaw;
+std::array<tre::soundData::s_Opus, 1>   audioDataOpus;
 
 struct s_music
 {
-  std::array<tre::soundData::s_Opus, 4> m_audioDataCompressed;
-  std::array<tre::sound2D, 4>           m_tracks;
+  std::array<tre::soundData::s_Opus, 3> m_audioDataCompressed;
+  std::array<tre::sound2D, 3>           m_tracks;
   std::string                           m_name;
   unsigned                              m_compression;
 
   s_music(const std::string &name, tre::soundData::s_RawSDL *data) : m_name(name), m_compression(0)
+  {
+    m_tracks[0].setAudioData(data);
+  }
+
+  s_music(const std::string &name, tre::soundData::s_Opus *data) : m_name(name), m_compression(0)
   {
     m_tracks[0].setAudioData(data);
   }
@@ -179,13 +185,13 @@ struct s_music
   }
 };
 
-static std::array<s_music, 2> listSound = { s_music("click", &audioDataRaw[0]), s_music("sin440Hz", &audioDataRaw[1]) }; // only the first track is used here.
+static std::array<s_music, 3> listSound = { s_music("click", &audioDataRaw[0]), s_music("sin440Hz", &audioDataRaw[1]), s_music("piano.opus", &audioDataOpus[0]) }; // only the first track is used here.
 static std::array<s_music, 4> listMusic = { s_music("origin", 0U), s_music("compression 64kb", 64000U), s_music("compression 32kb", 32000U), s_music("compression 16kb", 16000U) };
 
 static tre::audioContext audioCtx;
 
 static tre::texture textureWaveforms;
-static const unsigned textureWaveformMaxCount = 16;
+static const unsigned textureWaveformMaxCount = 8;
 
 // =============================================================================
 
@@ -253,15 +259,15 @@ static int app_init()
 
   if (withAudio)
   {
-    withAudio &= audioDataRaw[0].loadSoundFromWAV((TESTIMPORTPATH "resources/") + nameClick);
-    withAudio &= audioDataRaw[1].loadSoundFromWAV((TESTIMPORTPATH "resources/") + nameWave);
+    // load from files
+    audioDataRaw[0].loadFromWAV((TESTIMPORTPATH "resources/") + nameClick);
+    audioDataRaw[1].loadFromWAV((TESTIMPORTPATH "resources/") + nameWave);
 
     for (std::size_t i = 0; i < nameTracks.size(); ++i)
-      withAudio &= audioDataRaw[2 + i].loadSoundFromWAV((TESTIMPORTPATH "resources/") + nameTracks[i]);
-  }
+      audioDataRaw[2 + i].loadFromWAV((TESTIMPORTPATH "resources/") + nameTracks[i]);
 
-  if (withAudio)
-  {
+    audioDataOpus[0].loadFromOPUS((TESTIMPORTPATH "resources/") + namePiano);
+
     // music-origin
     for (std::size_t i = 0; i < nameTracks.size(); ++i)
     {
@@ -274,17 +280,15 @@ static int app_init()
     {
       for (std::size_t i = 0; i < nameTracks.size(); ++i)
       {
-        withAudio &= listMusic[k].m_audioDataCompressed[i].compress(audioDataRaw[2 + i], listMusic[k].m_compression);
+        withAudio &= listMusic[k].m_audioDataCompressed[i].loadFromRaw(audioDataRaw[2 + i], listMusic[k].m_compression);
       }
     }
-  }
 
-  if (withAudio)
-  {
     // add all to the sound-context
 
     audioCtx.addSound(&listSound[0].m_tracks[0]);
     audioCtx.addSound(&listSound[1].m_tracks[0]);
+    audioCtx.addSound(&listSound[2].m_tracks[0]);
 
     for (std::size_t k = 0; k < listMusic.size(); ++k)
     {
@@ -326,12 +330,17 @@ static int app_init()
 
     const unsigned textureWaveformSlot = baseUI.addTexture(&textureWaveforms);
 
-    SDL_Surface *textureWaveformLoading = SDL_CreateRGBSurface(0, 128, 32 * textureWaveformMaxCount, 32, 0, 0, 0, 0);
     // compute WAV-form
-    for (unsigned iRawAudio = 0; iRawAudio < audioDataRaw.size(); ++iRawAudio)
-    {
-      widgetWaveform::genWaveForm(audioDataRaw[iRawAudio], textureWaveformLoading, 0 + 32 * iRawAudio, 32 + 32 * iRawAudio);
-    }
+    SDL_Surface *textureWaveformLoading = SDL_CreateRGBSurface(0, 128, 32 * textureWaveformMaxCount, 32, 0, 0, 0, 0);
+
+    TRE_ASSERT(audioDataRaw.size() == 5); // patch the code.
+    TRE_ASSERT(audioDataOpus.size() == 1); // patch the code.
+    widgetWaveform::genWaveForm<tre::soundData::s_RawSDL, tre::soundSampler::s_sampler_Raw >(audioDataRaw[0] , textureWaveformLoading, 0 + 32 * 0, 32 + 32 * 0);
+    widgetWaveform::genWaveForm<tre::soundData::s_RawSDL, tre::soundSampler::s_sampler_Raw >(audioDataRaw[1] , textureWaveformLoading, 0 + 32 * 1, 32 + 32 * 1);
+    widgetWaveform::genWaveForm<tre::soundData::s_Opus,   tre::soundSampler::s_sampler_Opus>(audioDataOpus[0], textureWaveformLoading, 0 + 32 * 2, 32 + 32 * 2);
+    widgetWaveform::genWaveForm<tre::soundData::s_RawSDL, tre::soundSampler::s_sampler_Raw >(audioDataRaw[2] , textureWaveformLoading, 0 + 32 * 3, 32 + 32 * 3);
+    widgetWaveform::genWaveForm<tre::soundData::s_RawSDL, tre::soundSampler::s_sampler_Raw >(audioDataRaw[3] , textureWaveformLoading, 0 + 32 * 4, 32 + 32 * 4);
+    widgetWaveform::genWaveForm<tre::soundData::s_RawSDL, tre::soundSampler::s_sampler_Raw >(audioDataRaw[4] , textureWaveformLoading, 0 + 32 * 5, 32 + 32 * 5);
 
     unsigned isound = 0;
     for (auto &s : listSound)
@@ -400,7 +409,7 @@ static int app_init()
 
         auto  *wWaveform = new widgetWaveform();
 
-        wWaveform->set_texId(textureWaveformSlot)->set_texUV(glm::vec4(0.f, isound * 1.f / textureWaveformMaxCount, 1.f, (isound + 1.f) / textureWaveformMaxCount));
+        wWaveform->set_texId(textureWaveformSlot)->set_texUV(glm::vec4(0.f, (isound * 1.f) / textureWaveformMaxCount, 1.f, (isound + 1.f) / textureWaveformMaxCount));
 
         wWaveform->wcb_animate = [&s, isound](tre::ui::widget *w, float )
         {
@@ -503,7 +512,7 @@ static int app_init()
 
         auto  *wWaveform = new widgetWaveform();
 
-        wWaveform->set_texId(textureWaveformSlot)->set_texUV(glm::vec4(0.f, (2 + itrack) * 1.f / textureWaveformMaxCount, 1.f, (2 + itrack + 1.f) / textureWaveformMaxCount));
+        wWaveform->set_texId(textureWaveformSlot)->set_texUV(glm::vec4(0.f, (listSound.size() + itrack) * 1.f / textureWaveformMaxCount, 1.f, (listSound.size() + itrack + 1.f) / textureWaveformMaxCount));
 
         wWaveform->wcb_animate = [&s, itrack](tre::ui::widget *w, float )
         {
