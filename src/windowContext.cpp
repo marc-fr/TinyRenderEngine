@@ -396,16 +396,14 @@ void windowContext::s_view2D::treatControlEvent(const s_controls &control, const
 
   const glm::vec2 mouseCurr_viewSpace = mouseCurr_clipSpace / glm::vec2(m_parentWindow->m_matProjection2D[0][0], m_parentWindow->m_matProjection2D[1][1]);
 
-  const glm::vec2 mouseCurr_worldSpace = (mouseCurr_viewSpace - glm::vec2(m_matView[2])) / glm::vec2(m_matView[0][0],  m_matView[1][1]);
-
   if (m_mouseBound)
   {
-    m_mousePrev -= mouseCurr_viewSpace;
-    m_matView[2] = m_matViewPrev[2] + glm::vec3(- m_mousePrev, 0.f);
+    const glm::vec2 deltaMouse = mouseCurr_clipSpace - m_mousePrev;
+    m_matView[2] = m_matViewPrev[2] + glm::vec3(- deltaMouse, 0.f);
   }
   else
   {
-    m_mousePrev = mouseCurr_viewSpace;
+    m_mousePrev = mouseCurr_clipSpace;
     m_matViewPrev = m_matView;
   }
 
@@ -439,6 +437,8 @@ void windowContext::s_view2D::treatControlEvent(const s_controls &control, const
     float zoomFactor = glm::max(1.f - m_mouseSensitivity.z * control.m_mouse.z, 1.e-6f);
     if (control.m_keySHIFT)
       zoomFactor = zoomFactor * zoomFactor;
+
+    const glm::vec2 mouseCurr_worldSpace = (mouseCurr_viewSpace - glm::vec2(m_matView[2])) / glm::vec2(m_matView[0][0],  m_matView[1][1]);
 
     const float newVX = mouseCurr_viewSpace.x - mouseCurr_worldSpace.x * (m_matView[0].x * zoomFactor);
     const float newVY = mouseCurr_viewSpace.y - mouseCurr_worldSpace.y * (m_matView[1].y * zoomFactor);

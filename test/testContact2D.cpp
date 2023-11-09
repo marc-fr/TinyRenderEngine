@@ -367,14 +367,15 @@ int main(int argc, char **argv)
       myView2D.setMouseBinding(!myView2D.m_mouseBound);
 
     const glm::mat3 matPV = myWindow.m_matProjection2D * myView2D.m_matView;
-
     const glm::vec2 mouseClipSpace = glm::vec2(myControls.m_mouse) * myWindow.m_resolutioncurrentInv * glm::vec2(2.f, -2.f) + glm::vec2(-1.f, 1.f);
-
     const glm::vec2 mouseWordSpace = glm::inverse(matPV) * glm::vec3(mouseClipSpace, 1.f);
 
     // Event treatment
-    for (sceneObjectBase *oBase : sceneObjects)
-      oBase->treatEvent(mouseWordSpace, myControls.m_mouseLEFT & tre::windowContext::s_controls::MASK_BUTTON_PRESSED, hasSelection);
+    if (!myView2D.m_mouseBound)
+    {
+      for (sceneObjectBase *oBase : sceneObjects)
+        oBase->treatEvent(mouseWordSpace, myControls.m_mouseLEFT & tre::windowContext::s_controls::MASK_BUTTON_PRESSED, hasSelection);
+    }
 
     // Compute contact ...
     std::vector<tre::s_contact2D> cntsList;

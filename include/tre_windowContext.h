@@ -132,7 +132,7 @@ public:
     bool        m_keyBound = false;      ///< the view reacts on keyboard actions.
     glm::vec3   m_keySensitivity = glm::vec3(0.2f);
     bool        m_mouseBound = false;    ///< the mouse cursor is bound to a point, so the view is following the opposite motion of the mouse.
-    bool        m_mouveOnBounds = false; ///< when the mouse goes to the screen bounds, the view is moving.
+    bool        m_mouveOnBounds = false; ///< when the mouse goes to the screen bounds, the view is moving. Only on full-screen.
     glm::vec3   m_mouseSensitivity = glm::vec3(0.2f); ///< motion (x,y) + zoom (with wheel)
 
     glm::vec2   m_mousePrev = glm::vec2(0.f); ///< (x,y)_viewSpace
@@ -141,7 +141,7 @@ public:
 
     void setKeyBinding(bool withKeyboard) { m_keyBound = withKeyboard; }
     void setMouseBinding(bool isBound) { m_mouseBound = isBound; SDL_SetRelativeMouseMode(isBound ? SDL_TRUE : SDL_FALSE); if (!isBound) SDL_WarpMouseInWindow(m_parentWindow->m_window, m_parentWindow->m_resolutioncurrent.x / 2, m_parentWindow->m_resolutioncurrent.y / 2); }
-    void setScreenBoundsMotion(bool isMoving) { m_mouveOnBounds = isMoving; m_mouseBound &= (!isMoving); }
+    void setScreenBoundsMotion(bool isMoving) { m_mouveOnBounds = isMoving; }
 
     void treatControlEvent(const s_controls &control, const float dt);
   };
@@ -159,7 +159,7 @@ public:
     bool        m_keyBound = false;      ///< the view reacts on keyboard actions.
     glm::vec3   m_keySensitivity = glm::vec3(4.f);
     bool        m_mouseBound = false;    ///< the mouse cursor is bound to a point, so the view is following the opposite motion of the mouse.
-    bool        m_mouveOnBounds = false; ///< when the mouse goes to the screen bounds, the view is moving.
+    bool        m_mouveOnBounds = false; ///< when the mouse goes to the screen bounds, the view is moving. Only on full-screen.
     glm::vec4   m_mouseSensitivity = glm::vec4(4.f, 4.f, 4.f, 12.f); ///< motion (x,y,z) + wheel
 
     glm::vec2   m_mousePrev = glm::vec2(0.f); ///< (x,y)_clipSpace
@@ -168,7 +168,7 @@ public:
 
     void setKeyBinding(bool withKeyboard) { m_keyBound = withKeyboard; }
     void setMouseBinding(bool isBound) { m_mouseBound = isBound; SDL_SetRelativeMouseMode(isBound ? SDL_TRUE : SDL_FALSE); if (!isBound) SDL_WarpMouseInWindow(m_parentWindow->m_window, m_parentWindow->m_resolutioncurrent.x / 2, m_parentWindow->m_resolutioncurrent.y / 2); }
-    void setScreenBoundsMotion(bool isMoving) { m_mouveOnBounds = isMoving; m_mouseBound &= (!isMoving); }
+    void setScreenBoundsMotion(bool isMoving) { m_mouveOnBounds = isMoving; }
 
     void treatControlEvent(const s_controls &control, const float dt);
   };
