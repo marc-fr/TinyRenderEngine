@@ -156,15 +156,16 @@ static bool withAudio = true;
 static const std::string                nameClick = "music-click.wav";
 static const std::string                nameWave = "sin440Hz.wav";
 static const std::string                namePiano = "music-piano.opus";
-static const std::array<std::string, 3> nameTracks = { "music-base.wav", "music-clav.wav", "music-strings.wav" };
+static const std::string                nameStrings = "music-strings.opus";
+static const std::array<std::string, 2> nameTracks = { "music-base.wav", "music-clav.wav" };
 
-std::array<tre::soundData::s_RawSDL, 5> audioDataRaw;
-std::array<tre::soundData::s_Opus, 1>   audioDataOpus;
+std::array<tre::soundData::s_RawSDL, 4> audioDataRaw;
+std::array<tre::soundData::s_Opus, 2>   audioDataOpus;
 
 struct s_music
 {
-  std::array<tre::soundData::s_Opus, 3> m_audioDataCompressed;
-  std::array<tre::sound2D, 3>           m_tracks;
+  std::array<tre::soundData::s_Opus, 2> m_audioDataCompressed;
+  std::array<tre::sound2D, 2>           m_tracks;
   std::string                           m_name;
   unsigned                              m_compression;
 
@@ -185,7 +186,7 @@ struct s_music
   }
 };
 
-static std::array<s_music, 3> listSound = { s_music("click", &audioDataRaw[0]), s_music("sin440Hz", &audioDataRaw[1]), s_music("piano.opus", &audioDataOpus[0]) }; // only the first track is used here.
+static std::array<s_music, 4> listSound = { s_music("click", &audioDataRaw[0]), s_music("sin440Hz", &audioDataRaw[1]), s_music("piano.opus", &audioDataOpus[0]), s_music("strings.opus", &audioDataOpus[1]) }; // only the first track is used here.
 static std::array<s_music, 4> listMusic = { s_music("origin", 0U), s_music("compression 64kb", 64000U), s_music("compression 32kb", 32000U), s_music("compression 16kb", 16000U) };
 
 static tre::audioContext audioCtx;
@@ -267,6 +268,7 @@ static int app_init()
       audioDataRaw[2 + i].loadFromWAV((TESTIMPORTPATH "resources/") + nameTracks[i]);
 
     audioDataOpus[0].loadFromOPUS((TESTIMPORTPATH "resources/") + namePiano);
+    audioDataOpus[1].loadFromOPUS((TESTIMPORTPATH "resources/") + nameStrings);
 
     // music-origin
     for (std::size_t i = 0; i < nameTracks.size(); ++i)
@@ -280,15 +282,16 @@ static int app_init()
     {
       for (std::size_t i = 0; i < nameTracks.size(); ++i)
       {
-        withAudio &= listMusic[k].m_audioDataCompressed[i].loadFromRaw(audioDataRaw[2 + i], listMusic[k].m_compression);
+        listMusic[k].m_audioDataCompressed[i].loadFromRaw(audioDataRaw[2 + i], listMusic[k].m_compression);
       }
     }
 
     // add all to the sound-context
 
-    audioCtx.addSound(&listSound[0].m_tracks[0]);
-    audioCtx.addSound(&listSound[1].m_tracks[0]);
-    audioCtx.addSound(&listSound[2].m_tracks[0]);
+    for (std::size_t k = 0; k < listSound.size(); ++k)
+    {
+      audioCtx.addSound(&listSound[k].m_tracks[0]);
+    }
 
     for (std::size_t k = 0; k < listMusic.size(); ++k)
     {
@@ -333,14 +336,14 @@ static int app_init()
     // compute WAV-form
     SDL_Surface *textureWaveformLoading = SDL_CreateRGBSurface(0, 128, 32 * textureWaveformMaxCount, 32, 0, 0, 0, 0);
 
-    TRE_ASSERT(audioDataRaw.size() == 5); // patch the code.
-    TRE_ASSERT(audioDataOpus.size() == 1); // patch the code.
+    TRE_ASSERT(audioDataRaw.size() == 4); // patch the code.
+    TRE_ASSERT(audioDataOpus.size() == 2); // patch the code.
     widgetWaveform::genWaveForm<tre::soundData::s_RawSDL, tre::soundSampler::s_sampler_Raw >(audioDataRaw[0] , textureWaveformLoading, 0 + 32 * 0, 32 + 32 * 0);
     widgetWaveform::genWaveForm<tre::soundData::s_RawSDL, tre::soundSampler::s_sampler_Raw >(audioDataRaw[1] , textureWaveformLoading, 0 + 32 * 1, 32 + 32 * 1);
     widgetWaveform::genWaveForm<tre::soundData::s_Opus,   tre::soundSampler::s_sampler_Opus>(audioDataOpus[0], textureWaveformLoading, 0 + 32 * 2, 32 + 32 * 2);
-    widgetWaveform::genWaveForm<tre::soundData::s_RawSDL, tre::soundSampler::s_sampler_Raw >(audioDataRaw[2] , textureWaveformLoading, 0 + 32 * 3, 32 + 32 * 3);
-    widgetWaveform::genWaveForm<tre::soundData::s_RawSDL, tre::soundSampler::s_sampler_Raw >(audioDataRaw[3] , textureWaveformLoading, 0 + 32 * 4, 32 + 32 * 4);
-    widgetWaveform::genWaveForm<tre::soundData::s_RawSDL, tre::soundSampler::s_sampler_Raw >(audioDataRaw[4] , textureWaveformLoading, 0 + 32 * 5, 32 + 32 * 5);
+    widgetWaveform::genWaveForm<tre::soundData::s_Opus,   tre::soundSampler::s_sampler_Opus>(audioDataOpus[1], textureWaveformLoading, 0 + 32 * 3, 32 + 32 * 3);
+    widgetWaveform::genWaveForm<tre::soundData::s_RawSDL, tre::soundSampler::s_sampler_Raw >(audioDataRaw[2] , textureWaveformLoading, 0 + 32 * 4, 32 + 32 * 4);
+    widgetWaveform::genWaveForm<tre::soundData::s_RawSDL, tre::soundSampler::s_sampler_Raw >(audioDataRaw[3] , textureWaveformLoading, 0 + 32 * 5, 32 + 32 * 5);
 
     unsigned isound = 0;
     for (auto &s : listSound)

@@ -350,8 +350,8 @@ bool soundData::s_Opus::loadFromOPUS(const std::string &filename)
 
 bool soundData::s_Opus::loadFromRaw(soundData::s_RawSDL &rawData, unsigned bitrate)
 {
-  TRE_ASSERT(rawData.m_nSamples > 0);
   TRE_ASSERT(bitrate != 0);
+  if (rawData.m_nSamples == 0) return false;
 
 #ifdef TRE_WITH_OPUS
 
@@ -420,6 +420,7 @@ bool soundData::s_Opus::loadFromRaw(soundData::s_RawSDL &rawData, unsigned bitra
 
   return true;
 #else
+  (void)bitrate;
   TRE_LOG("s_Opus::loadFromRaw: FAILED (the current build does not include OPUS)");
   return false;
 #endif
