@@ -183,11 +183,11 @@ public:
   bool writeBase(std::ostream & outbuffer) const;
   virtual bool read(std::istream & inbuffer) = 0;
   virtual bool write(std::ostream & outbuffer) const = 0;
+  inline void  reserveVertex(std::size_t count) { if (count >= m_layout.m_vertexCount) resizeVertex(count); } ///< only grow.
+  inline void  reserveIndex(std::size_t count) { if (count >= m_layout.m_indexCount) resizeIndex(count); } ///< only grow.
 protected:
   virtual void resizeVertex(std::size_t count) = 0;
   virtual void resizeIndex(std::size_t count) = 0;
-  inline void  reserveVertex(std::size_t count) { if (count >= m_layout.m_vertexCount) resizeVertex(count); } /// only grow.
-  inline void  reserveIndex(std::size_t count) { if (count >= m_layout.m_indexCount) resizeIndex(count); } /// only grow.
   /// @}
 
   /// @name on GPU side

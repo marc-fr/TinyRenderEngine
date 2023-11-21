@@ -117,6 +117,7 @@ bool modelImporter::addFromWavefront(modelIndexed &outModel, const std::string &
   positionsRead.reserve(totalVertexIn);
   normalsRead.reserve(totalNormalIn);
   uvsRead.reserve(totalUVIn);
+  outModel.reserveVertex(totalVertexIn + 2 * totalTriIn * (totalNormalIn != 0) /* pre-allocate to handle sharp edges */);
   std::size_t iPartRead = std::size_t(-1);
   std::size_t iIndex = 0;
   std::size_t vertexOffsetIn = 0;
@@ -128,7 +129,7 @@ bool modelImporter::addFromWavefront(modelIndexed &outModel, const std::string &
       ++iPartRead;
 
       s_partRead &p = partRead[iPartRead];
-      p.m_partId = outModel.createPart(p.m_ntri * 3, p.m_nvertices + 2 * p.m_ntri * (p.m_nnormals != 0) /* pre-allocate to handle sharp edges */, p.m_vertexOffset);
+      p.m_partId = outModel.createPart(p.m_ntri * 3, p.m_nvertices, p.m_vertexOffset);
       outModel.renamePart(p.m_partId, p.m_name);
 
       iIndex = 0;
@@ -224,7 +225,7 @@ bool modelImporter::addFromWavefront(modelIndexed &outModel, const std::string &
         {
           i = curPartRead.m_vertexOffset + curPartRead.m_nvertices + vertexAddPart;
           ++vertexAddPart;
-          TRE_ASSERT(vertexAddPart < 2 * curPartRead.m_ntri * (curPartRead.m_nnormals != 0));
+          outModel.reserveVertex(((i + 1) / 256 + 1) * 256);
         }
         else
         {
@@ -243,7 +244,7 @@ bool modelImporter::addFromWavefront(modelIndexed &outModel, const std::string &
         {
           j = curPartRead.m_vertexOffset + curPartRead.m_nvertices + vertexAddPart;
           ++vertexAddPart;
-          TRE_ASSERT(vertexAddPart < 2 * curPartRead.m_ntri * (curPartRead.m_nnormals != 0));
+          outModel.reserveVertex(((j + 1) / 256 + 1) * 256);
         }
         else
         {
@@ -262,7 +263,7 @@ bool modelImporter::addFromWavefront(modelIndexed &outModel, const std::string &
         {
           k = curPartRead.m_vertexOffset + curPartRead.m_nvertices + vertexAddPart;
           ++vertexAddPart;
-          TRE_ASSERT(vertexAddPart < 2 * curPartRead.m_ntri * (curPartRead.m_nnormals != 0));
+          outModel.reserveVertex(((k + 1) / 256 + 1) * 256);
         }
         else
         {
