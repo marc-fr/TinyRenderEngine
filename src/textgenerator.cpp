@@ -64,8 +64,8 @@ void generate(const s_textInfo &info, modelRaw2D *outMesh, unsigned outPartId, u
     }
     else if (idchar >= 128) // non-ASCII
     {
-      TRE_ASSERT((idchar & 0x40) == 0x40 && (idchar & 0x20) == 0x00); // UFT-8 encoding, only from U+0080 to U+07FF
-      TRE_ASSERT(ich + 1 < iLen);
+      TRE_ASSERT((idchar & 0x40) != 0 && (idchar & 0x20) == 0); // UFT-8 encoding, only from U+0080 to U+07FF
+      TRE_ASSERT(ich + 1 < iLen); // truncated character when decoding UFT-8 string
       TRE_ASSERT((idchar & 0x3C) == 0); // only the latin-1 extension is implemented in the font.
       idchar = ((idchar & 0x03) << 6) | (info.m_text[++ich] & 0x3F);
       if (idchar < 128)
@@ -90,6 +90,7 @@ void generate(const s_textInfo &info, modelRaw2D *outMesh, unsigned outPartId, u
     const float posx_old = posx;
 
     posx += scale.x * charMap.xadvance;
+    if (info.m_boxExtendedToNextChar && posx - info.m_zone.x > maxboxsize.x) maxboxsize.x = posx - info.m_zone.x;
 
     if (isBoxValid && (posx_old > info.m_zone.z || posy < info.m_zone.y)) continue; // out-of-bound
 

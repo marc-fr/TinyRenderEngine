@@ -34,6 +34,7 @@ namespace textgenerator
     const char   *m_text = nullptr;
     const font   *m_font = nullptr;
     glm::vec2    m_pixelSize = glm::vec2(0.f, 0.f); ///< Size of a pixel. (Zero means no valid size.)
+    bool         m_boxExtendedToNextChar = false; ///< Extend the bounding box by the next character start position.
 
     void setupBasic(const font *font, const float fontSize, const char *str, const glm::vec2 &pos = glm::vec2(0.f), const glm::vec4 &color = glm::vec4(1.f))
     {

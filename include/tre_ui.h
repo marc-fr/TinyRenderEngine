@@ -296,6 +296,7 @@ public:
   virtual ~widgetTextEdit() {}
 
   virtual uint get_vcountSolid() const override;
+  virtual glm::vec2 get_zoneSizeDefault() const override;
   virtual void compute_data() override;
   virtual void acceptEvent(s_eventIntern &event) override;
   virtual void animate(float dt) override;

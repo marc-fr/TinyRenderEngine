@@ -187,6 +187,21 @@ widgetTextTranslatate* widgetTextTranslatate::set_text_LangIdx(const std::string
 // widgetTextEdit =============================================================
 
 uint widgetTextEdit::get_vcountSolid() const { return widgetText::get_vcountSolid() + 6; }
+glm::vec2 widgetTextEdit::get_zoneSizeDefault() const
+{
+  const float fsize = wfontsizeModifier * get_parentWindow()->resolve_sizeH(get_parentWindow()->get_fontSize());
+
+  textgenerator::s_textInfo tInfo;
+  textgenerator::s_textInfoOut tOut;
+  tInfo.setupBasic(get_parentUI()->get_defaultFont(), fsize, wtext.c_str());
+  if (wtext.empty()) tInfo.m_text = " ";
+  tInfo.m_pixelSize = get_parentWindow()->resolve_sizeWH(s_size::ONE_PIXEL);
+  tInfo.m_boxExtendedToNextChar = true;
+
+  textgenerator::generate(tInfo, nullptr, 0, 0, &tOut);
+
+  return tOut.m_maxboxsize;
+}
 void widgetTextEdit::compute_data()
 {
   widgetText::compute_data();
@@ -199,7 +214,9 @@ void widgetTextEdit::compute_data()
   const glm::vec2 pxsize = get_parentWindow()->resolve_sizeWH(s_size::ONE_PIXEL);
 
   std::string txtDummy = wtext;
-  if (wcursorPos != -1) txtDummy = txtDummy.substr(0, wcursorPos);
+  if (wcursorPos != -1 && wcursorPos < int(wtext.size()))
+    txtDummy = txtDummy.substr(0, wcursorPos);
+
   {
     std::size_t iBEG = 0;
     std::size_t iCR = txtDummy.find('\n');
@@ -216,6 +233,7 @@ void widgetTextEdit::compute_data()
   textgenerator::s_textInfoOut tOut;
   tInfo.setupBasic(get_parentUI()->get_defaultFont(), fsize, txtDummy.c_str());
   tInfo.m_pixelSize = pxsize;
+  tInfo.m_boxExtendedToNextChar = true;
   textgenerator::generate(tInfo, nullptr, 0, 0, &tOut);
   const glm::vec2 textDim = tOut.m_maxboxsize;
 
@@ -269,59 +287,86 @@ void widgetTextEdit::acceptEvent(s_eventIntern &event)
   }
 
   // editing ...
-  // TODO: bug when editing UFT-8 characters (bad cursor position) ...
   if (wisEditing)
   {
+    if (wcursorPos >= int(wtext.size())) wcursorPos = -1; // can occur if the text is changed from the code.
+
     if (event.keyDown == SDLK_RETURN)
     {
       if (wcursorPos != -1)
         wtext.insert(wcursorPos++, "\n");
       else
-        wtext += "\n";
+        wtext += '\n';
       event.accepted = true;
     }
     else if (event.keyDown == SDLK_BACKSPACE)
     {
       if (!wtext.empty() && wcursorPos != 0)
       {
-        if (wcursorPos != -1)
-          wtext.erase(--wcursorPos, 1);
-        else
-          wtext.pop_back();
-        event.accepted = true;
+        int posLast = wtext.size();
+        int &posErase = (wcursorPos == -1) ? posLast : wcursorPos;
+        char cErased;
+        do
+        {
+          --posErase;
+          cErased = wtext[posErase];
+          wtext.erase(posErase, 1);
+        }
+        while (cErased < 0 && (cErased & 0x40) == 0); // non-ASCII char, handle UFT-8 encoding
       }
+      event.accepted = true;
     }
     else if (event.keyDown == SDLK_DELETE)
     {
-      if (!wtext.empty())
+      if (wcursorPos != -1)
       {
-        if (wcursorPos != -1)
+        wtext.erase(wcursorPos, 1);
+        while (wcursorPos < int(wtext.size()) && wtext[wcursorPos] < 0 && (wtext[wcursorPos] & 0x40) == 0) // non-ASCII char, handle UFT-8 encoding
+        {
           wtext.erase(wcursorPos, 1);
-        else
-          wtext.pop_back();
+        }
         if (wcursorPos >= int(wtext.size())) wcursorPos = -1;
-        event.accepted = true;
       }
+      else if (!wtext.empty()) // same as SDLK_BACKSPACE
+      {
+        int posErase = wtext.size();
+        char cErased;
+        do
+        {
+          --posErase;
+          cErased = wtext[posErase];
+          wtext.erase(posErase, 1);
+        }
+        while (cErased < 0 && (cErased & 0x40) != 0x40); // non-ASCII char, handle UFT-8 encoding
+      }
+      event.accepted = true;
     }
     else if (event.keyDown == SDLK_LEFT)
     {
-      if (wcursorPos != 0)
-        wcursorPos = (wcursorPos == -1) ? wtext.size() - 1 : wcursorPos - 1;
+      if (wcursorPos != 0 && !wtext.empty())
+      {
+        if (wcursorPos == -1) wcursorPos = wtext.size();
+        --wcursorPos;
+        while (wcursorPos != 0 && wtext[wcursorPos] < 0 && (wtext[wcursorPos] & 0x40) == 0) // non-ASCII char, handle UFT-8 encoding
+          --wcursorPos;
+      }
       event.accepted = true;
     }
     else if (event.keyDown == SDLK_RIGHT)
     {
       if (wcursorPos != -1)
-        wcursorPos = (wcursorPos + 1 == int(wtext.size())) ? -1 : wcursorPos + 1;
+      {
+        ++wcursorPos;
+        while (wcursorPos != int(wtext.size()) && wtext[wcursorPos] < 0 && (wtext[wcursorPos] & 0x40) == 0) // non-ASCII char, handle UFT-8 encoding
+          ++wcursorPos;
+        if (wcursorPos == int(wtext.size())) wcursorPos = -1;
+      }
       event.accepted = true;
     }
     else if (event.keyDown == SDLK_HOME)
     {
-      if (!wtext.empty())
-      {
-        wcursorPos = 0;
-        event.accepted = true;
-      }
+      if (!wtext.empty()) wcursorPos = 0;
+      event.accepted = true;
     }
     else if (event.keyDown == SDLK_END)
     {
@@ -330,14 +375,44 @@ void widgetTextEdit::acceptEvent(s_eventIntern &event)
     }
     else if (event.keyDown != 0)
     {
-      event.accepted = true; // keys are catched by SDL_TEXTINPUT
+      event.accepted = true; // other keys are catched by SDL_TEXTINPUT
     }
     else if (event.textInput != nullptr)
     {
+      // check encoding (ASCII, UFT-8)
+      bool isInputValid = true;
+      int i = 0;
+      for (; i < 1024 ; ++i) // input limit
+      {
+        if (event.textInput[i] == 0)
+          break;
+        else if (event.textInput[i] > 0)
+          continue;
+        else if ((event.textInput[i] & 0x40) != 0)
+        {
+          isInputValid &= ((event.textInput[i] & 0x3C) == 0); // only the latin-1 extension is implemented in the font.
+          ++i; // advance once only
+          isInputValid = (event.textInput[i] < 0) && ((event.textInput[i] & 0x40) == 0);
+          continue;
+        }
+        isInputValid = false;
+        break;
+      }
+      if (event.textInput[i] != 0 || !isInputValid)
+      {
+        TRE_LOG("widgetTextEdit: Invalid or unknown encoding of text input from SDL");
+        return;
+      }
+
       if (wcursorPos != -1)
-        wtext.insert(wcursorPos++, event.textInput);
+      {
+        wtext.insert(wcursorPos, event.textInput);
+        wcursorPos += strlen(event.textInput);
+      }
       else
+      {
         wtext += event.textInput;
+      }
       event.accepted = true;
     }
 
