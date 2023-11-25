@@ -37,6 +37,18 @@ void widgetTextTitle::compute_data()
 
 // global properties ----------------------------------------------------------
 
+void window::set_isactiveWindow(bool a_active)
+{
+  if (a_active == wisactive) return;
+  if (a_active == false)
+  {
+    s_eventIntern event;
+    event.accepted = true;
+    acceptEvent(event);
+  }
+  wisactive = a_active;
+}
+
 void window::set_visible(bool a_visible)
 {
   if (wvisible == a_visible) return;
@@ -461,6 +473,8 @@ void window::compute_data()
 
 void window::acceptEvent(s_eventIntern &event)
 {
+  if (!wisactive) return;
+
   if (m_isMoved) event.accepted = true;
 
   const bool eventAccepted_save = event.accepted;
@@ -532,6 +546,12 @@ void window::animate(float dt)
   {
     if (c.m_widget != nullptr) c.m_widget->animate(dt);
   }
+}
+
+bool window::getIsOverPosition(const glm::vec3 &position) const
+{
+  return (m_zone.x <= position.x) && (m_zone.x + m_zone.z >= position.x) &&
+         (m_zone.y <= position.y) && (m_zone.y + m_zone.w >= position.y);
 }
 
 } // namespace ui

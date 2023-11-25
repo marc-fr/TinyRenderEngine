@@ -200,7 +200,7 @@ protected:
   /// @name helpers
   /// @{
 public:
-  bool getIsOverPosition(const glm::vec3 & position) const; ///< Return true if the position is under the m_zone. Ignore position.z value.
+  virtual bool getIsOverPosition(const glm::vec3 & position) const; ///< Return true if the position is under the m_zone. Local space position. z is ignored.
   glm::vec4 resolve_color() const;
   widget* set_colorAlpha(float alpha) { m_isUpdateNeededData |= (alpha != wcolor.a); wcolor.a = alpha; return this; }
   /// @}
@@ -401,15 +401,18 @@ protected:
 class window : public widget
 {
 protected:
-  window(tre::baseUI * parent) : widget(), m_parentUI(parent) { wcolor = glm::vec4(0.f); wOwnWidgets.fill(nullptr); }
+  window(tre::baseUI * parent) : widget(), m_parentUI(parent) { wisactive = true; wcolor = glm::vec4(0.f); wOwnWidgets.fill(nullptr); }
   ~window() override { clear(); }
 
   /// @name global properties
   /// @{
 
 public:
+  void set_isactiveWindow(bool a_active); ///< like widget::set_isactive(), but trigger a dummy event when the window get inactived.
+
+public:
   bool get_visible() const { return wvisible; }
-  void set_visible(bool a_visible); // if the window becomes not visible, then a dummy event is triggered.
+  void set_visible(bool a_visible); ///< if the window becomes not visible, then a dummy event is triggered.
 protected:
   bool wvisible = true;
 
@@ -461,11 +464,12 @@ public:
   /// @name self-implementation
   /// @{
 protected:
-  virtual glm::vec2 get_zoneSizeDefault() const override { TRE_FATAL("should not be called"); return glm::vec2(0); }
+  virtual glm::vec2 get_zoneSizeDefault() const override { TRE_FATAL("should not be called"); return glm::vec2(0.f); }
   virtual void compute_data() override;
   virtual void acceptEvent(s_eventIntern &event) override;
   virtual void animate(float dt) override;
   void clear();
+  virtual bool getIsOverPosition(const glm::vec3 & position) const;
 private:
   void compute_adressPlage(); ///< set adress-plage, and resize the parts in the m_model
   void compute_layout(); ///< compute and set zone of widgets
@@ -517,7 +521,7 @@ public:
 public:
   virtual window*   get_parentWindow() const override { return const_cast<window*>(this); }
   virtual baseUI*   get_parentUI() const override { return m_parentUI; }
-  virtual float     resolve_colorModifier() const override { return (wisactive ? (wishighlighted ? 1.f : -0.3f) : 0.f); }
+  virtual float     resolve_colorModifier() const override { return wiseditable && wishighlighted ? 0.3f : 0.f; }
 private:
   baseUI * m_parentUI;
   /// @}
