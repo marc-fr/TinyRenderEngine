@@ -24,7 +24,7 @@ public:
   static const int MMASK_MIPMAP             = 0x0001;
   static const int MMASK_COMPRESS           = 0x0002;
   static const int MMASK_ANISOTROPIC        = 0x0004;
-  static const int MMASK_GAMMACORRECTION    = 0x0008;
+  static const int MMASK_SRBG_SPACE         = 0x0008; ///< The image data is in the sRGB color-space. (Enables auto-convertion to the linear-sapce when sampling it.)
   static const int MMASK_NEAREST_MAG_FILTER = 0x0010; ///< By default, the mag-filter is "linear".
   static const int MMASK_ALPHA_ONLY         = 0x1000;
   static const int MMASK_RG_ONLY            = 0x2000;
@@ -82,7 +82,7 @@ protected:
   bool useMipmap()           const { return (m_mask & MMASK_MIPMAP) != 0; }
   bool useCompress()         const { return (m_mask & MMASK_COMPRESS) != 0; }
   bool useAnisotropic()      const { return (m_mask & MMASK_ANISOTROPIC) != 0; }
-  bool useGammeCorreciton()  const { return (m_mask & MMASK_GAMMACORRECTION) != 0; }
+  bool useGammeCorreciton()  const { return (m_mask & MMASK_SRBG_SPACE) != 0; }
   bool useMagFilterNearest() const { return (m_mask & MMASK_NEAREST_MAG_FILTER) != 0; }
 
 private:

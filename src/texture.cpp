@@ -484,7 +484,7 @@ bool texture::write(std::ostream &outbuffer, SDL_Surface *surface, int modemask,
   if ((modemask & MMASK_COMPRESS) != 0)
   {
     if (!freeSurface) surfLocal.copyToOwnBuffer();
-    pixelData_ByteSize = _rawCompress(surfLocal, getTexInternalFormat(components, true, (modemask & MMASK_GAMMACORRECTION) != 0));
+    pixelData_ByteSize = _rawCompress(surfLocal, getTexInternalFormat(components, true, (modemask & MMASK_SRBG_SPACE) != 0));
   }
 
   // final write
@@ -536,7 +536,7 @@ bool texture::writeCube(std::ostream &outbuffer, const std::array<SDL_Surface *,
   if ((modemask & MMASK_COMPRESS) != 0)
   {
     TRE_ASSERT(freeSurface == true); // local-surface not implemented.
-    const GLenum internalformat = getTexInternalFormat(components, true, (modemask & MMASK_GAMMACORRECTION) != 0);
+    const GLenum internalformat = getTexInternalFormat(components, true, (modemask & MMASK_SRBG_SPACE) != 0);
     pixelData_ByteSize = _rawCompress(cubeFaces[0], internalformat);
     const uint pxbt1   = _rawCompress(cubeFaces[1], internalformat); TRE_ASSERT(pixelData_ByteSize == pxbt1); (void)pxbt1;
     const uint pxbt2   = _rawCompress(cubeFaces[2], internalformat); TRE_ASSERT(pixelData_ByteSize == pxbt2); (void)pxbt2;
