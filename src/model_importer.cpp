@@ -562,7 +562,7 @@ static void _numberList_to_Vector(const std::string &str, std::vector<std::size_
   while (sep != std::string::npos)
   {
     std::size_t vread = 0u;
-    sscanf(str.substr(b, sep - b).data(),"%lu",&vread);
+    sscanf(str.substr(b, sep - b).data(),"%zu",&vread);
     outV.push_back(vread);
     b = sep + 1;
     sep = str.find(' ', b);
@@ -570,7 +570,7 @@ static void _numberList_to_Vector(const std::string &str, std::vector<std::size_
   if (b < str.size())
   {
     std::size_t vread = 0u;
-    sscanf(str.substr(b).data(),"%lu",&vread);
+    sscanf(str.substr(b).data(),"%zu",&vread);
     outV.push_back(vread);
   }
 }
@@ -584,7 +584,7 @@ static void _GLTF_readNode(const json::s_node &nns, std::size_t &meshId, glm::ve
   rot = glm::quat(1.f, 0.f, 0.f, 0.f);
   for (const json::s_node &nn : nns.m_list)
   {
-    if      (nn.m_key.compare("mesh") == 0) sscanf(nn.m_valueStr.data(),"%lu",&meshId);
+    if      (nn.m_key.compare("mesh") == 0) sscanf(nn.m_valueStr.data(),"%zu",&meshId);
     else if (nn.m_key.compare("translation") == 0) sscanf(nn.m_valueStr.data(),"%f %f %f",&tr.x, &tr.y, &tr.z);
     else if (nn.m_key.compare("rotation") == 0) sscanf(nn.m_valueStr.data(),"%f %f %f %f",&rot.x, &rot.y, &rot.z,&rot.w);
     else if (nn.m_key.compare("children") == 0) _numberList_to_Vector(nn.m_valueStr, children);
@@ -596,8 +596,8 @@ static void _GLTF_readAccessor(const json::s_node &na, std::size_t &bufferViewId
   TRE_ASSERT(na.m_key.compare("list-element") == 0);
   for (const json::s_node &nn : na.m_list)
   {
-    if      (nn.m_key.compare("bufferView") == 0) sscanf(nn.m_valueStr.data(),"%lu",&bufferViewId);
-    else if (nn.m_key.compare("count") == 0) sscanf(nn.m_valueStr.data(),"%lu",&count);
+    if      (nn.m_key.compare("bufferView") == 0) sscanf(nn.m_valueStr.data(),"%zu",&bufferViewId);
+    else if (nn.m_key.compare("count") == 0) sscanf(nn.m_valueStr.data(),"%zu",&count);
     else if (nn.m_key.compare("type") == 0)
     {
       if (nn.m_valueStr.compare(expectedType) != 0) { TRE_LOG("model::loadfromGLTF: un-expected type \"" << nn.m_valueStr << "\" of a " << expectedType << " buffer"); }
@@ -605,7 +605,7 @@ static void _GLTF_readAccessor(const json::s_node &na, std::size_t &bufferViewId
     else if (nn.m_key.compare("componentType") == 0)
     {
       std::size_t ctype = 0;
-      sscanf(nn.m_valueStr.data(),"%lu",&ctype);
+      sscanf(nn.m_valueStr.data(),"%zu",&ctype);
       isHalfPrecision = (ctype == 5123);
     }
   }
@@ -616,12 +616,12 @@ static void _GLTF_readBufferView(const json::s_node &nbf, std::size_t &bufferId,
   TRE_ASSERT(nbf.m_key.compare("list-element") == 0);
   for (const json::s_node &nn : nbf.m_list)
   {
-    if      (nn.m_key.compare("buffer") == 0) sscanf(nn.m_valueStr.data(),"%lu",&bufferId);
-    else if (nn.m_key.compare("byteOffset") == 0) sscanf(nn.m_valueStr.data(),"%lu",&byteOffset);
+    if      (nn.m_key.compare("buffer") == 0) sscanf(nn.m_valueStr.data(),"%zu",&bufferId);
+    else if (nn.m_key.compare("byteOffset") == 0) sscanf(nn.m_valueStr.data(),"%zu",&byteOffset);
     else if (nn.m_key.compare("byteLength") == 0)
     {
       std::size_t rbl = 0;
-      sscanf(nn.m_valueStr.data(),"%lu",&rbl);
+      sscanf(nn.m_valueStr.data(),"%zu",&rbl);
       if (rbl != expectedByteLength) { TRE_LOG("model::loadfromGLTF: un-expected byte-length (" << rbl << ") for a buffer (expected: " << expectedByteLength << ")"); } }
   }
 }
@@ -759,19 +759,17 @@ bool modelImporter::addFromGLTF(modelIndexed &outModel, s_modelHierarchy &outHie
   {
     TRE_ASSERT(n.m_key.compare("list-element") == 0);
     partRead.emplace_back();
-    s_partRead &curPartRead = partRead.back();
-    std::size_t partVertex = 0;
-    std::size_t partIndex = 0;
     // read the mesh
     for (const json::s_node &nn : n.m_list)
     {
       if (nn.m_key.compare("name") == 0)
       {
-        curPartRead.m_name = nn.m_valueStr;
+        partRead.back().m_name = nn.m_valueStr;
       }
       else if (nn.m_key.compare("primitives") == 0)
       {
-        TRE_ASSERT(nn.m_list.size() == 1); // for now, only support mesh with only one "primitive" def
+        TRE_ASSERT(nn.m_list.size() == 1); // for now, only support mesh with only one "primitive" def // TODO: duplicate the "partRead"
+        s_partRead &curPartRead = partRead.back();
         TRE_ASSERT(nn.m_list[0].m_key.compare("list-element") == 0);
         for (const json::s_node &np : nn.m_list[0].m_list)
         {
@@ -779,20 +777,20 @@ bool modelImporter::addFromGLTF(modelIndexed &outModel, s_modelHierarchy &outHie
           {
             for (const json::s_node &na : np.m_list)
             {
-              if      (na.m_key.compare("POSITION") == 0) sscanf(na.m_valueStr.data(),"%lu",&curPartRead.m_bufferViewId_pos); // for now, it stores the accessor id.
-              else if (na.m_key.compare("NORMAL") == 0) sscanf(na.m_valueStr.data(),"%lu",&curPartRead.m_bufferViewId_normal); // for now, it stores the accessor id.
-              else if (na.m_key.compare("TEXCOORD_0") == 0) sscanf(na.m_valueStr.data(),"%lu",&curPartRead.m_bufferViewId_uv); // for now, it stores the accessor id.
+              if      (na.m_key.compare("POSITION") == 0) sscanf(na.m_valueStr.data(),"%zu",&curPartRead.m_bufferViewId_pos); // for now, it stores the accessor id.
+              else if (na.m_key.compare("NORMAL") == 0) sscanf(na.m_valueStr.data(),"%zu",&curPartRead.m_bufferViewId_normal); // for now, it stores the accessor id.
+              else if (na.m_key.compare("TEXCOORD_0") == 0) sscanf(na.m_valueStr.data(),"%zu",&curPartRead.m_bufferViewId_uv); // for now, it stores the accessor id.
               else    { TRE_LOG("model::loadfromGLTF: unkown attribute \"" << na.m_key << "\""); }
             }
           }
           else if (np.m_key.compare("indices") == 0)
           {
-            sscanf(np.m_valueStr.data(),"%lu",&curPartRead.m_bufferViewId_index); // for now, it stores the accessor id.
+            sscanf(np.m_valueStr.data(),"%zu",&curPartRead.m_bufferViewId_index); // for now, it stores the accessor id.
           }
           else if (np.m_key.compare("modes") == 0)
           {
             std::size_t m = 0;
-            sscanf(np.m_valueStr.data(),"%lu",&m);
+            sscanf(np.m_valueStr.data(),"%zu",&m);
             if (m != 4) // GL_TRIANGLES
             {
               TRE_LOG("model::loadfromGLTF: the primitives mode is not TRIANGLES(4): " <<  m << ". This part may not be rendered correctly.");
@@ -809,6 +807,12 @@ bool modelImporter::addFromGLTF(modelIndexed &outModel, s_modelHierarchy &outHie
         TRE_LOG("model::loadfromGLTF: unkown mesh property \"" <<  nn.m_key << "\"");
       }
     }
+  }
+
+  for (auto &curPartRead : partRead)
+  {
+    std::size_t partVertex = 0;
+    std::size_t partIndex = 0;
     // get buffersView from their accessors
     // -> position
     if (curPartRead.m_bufferViewId_pos < readAccessors->m_list.size())
@@ -846,7 +850,7 @@ bool modelImporter::addFromGLTF(modelIndexed &outModel, s_modelHierarchy &outHie
 
     if (partIndex == 0 || partVertex == 0)
     {
-      TRE_LOG("model::loadfromGLTF: invalid mesh " << partRead.size()-1  << ":\"" << curPartRead.m_name << "\". Abort.");
+      TRE_LOG("model::loadfromGLTF: invalid part \"" << curPartRead.m_name << "\" with partIndex = " << partIndex << " and partVertex = " << partVertex << " in mesh.");
       return false;
     }
 
@@ -872,7 +876,7 @@ bool modelImporter::addFromGLTF(modelIndexed &outModel, s_modelHierarchy &outHie
       if (nn.m_key.compare("byteLength") == 0)
       {
         std::size_t blen = 0;
-        sscanf(nn.m_valueStr.data(),"%lu",&blen);
+        sscanf(nn.m_valueStr.data(),"%zu",&blen);
         currentBuffer.m_rawData.resize(blen + 4); // encoding can introduce padding.
       }
       else if (nn.m_key.compare("uri") == 0)
