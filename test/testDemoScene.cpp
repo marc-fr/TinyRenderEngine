@@ -370,25 +370,25 @@ int main(int argc, char **argv)
     worldSkyBoxTex.loadCube(cubeFaces, tre::texture::MMASK_MIPMAP | tre::texture::MMASK_COMPRESS, true);
   }
 
-  if (!worldScene.texGrass.load(tre::texture::loadTextureFromFile(TESTIMPORTPATH "resources/scene/wispy-grass-meadow_albedo.jpg"), tre::texture::MMASK_MIPMAP | tre::texture::MMASK_ANISOTROPIC | tre::texture::MMASK_GAMMACORRECTION, true))
+  if (!worldScene.texGrass.load(tre::texture::loadTextureFromFile(TESTIMPORTPATH "resources/scene/wispy-grass-meadow_albedo.jpg"), tre::texture::MMASK_MIPMAP | tre::texture::MMASK_ANISOTROPIC | tre::texture::MMASK_SRBG_SPACE, true))
     worldScene.texGrass.loadWhite();
 
-  if (!worldScene.texWood.load(tre::texture::loadTextureFromFile(TESTIMPORTPATH "resources/scene/Wood_Tower_Col.jpg"), tre::texture::MMASK_MIPMAP | tre::texture::MMASK_ANISOTROPIC | tre::texture::MMASK_GAMMACORRECTION, true))
+  if (!worldScene.texWood.load(tre::texture::loadTextureFromFile(TESTIMPORTPATH "resources/scene/Wood_Tower_Col.jpg"), tre::texture::MMASK_MIPMAP | tre::texture::MMASK_ANISOTROPIC | tre::texture::MMASK_SRBG_SPACE, true))
     worldScene.texWood.loadWhite();
 
   if (!worldScene.texWood_normal.load(tre::texture::loadTextureFromFile(TESTIMPORTPATH "resources/scene/Wood_Tower_Nor_jpg.jpg"), tre::texture::MMASK_MIPMAP | tre::texture::MMASK_ANISOTROPIC, true))
     worldScene.texWood_normal.loadColor(0xFF8080FF);
 
-  if (!worldScene.texSteal.load(tre::texture::loadTextureFromFile(TESTIMPORTPATH "resources/scene/rusted-steel_albedo.jpg"), tre::texture::MMASK_MIPMAP | tre::texture::MMASK_ANISOTROPIC | tre::texture::MMASK_GAMMACORRECTION, true))
+  if (!worldScene.texSteal.load(tre::texture::loadTextureFromFile(TESTIMPORTPATH "resources/scene/rusted-steel_albedo.jpg"), tre::texture::MMASK_MIPMAP | tre::texture::MMASK_ANISOTROPIC | tre::texture::MMASK_SRBG_SPACE, true))
     worldScene.texSteal.loadWhite();
 
   if (!worldScene.texSteal_mr.load(tre::texture::loadTextureFromFile(TESTIMPORTPATH "resources/scene/rusted-steel_metallic-rusted-steel_roughness.jpg"), tre::texture::MMASK_MIPMAP | tre::texture::MMASK_ANISOTROPIC | tre::texture::MMASK_RG_ONLY, true))
     worldScene.texSteal_mr.loadWhite();
 
-  if (!worldScene.texTreeTrunck.load(tre::texture::loadTextureFromFile(TESTIMPORTPATH "resources/scene/BarkDecidious0194_7_S_jpg.jpg"), tre::texture::MMASK_MIPMAP | tre::texture::MMASK_ANISOTROPIC | tre::texture::MMASK_GAMMACORRECTION, true))
+  if (!worldScene.texTreeTrunck.load(tre::texture::loadTextureFromFile(TESTIMPORTPATH "resources/scene/BarkDecidious0194_7_S_jpg.jpg"), tre::texture::MMASK_MIPMAP | tre::texture::MMASK_ANISOTROPIC | tre::texture::MMASK_SRBG_SPACE, true))
     worldScene.texTreeTrunck.loadWhite();
 
-  if (!worldScene.texTreeLeaves.load(tre::texture::loadTextureFromFile(TESTIMPORTPATH "resources/scene/Leaves0120_35_S_png.jpg"), tre::texture::MMASK_MIPMAP | tre::texture::MMASK_ANISOTROPIC | tre::texture::MMASK_GAMMACORRECTION, true))
+  if (!worldScene.texTreeLeaves.load(tre::texture::loadTextureFromFile(TESTIMPORTPATH "resources/scene/Leaves0120_35_S_png.jpg"), tre::texture::MMASK_MIPMAP | tre::texture::MMASK_ANISOTROPIC | tre::texture::MMASK_SRBG_SPACE, true))
     worldScene.texTreeLeaves.loadWhite();
 
   // load Particles

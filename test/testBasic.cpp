@@ -205,7 +205,7 @@ static int app_init()
 
   // Textures
 
-  if (!texture2D.load(tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/quad.bmp"), tre::texture::MMASK_ANISOTROPIC | tre::texture::MMASK_MIPMAP | tre::texture::MMASK_GAMMACORRECTION, true))
+  if (!texture2D.load(tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/quad.bmp"), tre::texture::MMASK_ANISOTROPIC | tre::texture::MMASK_MIPMAP | tre::texture::MMASK_SRBG_SPACE, true))
     texture2D.loadWhite();
 
 #ifdef TEST_WITH_SKYBOX
