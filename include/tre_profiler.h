@@ -239,7 +239,7 @@ inline bool profiler_isEnabled() { return false; }
 
 inline void profiler_updateCameraInfo(const glm::mat3 &, const glm::vec2 &) {}
 inline void profiler_updateModelMatrix(const glm::mat3 &) {}
-inline bool profiler_acceptEvent(const SDL_Event &) { return true; }
+inline bool profiler_acceptEvent(const SDL_Event &) { return false; }
 inline void profiler_acceptEvent(const glm::ivec2 &) {}
 
 inline void profiler_draw() {}

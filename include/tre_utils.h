@@ -169,8 +169,8 @@ bool IsOpenGLok(const char * msg = nullptr);
 
 /**
  * @brief compute3DFrustumProjection
- * @param[out] MP
- * @param[in] invratio ratio=dy/dx (<=1)
+ * @param[out] MP projection matrix, from Right-Handed Y-Up axis system to clip-space [-1,1]
+ * @param[in] invratio dy/dx (<=1)
  * @param[in] fov vertical field-of-view (angle)
  * @param[in] near near cliping distance
  * @param[in] far far cliping distance
@@ -188,7 +188,7 @@ void compute3DFrustumProjection(glm::mat4 & MP, const float invratio, const floa
 
 /**
  * @brief compute3DOrthoProjection
- * @param[out] MP
+ * @param[out] MP projection matrix, from Right-Handed Y-Up axis system to clip-space [-1,1]
  * @param[in] dx half of the screen width [-dx,dx]
  * @param[in] dy half of the screen height [-dy,dy]
  * @param[in] near near cliping distance
@@ -198,8 +198,8 @@ void compute3DOrthoProjection(glm::mat4 & MP, float dx, float dy, float near, fl
 
 /**
  * @brief compute2DOrthoProjection
- * @param[out] MP matrix
- * @param[in] invratio ratio=dy/dx (<=1)
+ * @param[out] MP projection matrix
+ * @param[in] invratio dy/dx (<=1)
  *
  * Note on the OpenGL Projection matrix:
  *   See explaination for the mProjection3D.
