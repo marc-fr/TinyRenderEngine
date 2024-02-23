@@ -68,6 +68,10 @@ public:
 
   void OpenGLQuit();
 
+  // Helpers
+
+  glm::vec2 unprojectToViewSpace2D(glm::ivec2 viewportPosition) const; ///< Un-project from the viewport coordinate to the view space
+
   // Controls
 
   /**

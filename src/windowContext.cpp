@@ -268,6 +268,16 @@ void windowContext::OpenGLQuit()
   m_glContext = nullptr;
 }
 
+// ----------------------------------------------------------------------------
+
+glm::vec2 windowContext::unprojectToViewSpace2D(glm::ivec2 viewportPosition) const
+{
+  const glm::vec2 mouseCurr_clipSpace = glm::vec2(-1.f + 2.f * float(viewportPosition.x) / float(m_resolutioncurrent.x),
+                                                   1.f - 2.f * float(viewportPosition.y) / float(m_resolutioncurrent.y));
+
+  return mouseCurr_clipSpace / glm::vec2(m_matProjection2D[0][0], m_matProjection2D[1][1]);
+}
+
 // Controls ===================================================================
 
 bool windowContext::s_controls::treatSDLEvent(const SDL_Event & event)
@@ -394,8 +404,6 @@ void windowContext::s_view2D::treatControlEvent(const s_controls &control, const
   const glm::vec2 mouseCurr_clipSpace = glm::vec2(-1.f + 2.f * float(control.m_mouse.x) / float(m_parentWindow->m_resolutioncurrent.x),
                                                    1.f - 2.f * float(control.m_mouse.y) / float(m_parentWindow->m_resolutioncurrent.y));
 
-  const glm::vec2 mouseCurr_viewSpace = mouseCurr_clipSpace / glm::vec2(m_parentWindow->m_matProjection2D[0][0], m_parentWindow->m_matProjection2D[1][1]);
-
   if (m_mouseBound)
   {
     const glm::vec2 deltaMouse = mouseCurr_clipSpace - m_mousePrev;
@@ -438,6 +446,7 @@ void windowContext::s_view2D::treatControlEvent(const s_controls &control, const
     if (control.m_keySHIFT)
       zoomFactor = zoomFactor * zoomFactor;
 
+    const glm::vec2 mouseCurr_viewSpace = mouseCurr_clipSpace / glm::vec2(m_parentWindow->m_matProjection2D[0][0], m_parentWindow->m_matProjection2D[1][1]);
     const glm::vec2 mouseCurr_worldSpace = (mouseCurr_viewSpace - glm::vec2(m_matView[2])) / glm::vec2(m_matView[0][0],  m_matView[1][1]);
 
     const float newVX = mouseCurr_viewSpace.x - mouseCurr_worldSpace.x * (m_matView[0].x * zoomFactor);
