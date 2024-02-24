@@ -295,28 +295,8 @@ int main(int argc, char **argv)
   // load meshes
 
   tre::modelStaticIndexed3D worldSkyboxModel;
-  {
-    const GLfloat cubepos[] = {
-      -10.f, -10.f,  10.f,
-      -10.f,  10.f,  10.f,
-      -10.f, -10.f, -10.f,
-      -10.f,  10.f, -10.f,
-       10.f, -10.f,  10.f,
-       10.f,  10.f,  10.f,
-       10.f, -10.f, -10.f,
-       10.f,  10.f, -10.f };
-    const std::array<GLuint, 36> cubeind = {
-       1, 2, 0,       3, 6, 2,
-       7, 4, 6,       5, 0, 4,
-       6, 0, 2,       3, 5, 7,
-       1, 3, 2,       3, 7, 6,
-       7, 5, 4,       5, 1, 0,
-       6, 4, 0,       3, 1, 5 };
-
-    worldSkyboxModel.createPartFromIndexes(cubeind, cubepos);
-
-    worldSkyboxModel.loadIntoGPU();
-  }
+  worldSkyboxModel.createPartFromPrimitive_box(glm::mat4(1.f), 10.f);
+  worldSkyboxModel.loadIntoGPU();
 
   s_worldScene worldScene;
 
@@ -359,14 +339,17 @@ int main(int argc, char **argv)
 
   // load textures
 
+  TRE_LOG("... loading textures ...");
+
   tre::texture worldSkyBoxTex;
   {
-    const std::array<SDL_Surface*, 6> cubeFaces = { tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/cubemap_inside_UVcoords.xpos.bmp"),
-                                                    tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/cubemap_inside_UVcoords.xneg.bmp"),
-                                                    tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/cubemap_inside_UVcoords.ypos.bmp"),
-                                                    tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/cubemap_inside_UVcoords.yneg.bmp"),
-                                                    tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/cubemap_inside_UVcoords.zpos.bmp"),
-                                                    tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/cubemap_inside_UVcoords.zneg.bmp"), };
+    // The textures are generated from "testTextureSampling", with TRE_WITH_SDL2_IMAGE and TRE_WITH_TIFF enabled
+    const std::array<SDL_Surface*, 6> cubeFaces = { tre::texture::loadTextureFromFile("imageTIFF.1024.inside.xpos.png"),
+                                                    tre::texture::loadTextureFromFile("imageTIFF.1024.inside.xneg.png"),
+                                                    tre::texture::loadTextureFromFile("imageTIFF.1024.inside.ypos.png"),
+                                                    tre::texture::loadTextureFromFile("imageTIFF.1024.inside.yneg.png"),
+                                                    tre::texture::loadTextureFromFile("imageTIFF.1024.inside.zpos.png"),
+                                                    tre::texture::loadTextureFromFile("imageTIFF.1024.inside.zneg.png"), };
     worldSkyBoxTex.loadCube(cubeFaces, tre::texture::MMASK_MIPMAP | tre::texture::MMASK_COMPRESS, true);
   }
 
@@ -403,7 +386,7 @@ int main(int argc, char **argv)
   worldParticlesMesh.loadIntoGPU();
 
   tre::texture  worldParticlesTex;
-  if (!worldParticlesTex.load(tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/quad.bmp"), tre::texture::MMASK_MIPMAP | tre::texture::MMASK_FORCE_NO_ALPHA, true))
+  if (!worldParticlesTex.load(tre::texture::loadTextureFromFile(TESTIMPORTPATH "resources/quad.png"), tre::texture::MMASK_MIPMAP | tre::texture::MMASK_FORCE_NO_ALPHA, true))
     worldParticlesTex.loadWhite();
 
   s_particleStream worldParticlesBBStream(true, false, false);
@@ -413,6 +396,8 @@ int main(int argc, char **argv)
   worldParticlesMeshStream.resize(512);
 
   // load HUD
+
+  TRE_LOG("... loading HUD ...");
 
   tre::font          worldHUDFont;
 
@@ -440,8 +425,10 @@ int main(int argc, char **argv)
 
   // material (shaders)
 
+  TRE_LOG("... loading material (shaders) ...");
+
   tre::shader  shaderSkybox;
-  shaderSkybox.loadShader(tre::shader::PRGM_3D, tre::shader::PRGM_CUBEMAPED);
+  shaderSkybox.loadShader(tre::shader::PRGM_3D, tre::shader::PRGM_CUBEMAPED | tre::shader::PRGM_BACKGROUND);
 
   tre::shader shaderMaterialFlat;
   shaderMaterialFlat.setShadowSunSamplerCount(1);
@@ -537,6 +524,8 @@ int main(int argc, char **argv)
 
   // Profiler
 
+  TRE_LOG("... loading tre::profiler ...");
+
   tre::profiler_updateCameraInfo(myWindow.m_matProjection2D, myWindow.m_resolutioncurrent);
   {
     glm::mat3 mModel_prof = glm::mat3(1.f);
@@ -553,6 +542,8 @@ int main(int argc, char **argv)
   tre::profiler_initThread();
 
   // Render-targets and Post-Effects
+
+  TRE_LOG("... loading post-effects ...");
 
   tre::renderTarget_ShadowMap sunLight_ShadowMap;
   sunLight_ShadowMap.load(2048,2048);
@@ -582,6 +573,8 @@ int main(int argc, char **argv)
   postEffectToneMapping.load();
 
   // End Init
+
+  TRE_LOG("... loading completed");
 
   tre::IsOpenGLok("main: initialization");
 
@@ -861,23 +854,8 @@ int main(int argc, char **argv)
       glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
       glDisable(GL_BLEND);
-      glDisable(GL_DEPTH_TEST);
+      glEnable(GL_DEPTH_TEST);
       glDepthMask(GL_TRUE);
-
-      glUseProgram(shaderSkybox.m_drawProgram);
-
-      glActiveTexture(GL_TEXTURE3);
-      glBindTexture(GL_TEXTURE_CUBE_MAP,worldSkyBoxTex.m_handle);
-      glUniform1i(shaderSkybox.getUniformLocation(tre::shader::TexCube),3);
-
-      glm::mat4 MViewBox(myView3D.m_matView);
-      MViewBox[3] = glm::vec4(0.f,0.f,0.f,1.f); // no translation
-
-      shaderSkybox.setUniformMatrix(myWindow.m_matProjection3D * MViewBox, glm::mat4(1.f), MViewBox);
-
-      worldSkyboxModel.drawcallAll();
-
-      tre::IsOpenGLok("opaque render pass - draw SkyBox");
 
       glActiveTexture(GL_TEXTURE2);
       glBindTexture(GL_TEXTURE_2D,sunLight_ShadowMap.depthHandle());
@@ -907,8 +885,6 @@ int main(int argc, char **argv)
       glBindTexture(GL_TEXTURE_2D,worldScene.texSteal_mr.m_handle);
 
       tre::IsOpenGLok("opaque render pass - bind textures");
-
-      glEnable(GL_DEPTH_TEST);
 
       glUseProgram(shaderMaterialFlat.m_drawProgram);
       glUniform1i(shaderMaterialFlat.getUniformLocation(tre::shader::TexShadowSun0),2);
@@ -970,6 +946,25 @@ int main(int argc, char **argv)
       worldParticlesMesh.drawInstanced(1, worldParticlesMeshStream.m_countPerMeshId[0], worldParticlesMeshStream.m_countPerMeshId[1], false);
 
       tre::IsOpenGLok("opaque render pass - draw Particle (Mesh)");
+
+      glDepthFunc(GL_LEQUAL);
+
+      glUseProgram(shaderSkybox.m_drawProgram);
+
+      glActiveTexture(GL_TEXTURE3);
+      glBindTexture(GL_TEXTURE_CUBE_MAP,worldSkyBoxTex.m_handle);
+      glUniform1i(shaderSkybox.getUniformLocation(tre::shader::TexCube),3);
+
+      glm::mat4 MViewBox(myView3D.m_matView);
+      MViewBox[3] = glm::vec4(0.f,0.f,0.f,1.f); // no translation
+
+      shaderSkybox.setUniformMatrix(myWindow.m_matProjection3D * MViewBox, glm::mat4(1.f), MViewBox);
+
+      worldSkyboxModel.drawcallAll();
+
+      glDepthFunc(GL_LESS);
+
+      tre::IsOpenGLok("opaque render pass - draw drawground (skyBox)");
     }
 
     // transparent render pass ------

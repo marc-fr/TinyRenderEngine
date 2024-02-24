@@ -205,18 +205,19 @@ static int app_init()
 
   // Textures
 
-  if (!texture2D.load(tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/quad.bmp"), tre::texture::MMASK_ANISOTROPIC | tre::texture::MMASK_MIPMAP | tre::texture::MMASK_SRBG_SPACE, true))
+  if (!texture2D.load(tre::texture::loadTextureFromFile(TESTIMPORTPATH "resources/quad.png"), tre::texture::MMASK_ANISOTROPIC | tre::texture::MMASK_MIPMAP | tre::texture::MMASK_SRBG_SPACE, true))
     texture2D.loadWhite();
 
 #ifdef TEST_WITH_SKYBOX
   {
-    const std::array<SDL_Surface*, 6> cubeFcaes = { tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/cubemap_inside_UVcoords.xpos.bmp"),
-                                                    tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/cubemap_inside_UVcoords.xneg.bmp"),
-                                                    tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/cubemap_inside_UVcoords.ypos.bmp"),
-                                                    tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/cubemap_inside_UVcoords.yneg.bmp"),
-                                                    tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/cubemap_inside_UVcoords.zpos.bmp"),
-                                                    tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/cubemap_inside_UVcoords.zneg.bmp"), };
-    textureSkyBox.loadCube(cubeFcaes, tre::texture::MMASK_COMPRESS, true);
+    // The textures are generated from "testTextureSampling", with TRE_WITH_SDL2_IMAGE enabled
+    const std::array<SDL_Surface*, 6> cubeFaces = { tre::texture::loadTextureFromFile("imageSDL.1024.inside.xpos.png"),
+                                                    tre::texture::loadTextureFromFile("imageSDL.1024.inside.xneg.png"),
+                                                    tre::texture::loadTextureFromFile("imageSDL.1024.inside.ypos.png"),
+                                                    tre::texture::loadTextureFromFile("imageSDL.1024.inside.yneg.png"),
+                                                    tre::texture::loadTextureFromFile("imageSDL.1024.inside.zpos.png"),
+                                                    tre::texture::loadTextureFromFile("imageSDL.1024.inside.zneg.png"), };
+    textureSkyBox.loadCube(cubeFaces, tre::texture::MMASK_COMPRESS, true);
   }
 #endif
 

@@ -61,7 +61,7 @@ shaderGenerator::s_layout::s_layout(const e_category cat, const int flags)
   hasOUT_Color1    = false;
   hasOUT_Depth     = (cat == PRGM_3D_DEPTH);
 
-  hasOPT_NoDepthTest = flags & (PRGM_OPT_SKYBOX);
+  hasOPT_DepthOne = flags & (PRGM_BACKGROUND);
 
   hasPIP_Geom      = false;
 }
@@ -828,9 +828,6 @@ void shaderGenerator::createShaderSource_VertexMain(std::string &sourceVertex)
     sourceVertex += "  gl_Position = vec4(vertexPosition,0.1f,1.f);\n";
   }
 
-  if (m_layout.hasOPT_NoDepthTest)
-    sourceVertex += "gl_Position.z = gl_Position.w;\n";
-
   if (m_layout.hasPIX_Position)
   {
     if (m_layout.is2D()) sourceVertex += "  " + prefixOut + "Position = vec3(vertexPosition, 0.f);\n";
@@ -839,6 +836,9 @@ void shaderGenerator::createShaderSource_VertexMain(std::string &sourceVertex)
 
   if (m_layout.hasPIX_Position_clipspace)
     sourceVertex += "  " + prefixOut + "Position_clipspace = gl_Position.xyz / gl_Position.w;\n";
+
+  if (m_layout.hasOPT_DepthOne)
+    sourceVertex += "  gl_Position.z = gl_Position.w;\n";
 
   // -> normal & tangent
 

@@ -388,6 +388,8 @@ int main(int argc, char **argv)
 
     genRotated(tif, 0.10f, outputTiff_Prefix + ".rotate.10rad");
 
+    genCubemaps(tif, outputTiff_Prefix);
+
     genCubeFrontLevels(tif, outputTiff_Prefix);
 
     genNormalMapFront(tif, 0.02f, outputTiff_Prefix);

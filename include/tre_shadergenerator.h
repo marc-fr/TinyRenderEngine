@@ -84,7 +84,7 @@ public:
   // options - texture
   static const int PRGM_BLEND      = 0x000010; ///< enable texture blending (with PRGM_TEXTURED or PRGM_CUBEMAPED)
   static const int PRGM_SOFT       = 0x000020; ///< enable soft-distance transparency.
-  static const int PRGM_OPT_SKYBOX = 0x000040; ///< enable skybox-optimization: draw skybox at the end, with glDepthFunc(GL_LEQUAL)
+  static const int PRGM_BACKGROUND = 0x000040; ///< enable write depth = 1 (often used with glDepthFunc(GL_LEQUAL))
   // options - instanced
   static const int PRGM_INSTANCED  = 0x000001;
   static const int PRGM_ORIENTATION= 0x000002;
@@ -141,7 +141,7 @@ public:
     bool hasOUT_Color1;
     bool hasOUT_Depth;
     // Miscellaneous
-    bool hasOPT_NoDepthTest;
+    bool hasOPT_DepthOne;
     // Pipeline
     bool hasPIP_Geom;
 
