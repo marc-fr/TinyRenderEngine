@@ -56,6 +56,8 @@ public:
   bool load(SDL_Surface *surface, int modemask, const bool freeSurface); ///< Load from SDL_Surface into GPU as 2D-Texture. Using freeSurface=true allows to apply modifiers in-place to the pixel data.
   bool loadCube(const std::array<SDL_Surface *, 6> &cubeFaces, int modemask, const bool freeSurface);  ///< Load from SDL_Surface into GPU as CubeMap-Texture. Textures lost: X+, X-, Y+, Y-, Z+, Z-. Using freeSurface=true allows to apply modifiers in-place to the pixel data.
 
+  bool update(SDL_Surface *surface, int modemask, const bool freeSurface); ///< Upload new pixels into the texture. Using freeSurface=true allows to apply modifiers in-place to the pixel data.
+
   bool loadColor(const uint32_t cARGB);
   bool loadWhite() { return loadColor(0xFFFFFFFF); } ///< Load a plain-white texture into GPU as 2D-texture.
   bool loadCheckerboard(uint width, uint height); ///< Load a texture with checker-board pattern into GPU as 2D-texture.

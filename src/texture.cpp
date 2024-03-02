@@ -153,122 +153,28 @@ bool texture::load(SDL_Surface *surface, int modemask, const bool freeSurface)
 {
   if (surface == nullptr) return false;
 
-  // init
   m_type = TI_2D;
   m_mask = modemask;
-  TRE_ASSERT(!useAnisotropic() || useMipmap()); // Mipmap is need for Anisotropic
-#ifdef TRE_OPENGL_ES
-  if (useMipmap() && useCompress())
-  {
-    TRE_LOG("OpenGL-ES: Cannot generate mipmaps of compressed texture. Skip compression."); // handle offline mipmaps generation ?
-    m_mask &= ~MMASK_COMPRESS;
-  }
-#endif
-
-  // retrieve info from texture
-  m_w = surface->w;
-  m_h = surface->h;
-  TRE_ASSERT(m_w >= 4 && (m_w & 0x03) == 0);
-  TRE_ASSERT(m_h >= 4 && (m_h & 0x03) == 0);
-  GLenum externalformat = getTexFormatSource(surface);
-  m_components = surface->format->BytesPerPixel;
-  if (modemask & MMASK_FORCE_NO_ALPHA) m_components = 3;
-  if (modemask & MMASK_RG_ONLY) m_components = 2;
-  if (modemask & MMASK_ALPHA_ONLY) m_components = 1;
-#ifdef TRE_OPENGL_ES
-  if (useMipmap() && useGammeCorreciton() && m_components == 3) m_components = 4;
-#endif
-
-  s_SurfaceTemp surfLocal = s_SurfaceTemp(surface);
-
-  if (m_components == 1 && surface->format->BytesPerPixel != 1)
-  {
-    if (!freeSurface) surfLocal.copyToOwnBuffer();
-    // WebGL does not support texture swizzle.
-#ifdef TRE_EMSCRIPTEN
-    TRE_ASSERT(surfLocal.pxByteSize == 4);
-    const int npixels = surfLocal.w * surfLocal.h;
-    uint * pixels = reinterpret_cast<uint*>(surfLocal.pixels);
-    for (uint ip=0;ip<npixels;++ip) pixels[ip] |= 0x00FFFFFF;
-    m_components = 4;
-#else
-    _rawPack_A8(surfLocal);
-    externalformat = GL_RED;
-#endif
-  }
-  if (m_components == 2 && surface->format->BytesPerPixel != 2)
-  {
-    if (!freeSurface) surfLocal.copyToOwnBuffer();
-    _rawPack_RG8(surfLocal);
-    externalformat = GL_RG;
-  }
-  if (m_components == 3 && surface->format->BytesPerPixel != 3)
-  {
-    if (!freeSurface) surfLocal.copyToOwnBuffer();
-    _rawPack_RemoveAlpha8(surfLocal);
-    TRE_ASSERT(externalformat == GL_BGRA || externalformat == GL_RGBA);
-    externalformat = (externalformat == GL_BGRA) ? GL_BGR : GL_RGB;
-  }
-  if (m_components == 4 && surface->format->BytesPerPixel != 4)
-  {
-    _rawExtend_AddAlpha8(surfLocal);
-    TRE_ASSERT(externalformat == GL_BGR || externalformat == GL_RGB);
-    externalformat = (externalformat == GL_BGR) ? GL_BGRA : GL_RGBA;
-  }
-
-  if (externalformat == GL_BGR || externalformat == GL_BGRA)
-  {
-    if (!freeSurface) surfLocal.copyToOwnBuffer();
-    _rawConvert_BRG_to_RGB(surfLocal);
-    externalformat = (externalformat == GL_BGR) ? GL_RGB : GL_RGBA;
-  }
-
-  const GLenum internalformat = getTexInternalFormat(m_components, useCompress(), useGammeCorreciton());
-
-   bool success = true;
-
-  // load texture with OpenGL
 
   glGenTextures(1,&m_handle);
-  glBindTexture(GL_TEXTURE_2D,m_handle);
 
-  if (useCompress())
+  if (!update(surface, modemask, freeSurface)) // upload pixels
   {
-#if 1 // always use the CPU-compressor
-    if (!freeSurface) surfLocal.copyToOwnBuffer();
-    const uint  bufferByteSize = _rawCompress(surfLocal, internalformat); // in-place
-    if (bufferByteSize == 0)
-    {
-      TRE_LOG("texture::load - failed to compress the picture (CPU compressor)");
-      success = false;
-    }
-    else
-    {
-      glCompressedTexImage2D(GL_TEXTURE_2D, 0, internalformat, surfLocal.w, surfLocal.h, 0, bufferByteSize, surfLocal.pixels);
-    }
-#else
-    glTexImage2D(GL_TEXTURE_2D, 0, internalformat, surfLocal.w, surfLocal.h, 0, externalformat, GL_UNSIGNED_BYTE, surfLocal.pixels);
-#endif
+    glBindTexture(GL_TEXTURE_2D,0);
+    return false;
   }
-  else
-  {
-    glTexImage2D(GL_TEXTURE_2D, 0, internalformat, surfLocal.w, surfLocal.h, 0, externalformat, GL_UNSIGNED_BYTE, surfLocal.pixels);
-  }
-
-  success &= IsOpenGLok("texture::load - upload pixels");
 
   set_parameters();
-  // check
+
 #ifndef TRE_OPENGL_ES
   GLint isCompressed = GL_FALSE;
   glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_COMPRESSED, &isCompressed);
   TRE_ASSERT((isCompressed != GL_FALSE) == useCompress());
 #endif
-  success &= IsOpenGLok("texture::load - complete texture");
-  // end
+
   if (freeSurface) SDL_FreeSurface(surface);
   glBindTexture(GL_TEXTURE_2D,0);
-  return success;
+  return IsOpenGLok("texture::load - complete texture");
 }
 
 //-----------------------------------------------------------------------------
@@ -387,6 +293,155 @@ bool texture::loadCube(const std::array<SDL_Surface *, 6> &cubeFaces, int modema
   }
   glBindTexture(GL_TEXTURE_CUBE_MAP,0);
   return success;
+}
+
+//-----------------------------------------------------------------------------
+
+bool texture::update(SDL_Surface *surface, int modemask, const bool freeSurface)
+{
+  if (surface == nullptr) return false;
+  if (m_handle == 0) return false;
+
+  m_w = surface->w;
+  m_h = surface->h;
+  TRE_ASSERT(m_w >= 4 && (m_w & 0x03) == 0);
+  TRE_ASSERT(m_h >= 4 && (m_h & 0x03) == 0);
+  TRE_ASSERT(!useAnisotropic() || useMipmap()); // Mipmap is need for Anisotropic
+#ifdef TRE_OPENGL_ES
+  if (useMipmap() && useCompress())
+  {
+    TRE_LOG("OpenGL-ES: Cannot generate mipmaps of compressed texture. Skip compression."); // handle offline mipmaps generation ?
+    m_mask &= ~MMASK_COMPRESS;
+  }
+#endif
+
+  GLenum externalformat = getTexFormatSource(surface);
+  m_components = surface->format->BytesPerPixel;
+  if (modemask & MMASK_FORCE_NO_ALPHA) m_components = 3;
+  if (modemask & MMASK_RG_ONLY) m_components = 2;
+  if (modemask & MMASK_ALPHA_ONLY) m_components = 1;
+#ifdef TRE_OPENGL_ES
+  if (useMipmap() && useGammeCorreciton() && m_components == 3) m_components = 4;
+#endif
+
+  const GLenum internalformat = getTexInternalFormat(m_components, useCompress(), useGammeCorreciton());
+
+  // apply modifiers
+
+  s_SurfaceTemp surfLocal = s_SurfaceTemp(surface);
+
+  if (m_components == 1 && surface->format->BytesPerPixel != 1)
+  {
+    if (!freeSurface) surfLocal.copyToOwnBuffer();
+    // WebGL does not support texture swizzle.
+#ifdef TRE_EMSCRIPTEN
+    TRE_ASSERT(surfLocal.pxByteSize == 4);
+    const int npixels = surfLocal.w * surfLocal.h;
+    uint * pixels = reinterpret_cast<uint*>(surfLocal.pixels);
+    for (uint ip=0;ip<npixels;++ip) pixels[ip] |= 0x00FFFFFF;
+    m_components = 4;
+#else
+    _rawPack_A8(surfLocal);
+    externalformat = GL_RED;
+#endif
+  }
+  if (m_components == 2 && surface->format->BytesPerPixel != 2)
+  {
+    if (!freeSurface) surfLocal.copyToOwnBuffer();
+    _rawPack_RG8(surfLocal);
+    externalformat = GL_RG;
+  }
+  if (m_components == 3 && surface->format->BytesPerPixel != 3)
+  {
+    if (!freeSurface) surfLocal.copyToOwnBuffer();
+    _rawPack_RemoveAlpha8(surfLocal);
+    TRE_ASSERT(externalformat == GL_BGRA || externalformat == GL_RGBA);
+    externalformat = (externalformat == GL_BGRA) ? GL_BGR : GL_RGB;
+  }
+  if (m_components == 4 && surface->format->BytesPerPixel != 4)
+  {
+    _rawExtend_AddAlpha8(surfLocal);
+    TRE_ASSERT(externalformat == GL_BGR || externalformat == GL_RGB);
+    externalformat = (externalformat == GL_BGR) ? GL_BGRA : GL_RGBA;
+  }
+
+  if (externalformat == GL_BGR || externalformat == GL_BGRA)
+  {
+    if (!freeSurface) surfLocal.copyToOwnBuffer();
+    _rawConvert_BRG_to_RGB(surfLocal);
+    externalformat = (externalformat == GL_BGR) ? GL_RGB : GL_RGBA;
+  }
+
+  if (m_components == 1 && surface->format->BytesPerPixel != 1)
+  {
+    if (!freeSurface) surfLocal.copyToOwnBuffer();
+    // WebGL does not support texture swizzle.
+#ifdef TRE_EMSCRIPTEN
+    TRE_ASSERT(surfLocal.pxByteSize == 4);
+    const int npixels = surfLocal.w * surfLocal.h;
+    uint * pixels = reinterpret_cast<uint*>(surfLocal.pixels);
+    for (uint ip=0;ip<npixels;++ip) pixels[ip] |= 0x00FFFFFF;
+    m_components = 4;
+#else
+    _rawPack_A8(surfLocal);
+    externalformat = GL_RED;
+#endif
+  }
+  if (m_components == 2 && surface->format->BytesPerPixel != 2)
+  {
+    if (!freeSurface) surfLocal.copyToOwnBuffer();
+    _rawPack_RG8(surfLocal);
+    externalformat = GL_RG;
+  }
+  if (m_components == 3 && surface->format->BytesPerPixel != 3)
+  {
+    if (!freeSurface) surfLocal.copyToOwnBuffer();
+    _rawPack_RemoveAlpha8(surfLocal);
+    TRE_ASSERT(externalformat == GL_BGRA || externalformat == GL_RGBA);
+    externalformat = (externalformat == GL_BGRA) ? GL_BGR : GL_RGB;
+  }
+  if (m_components == 4 && surface->format->BytesPerPixel != 4)
+  {
+    _rawExtend_AddAlpha8(surfLocal);
+    TRE_ASSERT(externalformat == GL_BGR || externalformat == GL_RGB);
+    externalformat = (externalformat == GL_BGR) ? GL_BGRA : GL_RGBA;
+  }
+
+  if (externalformat == GL_BGR || externalformat == GL_BGRA)
+  {
+    if (!freeSurface) surfLocal.copyToOwnBuffer();
+    _rawConvert_BRG_to_RGB(surfLocal);
+    externalformat = (externalformat == GL_BGR) ? GL_RGB : GL_RGBA;
+  }
+
+  // upload
+
+  glBindTexture(GL_TEXTURE_2D,m_handle);
+
+  if (useCompress())
+  {
+#if 1 // always use the CPU-compressor
+    if (!freeSurface) surfLocal.copyToOwnBuffer();
+    const uint  bufferByteSize = _rawCompress(surfLocal, internalformat); // in-place
+    if (bufferByteSize == 0)
+    {
+      TRE_LOG("texture::load - failed to compress the picture (CPU compressor)");
+      return false;
+    }
+    else
+    {
+      glCompressedTexImage2D(GL_TEXTURE_2D, 0, internalformat, surfLocal.w, surfLocal.h, 0, bufferByteSize, surfLocal.pixels);
+    }
+#else
+    glTexImage2D(GL_TEXTURE_2D, 0, internalformat, surfLocal.w, surfLocal.h, 0, externalformat, GL_UNSIGNED_BYTE, surfLocal.pixels);
+#endif
+  }
+  else
+  {
+    glTexImage2D(GL_TEXTURE_2D, 0, internalformat, surfLocal.w, surfLocal.h, 0, externalformat, GL_UNSIGNED_BYTE, surfLocal.pixels);
+  }
+
+  return IsOpenGLok("texture::load - upload pixels");
 }
 
 //-----------------------------------------------------------------------------
