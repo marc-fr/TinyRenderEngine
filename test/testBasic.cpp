@@ -319,7 +319,6 @@ static void app_update()
     glDepthMask(GL_TRUE);
 
     sunLight_ShadowMap.bindForWritting();
-    glViewport(0, 0, sunLight_ShadowMap.w(), sunLight_ShadowMap.h());
     glClear(GL_DEPTH_BUFFER_BIT);
 
     const glm::mat4 localMPV = sunLight_ShadowMap.mProj() * sunLight_ShadowMap.mView();

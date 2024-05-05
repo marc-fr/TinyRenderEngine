@@ -407,7 +407,7 @@ int main(int argc, char **argv)
   {
     static const char* txts[5] = { "FPS",
                                    "right clic: lock/unlock camera",
-                                   "F5: show/hide shadow maps",
+                                   "F5: show/hide render-target",
                                    "F6: enable/disable blur",
                                    "F7: enable/disable MSAA"
                                  };
@@ -419,6 +419,17 @@ int main(int argc, char **argv)
       worldHUDModel.createPart(tre::textgenerator::geometry_VertexCount(tInfo.m_text));
       tre::textgenerator::generate(tInfo, &worldHUDModel, it, 0, nullptr);
     }
+
+    const float r = float(myWindow.m_resolutioncurrent.x) / float(myWindow.m_resolutioncurrent.y);
+
+    worldHUDModel.createPart(6);
+    worldHUDModel.fillDataRectangle(5, 0, glm::vec4(-r, -1.f, -r + 0.3f * r, -1.f + 0.3f), glm::vec4(1.f), glm::vec4(0.f, 0.f, 1.f, 1.f));
+
+    worldHUDModel.createPart(6);
+    worldHUDModel.fillDataRectangle(6, 0, glm::vec4(-r, -1.f + 0.35f, -r + 0.3f * r, -1.f + 0.65f), glm::vec4(1.f), glm::vec4(0.f, 0.f, 1.f, 1.f));
+
+    worldHUDModel.createPart(6);
+    worldHUDModel.fillDataRectangle(7, 0, glm::vec4(-r, -1.f + 0.70f, -r + 0.3f * r, -1.f + 1.00f), glm::vec4(1.f), glm::vec4(0.f, 0.f, 1.f, 1.f));
 
     worldHUDModel.loadIntoGPU();
   }
@@ -559,10 +570,11 @@ int main(int argc, char **argv)
   tre::renderTarget rtResolveMSAA(tre::renderTarget::RT_COLOR_AND_DEPTH | tre::renderTarget::RT_SAMPLABLE | tre::renderTarget::RT_COLOR_HDR);
   rtResolveMSAA.load(myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
 
-  tre::postFX_Blur postEffectBlur(3, 7, false /*true: TODO: have tre::renderTarget::RT_COLOR_HDR*/);
+  tre::postFX_Blur postEffectBlur(3, false);
   postEffectBlur.set_threshold(0.95f);
   postEffectBlur.set_multiplier(2.f);
   postEffectBlur.load(myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
+  postEffectBlur.loadCombine();
 
   tre::renderTarget rtAfterBlur(tre::renderTarget::RT_COLOR | tre::renderTarget::RT_COLOR_SAMPLABLE | tre::renderTarget::RT_COLOR_HDR);
   rtAfterBlur.load(myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
@@ -594,7 +606,7 @@ int main(int argc, char **argv)
   myView3D.setScreenBoundsMotion(true);
   myView3D.setKeyBinding(true);
 
-  bool showShadowMaps = false;
+  bool showMaps = false;
   bool withMSAA = canMSAA;
   bool withBlur = true;
 
@@ -619,7 +631,7 @@ int main(int argc, char **argv)
 
         tre::profiler_acceptEvent(event);
 
-        if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_F5) showShadowMaps = !showShadowMaps;
+        if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_F5) showMaps = !showMaps;
         if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_F6) withBlur = !withBlur;
         if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_F7) withMSAA = !withMSAA && canMSAA;
       }
@@ -774,7 +786,6 @@ int main(int argc, char **argv)
 
       {
         sunLight_ShadowMap.bindForWritting();
-        glViewport(0, 0, sunLight_ShadowMap.w(), sunLight_ShadowMap.h());
         glClear(GL_DEPTH_BUFFER_BIT);
 
         const glm::mat4 localMPV = sunLight_ShadowMap.mProj() * sunLight_ShadowMap.mView();
@@ -850,7 +861,6 @@ int main(int argc, char **argv)
       else
         rtResolveMSAA.bindForWritting();
 
-      glViewport(0, 0, rtMultisampled.w(), rtMultisampled.h());
       glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
       glDisable(GL_BLEND);
@@ -1017,11 +1027,15 @@ int main(int argc, char **argv)
     // post-effects ----------------
 
     {
-      TRE_PROFILEDSCOPE("postFX (cpu cost)", postFX)
+      TRE_PROFILEDSCOPE("postFX", postFX)
 
       if (withBlur)
       {
-        postEffectBlur.resolveBlur(rtResolveMSAA.colorHandle(), rtAfterBlur);
+        postEffectBlur.processBlur(rtResolveMSAA.colorHandle());
+
+        rtAfterBlur.bindForWritting();
+        postEffectBlur.renderBlur(rtResolveMSAA.colorHandle());
+
         postEffectToneMapping.resolveToneMapping(rtAfterBlur.colorHandle(), myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
       }
       else
@@ -1044,7 +1058,7 @@ int main(int argc, char **argv)
       glDisable(GL_DEPTH_TEST);
       glDepthMask(GL_FALSE);
 
-      if (showShadowMaps)
+      if (showMaps)
       {
         sunShadow_debug.draw(myWindow.m_matProjection2D);
       }
@@ -1061,7 +1075,7 @@ int main(int argc, char **argv)
         worldHUDModel.resizePart(0, tre::textgenerator::geometry_VertexCount(tInfo.m_text));
         tre::textgenerator::generate(tInfo, &worldHUDModel, 0, 0, nullptr);
 
-        worldHUDModel.colorizePart(2, showShadowMaps ? glm::vec4(0.f, 1.f, 0.f, 1.f) : glm::vec4(0.8f));
+        worldHUDModel.colorizePart(2, showMaps ? glm::vec4(0.f, 1.f, 0.f, 1.f) : glm::vec4(0.8f));
         worldHUDModel.colorizePart(3, withBlur ? glm::vec4(0.f, 1.f, 0.f, 1.f) : glm::vec4(0.8f));
         worldHUDModel.colorizePart(4, canMSAA ? (withMSAA ? glm::vec4(0.f, 1.f, 0.f, 1.f) : glm::vec4(0.8f)) : glm::vec4(1.f, 0.3f, 0.3f, 1.f));
 
@@ -1080,7 +1094,25 @@ int main(int argc, char **argv)
         glBindTexture(GL_TEXTURE_2D,worldHUDFont.get_texture().m_handle);
         glUniform1i(shaderText2D.getUniformLocation(tre::shader::TexDiffuse),3);
 
-        worldHUDModel.drawcallAll(true);
+        worldHUDModel.drawcall(0, 5, true);
+      }
+
+      if (showMaps && withBlur)
+      {
+        glUseProgram(shaderText2D.m_drawProgram);
+        shaderText2D.setUniformMatrix(myWindow.m_matProjection2D);
+        glUniform1i(shaderText2D.getUniformLocation(tre::shader::TexDiffuse),3);
+
+        glActiveTexture(GL_TEXTURE3);
+
+        glBindTexture(GL_TEXTURE_2D,postEffectBlur.get_blurTextureUnit(0));
+        worldHUDModel.drawcall(5, 1, false);
+
+        glBindTexture(GL_TEXTURE_2D,postEffectBlur.get_blurTextureUnit(1));
+        worldHUDModel.drawcall(6, 1, false);
+
+        glBindTexture(GL_TEXTURE_2D,postEffectBlur.get_blurTextureUnit(2));
+        worldHUDModel.drawcall(7, 1, false);
       }
 
       tre::IsOpenGLok("UI render pass - draw UI");

@@ -328,7 +328,6 @@ int main(int argc, char **argv)
     glEnable(GL_DEPTH_TEST);
 
     rtMultisampled.bindForWritting();
-    glViewport(0, 0, rtMultisampled.w(), rtMultisampled.h());
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     tre::shader & curShader = * listShader[shaderMode];

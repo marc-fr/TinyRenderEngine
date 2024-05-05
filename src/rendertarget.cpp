@@ -239,6 +239,7 @@ void renderTarget::bindForWritting() const
 {
   TRE_ASSERT(m_drawFBO != 0);
   glBindFramebuffer(GL_DRAW_FRAMEBUFFER, m_drawFBO);
+  glViewport(0, 0, m_w, m_h);
 }
 
 // ----------------------------------------------------------------------------
@@ -694,11 +695,6 @@ bool postFX_Blur::load(const int pwidth, const int pheigth)
   status &= m_shaderDownSample.loadCustomShader(shaderLayout,
                                               SourcePostProcess_FragMain_Blur,
                                               "PostProcess_Fragment_Blur");
-  shaderLayout.hasUNI_AtlasInvDim = false;
-  shaderLayout.hasSMP_DiffuseB = true;
-  status &= m_shaderCombine.loadCustomShader(shaderLayout,
-                                           SourcePostProcess_FragMain_Combine,
-                                           "PostProcess_Fragment_BlurCombine");
   // Model
   const glm::vec4 pos(-1.f, -1.f, 1.f, 1.f);
   const glm::vec4 uv(0.f, 0.f, 1.f, 1.f);
@@ -710,6 +706,21 @@ bool postFX_Blur::load(const int pwidth, const int pheigth)
   status &= m_quadFullScreen.loadIntoGPU();
 
   return status;
+}
+
+// ----------------------------------------------------------------------------
+
+bool postFX_Blur::loadCombine()
+{
+  shader::s_layout shaderLayout(shader::PRGM_2D);
+  shaderLayout.hasBUF_UV = true;
+  shaderLayout.hasSMP_Diffuse = true;
+  shaderLayout.hasOUT_Color0 = true;
+  shaderLayout.hasUNI_AtlasInvDim = false;
+  shaderLayout.hasSMP_DiffuseB = true;
+  return m_shaderCombine.loadCustomShader(shaderLayout,
+                                          SourcePostProcess_FragMain_Combine,
+                                          "PostProcess_Fragment_BlurCombine");
 }
 
 // ----------------------------------------------------------------------------
@@ -755,71 +766,9 @@ void postFX_Blur::clear()
 
 // ----------------------------------------------------------------------------
 
-void postFX_Blur::resolveBlur(GLuint inputTextureHandle, const int outwidth, const int outheigth)
+void postFX_Blur::processBlur(GLuint inputTextureHandle)
 {
-  _blur_passBright(inputTextureHandle);
-  _blur_passBlur();
-
-  // Final
-  {
-    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-    glViewport(0, 0, outwidth, outheigth);
-
-    glUseProgram(m_shaderCombine.m_drawProgram);
-    glUniform1i(m_shaderCombine.getUniformLocation(tre::shader::TexDiffuse),0);
-    glUniform1i(m_shaderCombine.getUniformLocation(tre::shader::TexDiffuseB),1);
-
-    m_quadFullScreen.drawcallAll(false);
-  }
-}
-
-// ----------------------------------------------------------------------------
-
-void postFX_Blur::resolveBlur(GLuint inputTextureHandle, renderTarget &targetFBO)
-{
-  _blur_passBright(inputTextureHandle);
-  _blur_passBlur();
-
-  // Final
-  {
-    targetFBO.bindForWritting();
-    glViewport(0, 0, targetFBO.w(), targetFBO.h());
-
-    glUseProgram(m_shaderCombine.m_drawProgram);
-    glUniform1i(m_shaderCombine.getUniformLocation(tre::shader::TexDiffuse),0);
-    glUniform1i(m_shaderCombine.getUniformLocation(tre::shader::TexDiffuseB),1);
-
-    m_quadFullScreen.drawcallAll(false);
-  }
-}
-
-// ----------------------------------------------------------------------------
-
-void postFX_Blur::bypass(GLuint inputTextureHandle, const int outwidth, const int outheigth)
-{
-  glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-  glViewport(0, 0, outwidth, outheigth);
-
-  glDisable(GL_DEPTH_TEST);
-
-  glUseProgram(m_shaderCombine.m_drawProgram);
-  glUniform1i(m_shaderCombine.getUniformLocation(tre::shader::TexDiffuse),0);
-  glUniform1i(m_shaderCombine.getUniformLocation(tre::shader::TexDiffuseB),1);
-
-  glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_2D,inputTextureHandle);
-
-  glActiveTexture(GL_TEXTURE1);
-  glBindTexture(GL_TEXTURE_2D,0);
-
-  m_quadFullScreen.drawcallAll();
-}
-
-// ----------------------------------------------------------------------------
-
-void postFX_Blur::_blur_passBright(GLuint inputTextureHandle)
-{
-  TRE_ASSERT(m_Npass>0);
+  TRE_ASSERT(m_Npass > 0);
 
   glDisable(GL_DEPTH_TEST);
 
@@ -829,19 +778,13 @@ void postFX_Blur::_blur_passBright(GLuint inputTextureHandle)
   // Begin - separate
   {
     m_renderDownsample[0].bindForWritting();
-    glViewport(0, 0, m_renderDownsample[0].w(), m_renderDownsample[0].h());
 
     glUseProgram(m_shaderBrightPass.m_drawProgram);
     glUniform1i(m_shaderBrightPass.getUniformLocation(tre::shader::TexDiffuse),0);
     glUniform2fv(m_shaderBrightPass.getUniformLocation("paramSubMul"),1,glm::value_ptr(m_paramBrightPass));
     m_quadFullScreen.drawcallAll(true);
   }
-}
 
-// ----------------------------------------------------------------------------
-
-void postFX_Blur::_blur_passBlur()
-{
   // Intermediate - blur it
   if (m_Npass > 1)
   {
@@ -853,7 +796,6 @@ void postFX_Blur::_blur_passBlur()
     for (uint ipass=1;ipass < m_Npass;++ipass)
     {
       m_renderDownsample[ipass].bindForWritting();
-      glViewport(0, 0, m_renderDownsample[ipass].w(), m_renderDownsample[ipass].h());
 
       glUniform2fv(m_shaderDownSample.getUniformLocation(tre::shader::AtlasInvDim),1,glm::value_ptr(m_renderInvScreenSize[ipass]));
 
@@ -861,11 +803,27 @@ void postFX_Blur::_blur_passBlur()
       m_quadFullScreen.drawcallAll(false);
     }
   }
-
-  glActiveTexture(GL_TEXTURE1);
-  glBindTexture(GL_TEXTURE_2D,m_renderDownsample[m_Npass-1].colorHandle());
 }
 
+// ----------------------------------------------------------------------------
+
+void postFX_Blur::renderBlur(GLuint inputTextureHandle)
+{
+  TRE_ASSERT(m_shaderCombine.m_drawProgram != 0);
+
+  // Final
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D,inputTextureHandle);
+
+  glActiveTexture(GL_TEXTURE1);
+  glBindTexture(GL_TEXTURE_2D, m_renderDownsample.back().colorHandle());
+
+  glUseProgram(m_shaderCombine.m_drawProgram);
+  glUniform1i(m_shaderCombine.getUniformLocation(tre::shader::TexDiffuse),0);
+  glUniform1i(m_shaderCombine.getUniformLocation(tre::shader::TexDiffuseB),1);
+
+  m_quadFullScreen.drawcallAll(true);
+}
 // ============================================================================
 
 static const char * SourcePostProcess_FragMain_ToneMapping =

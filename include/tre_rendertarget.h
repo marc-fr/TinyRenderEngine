@@ -178,12 +178,12 @@ protected:
 class postFX_Blur
 {
 public:
-  postFX_Blur(const uint NbrPass, const uint KernelSize = 7, const bool outHDR = false) :
+  postFX_Blur(const uint NbrPass, const bool outHDR = false) :
       m_quadFullScreen(),
       m_renderDownsample(NbrPass, {renderTarget::RT_COLOR | renderTarget::RT_COLOR_SAMPLABLE | (outHDR ? renderTarget::RT_COLOR_HDR : 0)}),
       m_renderInvScreenSize(NbrPass, glm::vec2(0.f)),
       m_paramBrightPass(glm::vec2(1.f, 1.f)),
-      m_Npass(NbrPass), m_kernelSize(KernelSize), m_isOutHDR(outHDR)
+      m_Npass(NbrPass), m_isOutHDR(outHDR)
     { TRE_ASSERT(m_Npass>0); }
   ~postFX_Blur() {}
 
@@ -191,10 +191,11 @@ public:
   bool resize(const int pwidth, const int pheigth);
   void clear();
 
-  void resolveBlur(GLuint inputTextureHandle, const int outwidth, const int outheigth);
-  void resolveBlur(GLuint inputTextureHandle, renderTarget & targetFBO);
+  void processBlur(GLuint inputTextureHandle);
+  GLuint get_blurTextureUnit(const std::size_t pass = std::size_t(-1) /* last */) const { return m_renderDownsample[std::min(pass, m_renderDownsample.size() - 1)].colorHandle(); }
 
-  void bypass(GLuint inputTextureHandle, const int outwidth, const int outheigth);
+  bool loadCombine(); ///< [optionnal] load the shader that combines the input with the blur
+  void renderBlur(GLuint inputTextureHandle); ///< [optionnal] render the combined input and blur. The destination render-target must be bound by the caller.
 
   void set_threshold(const float newThreshold) { m_paramBrightPass.x = newThreshold; }
   void set_multiplier(const float newMul) { m_paramBrightPass.y = newMul; }
@@ -207,12 +208,8 @@ protected:
   shader                    m_shaderDownSample;
   shader                    m_shaderCombine;
   glm::vec2                 m_paramBrightPass;
-  const uint            m_Npass;
-  const uint            m_kernelSize;
+  const uint                m_Npass;
   const bool                m_isOutHDR;
-
-  void _blur_passBright(GLuint inputTextureHandle);
-  void _blur_passBlur();
 };
 
 // ============================================================================
