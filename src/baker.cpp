@@ -116,7 +116,7 @@ std::istream &baker::getBlockReadAndAdvance()
 {
   TRE_ASSERT(m_fileInDescriptor != nullptr);
 
-  TRE_ASSERT(!m_blocksAdress.empty()); // TODO: handle this properly
+  if (m_blocksAdress.empty()) return *m_fileInDescriptor; // no entry left, already at the end-of-file. TODO: Invalidate the istream ?
 
   m_fileInDescriptor->seekg(std::ifstream::pos_type(m_blocksAdress.back()));
 
