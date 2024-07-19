@@ -274,8 +274,6 @@ void baseUI2D::draw() const
     m_model.drawcall(curwin->m_adSolid.part, 1, !isModelBound);
     isModelBound = true;
 
-    m_model.drawcall(curwin->m_adrLine.part, 1, false, GL_LINES);
-
     for (std::size_t tslot = 0; tslot < s_textureSlotsCount; ++tslot)
     {
       if (m_model.partInfo(curwin->m_adrPict.part + tslot).m_size > 0)
@@ -315,6 +313,10 @@ void baseUI2D::draw() const
       }
       m_model.drawcall(curwin->m_adrText.part, 1, false);
     }
+
+    glUniform1i(m_shader->getUniformLocation(shader::TexDiffuse),0);
+
+    m_model.drawcall(curwin->m_adrLine.part, 1, false, GL_LINES);
   }
 }
 
@@ -516,8 +518,6 @@ void baseUI3D::draw() const
     m_model.drawcall(curwin->m_adSolid.part, 1, !isModelBound);
     isModelBound = true;
 
-    m_model.drawcall(curwin->m_adrLine.part, 1, false, GL_LINES);
-
     for (std::size_t tslot = 0; tslot < s_textureSlotsCount; ++tslot)
     {
       if (m_model.partInfo(curwin->m_adrPict.part + tslot).m_size > 0)
@@ -557,6 +557,10 @@ void baseUI3D::draw() const
       }
       m_model.drawcall(curwin->m_adrText.part, 1, false);
     }
+
+    glUniform1i(m_shader->getUniformLocation(shader::TexDiffuse),0);
+
+    m_model.drawcall(curwin->m_adrLine.part, 1, false, GL_LINES);
   }
 }
 
