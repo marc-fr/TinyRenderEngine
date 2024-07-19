@@ -170,10 +170,10 @@ protected:
 // ============================================================================
 
 /**
- * @brief This class implements a blur post-FX, with a bright pass and blur passes.
- * The bright-pass function is f(x) = x*x / (0.25 + x*x)
+ * @brief This class implements a blur post-FX.
+ * The bright-pass function is such that the color is multiplied by: f(x) = x*x / (alpha + x*x) with x = max(gray(r,b,g) - offset, 0)
  * if the output-target is LDR, the color is scaled in [0,1] range. So x = max(r-offset,b-offset,g-offset,0)
- * if the output-target is HDR, the color is scaled. Here, x = gray(max(rgb-offset,000))
+ * if the output-target is HDR, the color is scaled. Here, x = gray(max(rgb-offset,0))
  */
 class postFX_Blur
 {
@@ -181,8 +181,7 @@ public:
   postFX_Blur(const uint NbrPass, const bool outHDR = false) :
       m_quadFullScreen(),
       m_renderDownsample(NbrPass, {renderTarget::RT_COLOR | renderTarget::RT_COLOR_SAMPLABLE | (outHDR ? renderTarget::RT_COLOR_HDR : 0)}),
-      m_renderInvScreenSize(NbrPass, glm::vec2(0.f)),
-      m_paramBrightPass(glm::vec2(1.f, 1.f)),
+      m_brightAlpha(1.e-3f), m_brightOffset(outHDR ? 0.f : 0.6f), m_combineStrength(0.2f),
       m_Npass(NbrPass), m_isOutHDR(outHDR)
     { TRE_ASSERT(m_Npass>0); }
   ~postFX_Blur() {}
@@ -191,23 +190,25 @@ public:
   bool resize(const int pwidth, const int pheigth);
   void clear();
 
-  void processBlur(GLuint inputTextureHandle);
-  GLuint get_blurTextureUnit(const std::size_t pass = std::size_t(-1) /* last */) const { return m_renderDownsample[std::min(pass, m_renderDownsample.size() - 1)].colorHandle(); }
+  void processBlur(GLuint inputTextureHandle, const bool withFinalCombine = true);
+  GLuint get_blurTextureUnit(const std::size_t pass = 0) const { return m_renderDownsample[pass].colorHandle(); }
 
-  bool loadCombine(); ///< [optionnal] load the shader that combines the input with the blur
-  void renderBlur(GLuint inputTextureHandle); ///< [optionnal] render the combined input and blur. The destination render-target must be bound by the caller.
+  void set_brightAlpha(const float alpha) { m_brightAlpha = alpha; }
+  void set_brightOffset(const float offset) { m_brightOffset = offset; }
+  void set_combineStrength(const float strength) { m_combineStrength = strength; }
 
-  void set_threshold(const float newThreshold) { m_paramBrightPass.x = newThreshold; }
-  void set_multiplier(const float newMul) { m_paramBrightPass.y = newMul; }
+  float get_brightAlpha() const { return m_brightAlpha; }
+  float get_brightOffset() const { return m_brightOffset; }
+  float get_combineStrength() const { return m_combineStrength; }
 
 protected:
   modelRaw2D                m_quadFullScreen;
   std::vector<renderTarget> m_renderDownsample;
-  std::vector<glm::vec2>    m_renderInvScreenSize;
-  shader                    m_shaderBrightPass;
-  shader                    m_shaderDownSample;
-  shader                    m_shaderCombine;
-  glm::vec2                 m_paramBrightPass;
+  shader                    m_shaderDownPass;
+  shader                    m_shaderUpPass;
+  float                     m_brightAlpha;
+  float                     m_brightOffset;
+  float                     m_combineStrength;
   const uint                m_Npass;
   const bool                m_isOutHDR;
 };

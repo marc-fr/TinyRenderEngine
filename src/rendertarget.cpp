@@ -582,170 +582,129 @@ void renderTarget_GBuffer::bindForReading() const
 
 // ============================================================================
 
-static const char * SourcePostProcess_FragMain_BrightPass_LDR =
-"\n"
-"uniform vec2 paramSubMul;\n"
-"void main(){\n"
-"  vec3 colorORIGIN = texture(TexDiffuse,pixelUV).xyz;\n"
-"  float colorORIGINmax = max(max(colorORIGIN.r,colorORIGIN.g),colorORIGIN.b);\n"
-"  vec3 colorHP = max(colorORIGIN.rgb - paramSubMul.x, 0.f);\n"
-"  float colorHPmax = max(max(colorHP.r, colorHP.g), colorHP.b);\n"
-"  float colorHPmax2 = colorHPmax * colorHPmax;\n"
-"  float factor = paramSubMul.y * colorHPmax2 / (0.25f + colorHPmax2);\n"
-"  color = vec4(factor * colorORIGIN, 1.f);\n"
-"}\n";
-
-static const char * SourcePostProcess_FragMain_BrightPass_HDR =
-"\n"
-"uniform vec2 paramSubMul;\n"
+static const char * SourcePostProcess_FragMain_BlurDownPass =
+"// uniColor = {alpha, offset, ., brightOnly}\n"
+"// AtlasInvDim = {1/src-width, 1/src-height}\n"
 "const vec3 grayFactors = vec3(0.2125f, 0.7154f, 0.0721f);\n"
-"void main(){\n"
-"  vec3 colorORIGIN = texture(TexDiffuse,pixelUV).xyz;\n"
-"  vec3 colorHP = max(colorORIGIN.rgb - paramSubMul.x, 0.f);\n"
-"  float grayHP = dot(colorHP, grayFactors);\n"
-"  float grayHP2 = grayHP * grayHP;\n"
-"  float factor = paramSubMul.y * grayHP2 / (0.33f + grayHP2);\n"
-"  color = vec4(factor * colorORIGIN, 1.f);\n"
+"void main()\n"
+"{\n"
+"  if (uniColor.w != 0.f) // bright only \n"
+"  {\n"
+"    vec3 colorORIGIN = texture(TexDiffuse,pixelUV).xyz;\n"
+"    float gray = dot(colorORIGIN, grayFactors);\n"
+"    float x = max(gray - uniColor.y, 0.f);\n"
+"    float xx = x * x;\n"
+"    float factor = xx / (uniColor.x + xx);\n"
+"    color.xyz = factor * colorORIGIN;\n"
+"    color.w = 1.f;\n"
+"  }\n"
+"  else // downsample with Gaussian filter\n"
+"  {\n"
+"    float x = AtlasInvDim.x;\n"
+"    float y = AtlasInvDim.y;\n"
+"    vec3 a = texture(TexDiffuse, vec2(pixelUV.x - 2*x, pixelUV.y + 2*y)).rgb;\n"
+"    vec3 b = texture(TexDiffuse, vec2(pixelUV.x,       pixelUV.y + 2*y)).rgb;\n"
+"    vec3 c = texture(TexDiffuse, vec2(pixelUV.x + 2*x, pixelUV.y + 2*y)).rgb;\n"
+"    vec3 d = texture(TexDiffuse, vec2(pixelUV.x - 2*x, pixelUV.y      )).rgb;\n"
+"    vec3 e = texture(TexDiffuse, vec2(pixelUV.x,       pixelUV.y      )).rgb;\n"
+"    vec3 f = texture(TexDiffuse, vec2(pixelUV.x + 2*x, pixelUV.y      )).rgb;\n"
+"    vec3 g = texture(TexDiffuse, vec2(pixelUV.x - 2*x, pixelUV.y - 2*y)).rgb;\n"
+"    vec3 h = texture(TexDiffuse, vec2(pixelUV.x,       pixelUV.y - 2*y)).rgb;\n"
+"    vec3 i = texture(TexDiffuse, vec2(pixelUV.x + 2*x, pixelUV.y - 2*y)).rgb;\n"
+"    vec3 j = texture(TexDiffuse, vec2(pixelUV.x - x  , pixelUV.y +   y)).rgb;\n"
+"    vec3 k = texture(TexDiffuse, vec2(pixelUV.x + x  , pixelUV.y +   y)).rgb;\n"
+"    vec3 l = texture(TexDiffuse, vec2(pixelUV.x - x  , pixelUV.y -   y)).rgb;\n"
+"    vec3 m = texture(TexDiffuse, vec2(pixelUV.x + x  , pixelUV.y -   y)).rgb;\n"
+"    color.xyz  = e         * 0.125;\n"
+"    color.xyz += (a+c+g+i) * 0.03125;\n"
+"    color.xyz += (b+d+f+h) * 0.0625;\n"
+"    color.xyz += (j+k+l+m) * 0.125;\n"
+"    color.w = 1.f;\n"
+"  }\n"
 "}\n";
 
-static const char * SourcePostProcess_FragMain_Blur =
-"\n"
-"//uniform vec2 AtlasInvDim; (declared from shader layout)\n"
-"const float gaussFilter[49] = float[49]( // kernel=7, sigma=3 \n"
-"0.011362, 0.014962, 0.017649, 0.018648, 0.017649, 0.014962, 0.011362,\n"
-"0.014962, 0.019703, 0.02324 , 0.024556, 0.02324 , 0.019703, 0.014962,\n"
-"0.017649, 0.02324 , 0.027413, 0.028964, 0.027413, 0.02324 , 0.017649,\n"
-"0.018648, 0.024556, 0.028964, 0.030603, 0.028964, 0.024556, 0.018648,\n"
-"0.017649, 0.02324 , 0.027413, 0.028964, 0.027413, 0.02324 , 0.017649,\n"
-"0.014962, 0.019703, 0.02324 , 0.024556, 0.02324 , 0.019703, 0.014962,\n"
-"0.011362, 0.014962, 0.017649, 0.018648, 0.017649, 0.014962, 0.011362);\n"
-"\n"
-"void main(){\n"
-"  vec4 colorBlur = vec4(0.);\n"
-"  for (int i=0;i<7;++i) {\n"
-"    for (int j=0;j<7;++j) {\n"
-"      vec2 offsetUV = vec2((i-3),(j-3)) * AtlasInvDim;\n"
-"      colorBlur += gaussFilter[i*7+j] * texture(TexDiffuse,pixelUV+offsetUV);\n"
-"  } }\n"
-"  color = colorBlur;\n"
+static const char * SourcePostProcess_FragMain_BlurUpPass =
+"// uniColor = { radiusH., ., combineStrength, withCombine}\n"
+"// AtlasInvDim = {1/src-width, 1/src-height}\n"
+"void main()\n"
+"{\n"
+"  float x = uniColor.x * AtlasInvDim.y;\n"
+"  float y = uniColor.x * AtlasInvDim.y;\n"
+"  // Use a 3x3 kernel around the center pixel e\n"
+"  vec3 a = texture(TexDiffuse, vec2(pixelUV.x - x, pixelUV.y + y)).rgb;\n"
+"  vec3 b = texture(TexDiffuse, vec2(pixelUV.x,     pixelUV.y + y)).rgb;\n"
+"  vec3 c = texture(TexDiffuse, vec2(pixelUV.x + x, pixelUV.y + y)).rgb;\n"
+"  vec3 d = texture(TexDiffuse, vec2(pixelUV.x - x, pixelUV.y    )).rgb;\n"
+"  vec3 e = texture(TexDiffuse, vec2(pixelUV.x,     pixelUV.y    )).rgb;\n"
+"  vec3 f = texture(TexDiffuse, vec2(pixelUV.x + x, pixelUV.y    )).rgb;\n"
+"  vec3 g = texture(TexDiffuse, vec2(pixelUV.x - x, pixelUV.y - y)).rgb;\n"
+"  vec3 h = texture(TexDiffuse, vec2(pixelUV.x,     pixelUV.y - y)).rgb;\n"
+"  vec3 i = texture(TexDiffuse, vec2(pixelUV.x + x, pixelUV.y - y)).rgb;\n"
+"  color.xyz  = e         * (4./16.)\n;"
+"  color.xyz += (b+d+f+h) * (2./16.)\n;"
+"  color.xyz += (a+c+g+i) * (1./16.)\n;"
+"  color.xyz *= 0.8f; // SRC color multiplyer (half-resolution)\n"
+"  color.w    = 0.3f; // DST color multiplyer (current-resolution)\n"
+"  if (uniColor.w != 0.f)\n"
+"  {\n"
+"    color *= uniColor.z;\n"
+"    color.xyz += texture(TexDiffuseB, pixelUV).rgb;\n"
+"  }\n"
 "}\n";
-
-static const char * SourcePostProcess_FragMain_Combine =
-"void main(){\n"
-"  vec3 colorMain = texture(TexDiffuse,pixelUV).xyz;\n"
-"  vec3 colorEff1 = texture(TexDiffuseB,pixelUV).xyz;\n"
-"  color = vec4(colorMain + colorEff1, 1.f);\n"
-"}\n";
-
-// ----------------------------------------------------------------------------
-
-static int integerPrevPowerOfTwo(int value)
-{
-  TRE_ASSERT(value > 0);
-  int count = 0;
-  while ((value = value >> 1) != 0) ++count;
-  return (0x1 << count);
-}
-
-static void computeDownChainSize(std::vector<glm::ivec2> &sizes, const int startWidth, const int startHeigth)
-{
-  TRE_ASSERT(!sizes.empty());
-  TRE_ASSERT(pow(2,sizes.size()) < startWidth);
-  TRE_ASSERT(pow(2,sizes.size()) < startHeigth);
-
-  sizes[0] = glm::ivec2(startWidth, startHeigth);
-
-  if (sizes.size() >= 2)
-  {
-    sizes[1] = glm::ivec2(integerPrevPowerOfTwo(startWidth), integerPrevPowerOfTwo(startHeigth));
-  }
-  for (uint i = 2; i < sizes.size(); ++i)
-  {
-    sizes[i] = glm::max(sizes[i - 1] / 2, glm::ivec2(1));
-  }
-};
 
 // ----------------------------------------------------------------------------
 
 bool postFX_Blur::load(const int pwidth, const int pheigth)
 {
   bool status = true;
-  TRE_ASSERT(m_Npass == m_renderDownsample.size() && m_Npass == m_renderInvScreenSize.size());
-  TRE_ASSERT( pow(2,m_renderDownsample.size()) < pwidth );
-  TRE_ASSERT( pow(2,m_renderDownsample.size()) < pheigth );
-  // Compute render size
-  std::vector<glm::ivec2> downSizes;
-  downSizes.resize(m_Npass);
-  computeDownChainSize(downSizes, pwidth, pheigth);
+
+  TRE_ASSERT(m_Npass == m_renderDownsample.size());
+  TRE_ASSERT(std::pow(2,m_renderDownsample.size()) < pwidth);
+  TRE_ASSERT(std::pow(2,m_renderDownsample.size()) < pheigth);
   // Load downsampling FBOs
+  glm::ivec2 dim = glm::ivec2(pwidth, pheigth);
   for (uint i = 0; i < m_Npass; ++i)
   {
-    status &= m_renderDownsample[i].load(downSizes[i].x, downSizes[i].y);
-    m_renderInvScreenSize[i] = glm::vec2(1.f/float(downSizes[i].x),1.f/float(downSizes[i].y));
+    status &= m_renderDownsample[i].load(dim.x, dim.y);
+    dim /= 2;
   }
+
   // Shaders
   shader::s_layout shaderLayout(shader::PRGM_2D);
   shaderLayout.hasBUF_UV = true;
   shaderLayout.hasSMP_Diffuse = true;
   shaderLayout.hasOUT_Color0 = true;
-  status &= m_shaderBrightPass.loadCustomShader(shaderLayout,
-                                              (m_isOutHDR) ? SourcePostProcess_FragMain_BrightPass_HDR : SourcePostProcess_FragMain_BrightPass_LDR,
-                                              (m_isOutHDR) ? "PostProcess_Fragment_BrightPass_HDR" : "PostProcess_Fragment_BrightPass_LDR");
-  shaderLayout.hasUNI_AtlasInvDim = true;
-  status &= m_shaderDownSample.loadCustomShader(shaderLayout,
-                                              SourcePostProcess_FragMain_Blur,
-                                              "PostProcess_Fragment_Blur");
+  shaderLayout.hasUNI_uniColor = true; // to pass info data (4 floats)
+  shaderLayout.hasUNI_AtlasInvDim = true; // to pass texture dimension (2 floats)
+  status &= m_shaderDownPass.loadCustomShader(shaderLayout, SourcePostProcess_FragMain_BlurDownPass, "PostProcess_Blur_DownPass");
+
+  shaderLayout.hasSMP_DiffuseB = true;
+  status &= m_shaderUpPass.loadCustomShader(shaderLayout, SourcePostProcess_FragMain_BlurUpPass, "PostProcess_Blur_UpPass");
+
   // Model
   const glm::vec4 pos(-1.f, -1.f, 1.f, 1.f);
   const glm::vec4 uv(0.f, 0.f, 1.f, 1.f);
   const glm::vec4 color(1.f);
-
   const std::size_t partId = m_quadFullScreen.createPart(6);
   m_quadFullScreen.fillDataRectangle(partId, 0, pos, color, uv);
-
   status &= m_quadFullScreen.loadIntoGPU();
 
-  return status;
-}
-
-// ----------------------------------------------------------------------------
-
-bool postFX_Blur::loadCombine()
-{
-  shader::s_layout shaderLayout(shader::PRGM_2D);
-  shaderLayout.hasBUF_UV = true;
-  shaderLayout.hasSMP_Diffuse = true;
-  shaderLayout.hasOUT_Color0 = true;
-  shaderLayout.hasUNI_AtlasInvDim = false;
-  shaderLayout.hasSMP_DiffuseB = true;
-  return m_shaderCombine.loadCustomShader(shaderLayout,
-                                          SourcePostProcess_FragMain_Combine,
-                                          "PostProcess_Fragment_BlurCombine");
+  return status && resize(pwidth, pheigth);
 }
 
 // ----------------------------------------------------------------------------
 
 bool postFX_Blur::resize(const int pwidth, const int pheigth)
 {
-  TRE_ASSERT(m_Npass == m_renderDownsample.size() && m_Npass == m_renderInvScreenSize.size());
-  TRE_ASSERT( pow(2,m_renderDownsample.size()) < pwidth );
-  TRE_ASSERT( pow(2,m_renderDownsample.size()) < pheigth );
-
-  if (m_renderDownsample[0].w() == pwidth && m_renderDownsample[0].h() == pheigth)
-    return true;
-
-  // Compute render size
-  std::vector<glm::ivec2> downSizes;
-  downSizes.resize(m_Npass);
-  computeDownChainSize(downSizes, pwidth, pheigth);
-
-  // Resize FBOs
+  TRE_ASSERT(m_Npass == m_renderDownsample.size());
+  TRE_ASSERT(std::pow(2,m_renderDownsample.size()) < pwidth);
+  TRE_ASSERT(std::pow(2,m_renderDownsample.size()) < pheigth);
+  glm::ivec2 dim = glm::ivec2(pwidth, pheigth);
   for (uint i = 0; i < m_Npass; ++i)
   {
-    m_renderDownsample[i].resize(downSizes[i].x, downSizes[i].y);
-    m_renderInvScreenSize[i] = glm::vec2(1.f/float(downSizes[i].x),1.f/float(downSizes[i].y));
+    if (!m_renderDownsample[i].resize(dim.x, dim.y)) return false;
+    dim /= 2;
   }
-
   return true;
 }
 
@@ -754,19 +713,17 @@ bool postFX_Blur::resize(const int pwidth, const int pheigth)
 void postFX_Blur::clear()
 {
   // FBOs
-  for (renderTarget & curFBO : m_renderDownsample)
-    curFBO.clear();
+  for (renderTarget & curFBO : m_renderDownsample) curFBO.clear();
   // Shaders
-  m_shaderBrightPass.clearShader();
-  m_shaderDownSample.clearShader();
-  m_shaderCombine.clearShader();
+  m_shaderDownPass.clearShader();
+  m_shaderUpPass.clearShader();
   // Model
   m_quadFullScreen.clearGPU();
 }
 
 // ----------------------------------------------------------------------------
 
-void postFX_Blur::processBlur(GLuint inputTextureHandle)
+void postFX_Blur::processBlur(GLuint inputTextureHandle, const bool withFinalCombine)
 {
   TRE_ASSERT(m_Npass > 0);
 
@@ -775,55 +732,60 @@ void postFX_Blur::processBlur(GLuint inputTextureHandle)
   glActiveTexture(GL_TEXTURE0);
   glBindTexture(GL_TEXTURE_2D, inputTextureHandle);
 
-  // Begin - separate
+  // Bright-pass
+  glDisable(GL_BLEND);
   {
     m_renderDownsample[0].bindForWritting();
+    glClear(GL_COLOR_BUFFER_BIT);
 
-    glUseProgram(m_shaderBrightPass.m_drawProgram);
-    glUniform1i(m_shaderBrightPass.getUniformLocation(tre::shader::TexDiffuse),0);
-    glUniform2fv(m_shaderBrightPass.getUniformLocation("paramSubMul"),1,glm::value_ptr(m_paramBrightPass));
+    glUseProgram(m_shaderDownPass.m_drawProgram);
+    glUniform1i(m_shaderDownPass.getUniformLocation(tre::shader::TexDiffuse),0);
+    glUniform4f(m_shaderDownPass.getUniformLocation(tre::shader::uniColor), m_brightAlpha, m_brightOffset, 0.f, 1.f);
+    glUniform2f(m_shaderDownPass.getUniformLocation(tre::shader::AtlasInvDim), 0.f, 0.f); // not used in the bright-pass
     m_quadFullScreen.drawcallAll(true);
   }
 
-  // Intermediate - blur it
+  // Down-pass
   if (m_Npass > 1)
   {
     glActiveTexture(GL_TEXTURE1);
 
-    glUseProgram(m_shaderDownSample.m_drawProgram);
-    glUniform1i(m_shaderDownSample.getUniformLocation(tre::shader::TexDiffuse),1);
+    glUniform1i(m_shaderDownPass.getUniformLocation(tre::shader::TexDiffuse),1);
+    glUniform4f(m_shaderDownPass.getUniformLocation(tre::shader::uniColor), 0.f, 0.f, 0.f, 0.f);
 
     for (uint ipass=1;ipass < m_Npass;++ipass)
     {
       m_renderDownsample[ipass].bindForWritting();
-
-      glUniform2fv(m_shaderDownSample.getUniformLocation(tre::shader::AtlasInvDim),1,glm::value_ptr(m_renderInvScreenSize[ipass]));
-
       glBindTexture(GL_TEXTURE_2D,m_renderDownsample[ipass-1].colorHandle());
+      glUniform2f(m_shaderDownPass.getUniformLocation(tre::shader::AtlasInvDim), 1.f / m_renderDownsample[ipass-1].w(), 1.f / m_renderDownsample[ipass-1].h());
       m_quadFullScreen.drawcallAll(false);
     }
   }
+
+  // Up-pass
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_ONE, GL_SRC_ALPHA); // Allow to pre-multiply always present color by the output alpha.
+  {
+    glUseProgram(m_shaderUpPass.m_drawProgram);
+    glUniform1i(m_shaderUpPass.getUniformLocation(tre::shader::TexDiffuse),1);
+    glUniform1i(m_shaderUpPass.getUniformLocation(tre::shader::TexDiffuseB),0);
+
+    for (uint ipass = m_Npass; ipass-- != 1;)
+    {
+      m_renderDownsample[ipass - 1].bindForWritting();
+      glBindTexture(GL_TEXTURE_2D,m_renderDownsample[ipass].colorHandle());
+
+      const bool combineWithInput = (withFinalCombine && ipass == 1);
+
+      glUniform4f(m_shaderUpPass.getUniformLocation(tre::shader::uniColor), 1.f, 0.f, m_combineStrength, combineWithInput ? 1.f : 0.f);
+      glUniform2f(m_shaderDownPass.getUniformLocation(tre::shader::AtlasInvDim), 1.f / m_renderDownsample[ipass].w(), 1.f / m_renderDownsample[ipass].h());
+      m_quadFullScreen.drawcallAll(false);
+    }
+  }
+
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); // restore the default blending function.
 }
 
-// ----------------------------------------------------------------------------
-
-void postFX_Blur::renderBlur(GLuint inputTextureHandle)
-{
-  TRE_ASSERT(m_shaderCombine.m_drawProgram != 0);
-
-  // Final
-  glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_2D,inputTextureHandle);
-
-  glActiveTexture(GL_TEXTURE1);
-  glBindTexture(GL_TEXTURE_2D, m_renderDownsample.back().colorHandle());
-
-  glUseProgram(m_shaderCombine.m_drawProgram);
-  glUniform1i(m_shaderCombine.getUniformLocation(tre::shader::TexDiffuse),0);
-  glUniform1i(m_shaderCombine.getUniformLocation(tre::shader::TexDiffuseB),1);
-
-  m_quadFullScreen.drawcallAll(true);
-}
 // ============================================================================
 
 static const char * SourcePostProcess_FragMain_ToneMapping =
@@ -859,7 +821,7 @@ bool postFX_ToneMapping::load()
   shaderLayout.hasBUF_UV = true;
   shaderLayout.hasSMP_Diffuse = true;
   shaderLayout.hasOUT_Color0 = true;
-  result &= m_shaderToneMap.loadCustomShader(shaderLayout,SourcePostProcess_FragMain_ToneMapping,"PostProcess_Fragment_ToneMapping");
+  result &= m_shaderToneMap.loadCustomShader(shaderLayout,SourcePostProcess_FragMain_ToneMapping,"PostProcess_ToneMapping");
   // Model
   const glm::vec4 pos(-1.f, -1.f, 1.f, 1.f);
   const glm::vec4 uv(0.f, 0.f, 1.f, 1.f);

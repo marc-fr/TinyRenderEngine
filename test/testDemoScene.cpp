@@ -570,14 +570,8 @@ int main(int argc, char **argv)
   tre::renderTarget rtResolveMSAA(tre::renderTarget::RT_COLOR_AND_DEPTH | tre::renderTarget::RT_SAMPLABLE | tre::renderTarget::RT_COLOR_HDR);
   rtResolveMSAA.load(myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
 
-  tre::postFX_Blur postEffectBlur(3, false);
-  postEffectBlur.set_threshold(0.95f);
-  postEffectBlur.set_multiplier(2.f);
+  tre::postFX_Blur postEffectBlur(3, true);
   postEffectBlur.load(myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
-  postEffectBlur.loadCombine();
-
-  tre::renderTarget rtAfterBlur(tre::renderTarget::RT_COLOR | tre::renderTarget::RT_COLOR_SAMPLABLE | tre::renderTarget::RT_COLOR_HDR);
-  rtAfterBlur.load(myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
 
   tre::postFX_ToneMapping postEffectToneMapping;
   postEffectToneMapping.set_gamma(2.2f);
@@ -647,7 +641,6 @@ int main(int argc, char **argv)
         rtMultisampled.resize(myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
         rtResolveMSAA.resize(myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
         postEffectBlur.resize(myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
-        rtAfterBlur.resize(myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
         tre::profiler_updateCameraInfo(myWindow.m_matProjection2D, myWindow.m_resolutioncurrent);
 
         {
@@ -1031,12 +1024,8 @@ int main(int argc, char **argv)
 
       if (withBlur)
       {
-        postEffectBlur.processBlur(rtResolveMSAA.colorHandle());
-
-        rtAfterBlur.bindForWritting();
-        postEffectBlur.renderBlur(rtResolveMSAA.colorHandle());
-
-        postEffectToneMapping.resolveToneMapping(rtAfterBlur.colorHandle(), myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
+        postEffectBlur.processBlur(rtResolveMSAA.colorHandle(), true);
+        postEffectToneMapping.resolveToneMapping(postEffectBlur.get_blurTextureUnit(), myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
       }
       else
       {
@@ -1054,17 +1043,18 @@ int main(int argc, char **argv)
       glBindFramebuffer(GL_FRAMEBUFFER, 0);
       glViewport(0, 0, myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
 
-      glEnable(GL_BLEND);
       glDisable(GL_DEPTH_TEST);
       glDepthMask(GL_FALSE);
 
       if (showMaps)
       {
+        glDisable(GL_BLEND);
         sunShadow_debug.draw(myWindow.m_matProjection2D);
       }
 
       if (true)
       {
+        glEnable(GL_BLEND);
         char txtFPS[128];
         snprintf(txtFPS, 127, "%03d fps (Work-elapsed = %03d ms, Swap-latency = %03d ms)",
                  int(1.f/myTimings.frametime),
@@ -1099,6 +1089,7 @@ int main(int argc, char **argv)
 
       if (showMaps && withBlur)
       {
+        glDisable(GL_BLEND);
         glUseProgram(shaderText2D.m_drawProgram);
         shaderText2D.setUniformMatrix(myWindow.m_matProjection2D);
         glUniform1i(shaderText2D.getUniformLocation(tre::shader::TexDiffuse),3);
@@ -1114,6 +1105,8 @@ int main(int argc, char **argv)
         glBindTexture(GL_TEXTURE_2D,postEffectBlur.get_blurTextureUnit(2));
         worldHUDModel.drawcall(7, 1, false);
       }
+
+      glEnable(GL_BLEND);
 
       tre::IsOpenGLok("UI render pass - draw UI");
     }
@@ -1173,7 +1166,6 @@ int main(int argc, char **argv)
   postEffectBlur.clear();
   rtMultisampled.clear();
   rtResolveMSAA.clear();
-  rtAfterBlur.clear();
 
   myWindow.OpenGLQuit();
   myWindow.SDLImageQuit();
