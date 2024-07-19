@@ -709,8 +709,9 @@ void texture::set_parameters()
   glTexParameteri(target,GL_TEXTURE_WRAP_T,GL_REPEAT);
   if (useMagFilterNearest()) glTexParameteri(target,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
   else                       glTexParameteri(target,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
-  if (useMipmap()) glTexParameteri(target,GL_TEXTURE_MIN_FILTER,GL_LINEAR_MIPMAP_LINEAR);
-  else             glTexParameteri(target,GL_TEXTURE_MIN_FILTER,GL_LINEAR);
+  if (useMipmap())                glTexParameteri(target,GL_TEXTURE_MIN_FILTER,GL_LINEAR_MIPMAP_LINEAR);
+  else if (useMagFilterNearest()) glTexParameteri(target,GL_TEXTURE_MIN_FILTER,GL_NEAREST);
+  else                            glTexParameteri(target,GL_TEXTURE_MIN_FILTER,GL_LINEAR);
   if (m_components==1)
   {
 #ifdef TRE_OPENGL_ES
