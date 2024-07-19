@@ -57,13 +57,13 @@ public:
                          const std::vector<glm::vec3> & pts);
 
   /// Check penetration of a point and a sphere (center, radius) => no contact info
-  static bool point_sphere(const glm::vec3 & point,
-                           const glm::vec3 center, const float radius);
+  static bool point_sphere(const glm::vec3 &point,
+                           const glm::vec3 &center, const float radius);
 
   /// Check penetration of a point and a sphere (center, radius)
   static bool point_sphere(s_contact3D & cntSphere,
-                           const glm::vec3 & point,
-                           const glm::vec3 center, const float radius);
+                           const glm::vec3 &point,
+                           const glm::vec3 &center, const float radius);
 
   /// @}
 
@@ -152,7 +152,7 @@ public:
   /// Check if the ray (origin, direction) hits the mesh [mesh's skin: list of triangles (warning: in-face culling)]. Returns true when the ray hits the volume.
   static bool raytrace_skin(s_contact3D & hitInfo,
                             const glm::vec3 & origin, const glm::vec3 & direction,
-                            const std::vector<glm::vec3> pts);
+                            const std::vector<glm::vec3> &pts);
 
   /// @}
 };

@@ -14,7 +14,7 @@ inline static float tetra_volume(const glm::vec3 &ptA, const glm::vec3 &ptB, con
 }
 
 /// Compute the barycenter of the convex mesh [mesh's skin: list of triangles]. Also compute the volume.
-static void skin_barycenter(const std::vector<glm::vec3> pts, glm::vec3 &center, float &volume)
+static void skin_barycenter(const std::vector<glm::vec3> &pts, glm::vec3 &center, float &volume)
 {
   TRE_ASSERT(pts.size() % 3 == 0);
   center = glm::vec3(0.f);
@@ -243,8 +243,8 @@ bool s_contact3D::point_skin(s_contact3D & cntSkin,
 
 // ----------------------------------------------------------------------------
 
-bool s_contact3D::point_sphere(const glm::vec3 & point,
-                               const glm::vec3 center, const float radius)
+bool s_contact3D::point_sphere(const glm::vec3 &point,
+                               const glm::vec3 &center, const float radius)
 {
   return glm::length(point - center) <= radius;
 }
@@ -252,8 +252,8 @@ bool s_contact3D::point_sphere(const glm::vec3 & point,
 // ----------------------------------------------------------------------------
 
 bool s_contact3D::point_sphere(s_contact3D & cntSphere,
-                               const glm::vec3 & point,
-                               const glm::vec3 center, const float radius)
+                               const glm::vec3 &point,
+                               const glm::vec3 &center, const float radius)
 {
   const glm::vec3 vCP = point - center;
   const float     dCP = glm::length(vCP);
@@ -606,7 +606,7 @@ bool s_contact3D::raytrace_sphere(s_contact3D & hitInfo,
 
 bool s_contact3D::raytrace_skin(s_contact3D & hitInfo,
                                 const glm::vec3 &origin, const glm::vec3 &direction,
-                                const std::vector<glm::vec3> pts)
+                                const std::vector<glm::vec3> &pts)
 {
   TRE_ASSERT((fabsf(glm::length(direction) - 1.f)) < 1.e-6f);
   TRE_ASSERT(pts.size() % 3 == 0);
