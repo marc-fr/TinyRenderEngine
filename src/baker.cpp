@@ -194,8 +194,7 @@ bool baker::readBlock(texture *t)
 
 bool baker::readBlock(font *f)
 {
-  f->read(getBlockReadAndAdvance());
-  return true;
+  return f->read(getBlockReadAndAdvance());
 }
 
 bool baker::writeBlock(const soundData::s_RawSDL *s)
