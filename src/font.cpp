@@ -83,7 +83,7 @@ font::s_fontCache font::loadFromTTF(const std::string &filename, const uint font
     return ret;
   }
 
-  const uint texSize = (2 + (fontSizePixel * 10) / 16) * 16;
+  const uint texSize = (2 + (fontSizePixel * 9) / 16) * 16; // ad-hoc formula
   ret.m_surface = SDL_CreateRGBSurface(0, texSize, texSize, 32, 0, 0, 0, 0);
   if (ret.m_surface == nullptr)
   {
@@ -106,7 +106,7 @@ font::s_fontCache font::loadFromTTF(const std::string &filename, const uint font
 
     uint unicode = 32;
 
-    while (unicode < 255)
+    while (unicode < 256)
     {
       // Generate bitmap
       if (FT_Load_Char(face, unicode, FT_LOAD_NO_BITMAP) == 0 &&
@@ -157,7 +157,10 @@ font::s_fontCache font::loadFromTTF(const std::string &filename, const uint font
       //}
       // Advance
       ++unicode;
-      if (unicode == 127) unicode = 192;
+      if      (unicode == 127) unicode = 176; // skip until: degree sign
+      else if (unicode == 177) unicode = 181; // skip until: micro sign
+      else if (unicode == 182) unicode = 223; // skip until: eszett (German)
+      else if (unicode == 247) ++unicode; // skip the math division sign
     }
   }
 
