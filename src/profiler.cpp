@@ -120,10 +120,10 @@ void profiler::scope::attach(profiler *owner)
   if (m_color.w == 0.f)
   {
     glm::vec4 directParentColor = m_parent != nullptr ? m_parent->m_color : glm::vec4(0.2f, 0.2f, 1.f, 1.f);
-    const uint nLevel = m_path.size() - 1;
+    const std::size_t nLevel = m_path.size() - 1;
     uint nRecSameParent = 0;
     {
-      uint iRec = ctx->m_records.size();
+      std::size_t iRec = ctx->m_records.size();
       while (iRec-- > 0)
       {
         if (ctx->m_records[iRec].isSamePath(m_path, 1))
@@ -438,9 +438,9 @@ void profiler::compute_data()
   m_model.resizePart(m_partLine, (nThread + 1 + nTime + 2 + m_collectedRecords.size() + 3 + m_timeOverFrames.size()) * 2);
   m_model.colorizePart(m_partText, glm::vec4(0.f));
 
-  uint offsetLine = 0;
-  uint offsetTri = 0;
-  uint offsetText = 0;
+  std::size_t offsetLine = 0;
+  std::size_t offsetTri = 0;
+  std::size_t offsetText = 0;
 
   // computing scales
   {

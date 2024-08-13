@@ -326,7 +326,8 @@ bool soundData::s_Opus::loadFromOPUS(const std::string &filename)
 
     if ((oggPage.ogg_headerType & 0x4) != 0)
     {
-      m_nSamples = oggPage.ogg_granPos - opusH_preSkip;
+      TRE_ASSERT(oggPage.ogg_granPos <= std::numeric_limits<uint>::max());
+      m_nSamples = uint(oggPage.ogg_granPos - opusH_preSkip);
       break; // last page
     }
   }
@@ -432,7 +433,7 @@ bool soundData::s_Opus::write(std::ostream &stream) const
 {
   // header
   uint header[8];
-  header[0] = SOUND_BIN_VERSION;
+  header[0] = 0x003;
   header[1] = m_nSamples;
   header[2] = m_stereo ? 2 : 1;
   header[3] = 1; // Opus
@@ -446,9 +447,9 @@ bool soundData::s_Opus::write(std::ostream &stream) const
   for (const s_block &b : m_blokcs)
   {
     stream.write(reinterpret_cast<const char*>(&b.m_sampleStart), sizeof(int));
-    unsigned dsize = b.m_data.size();
+    uint dsize = uint(b.m_data.size());
     TRE_ASSERT(dsize != 0);
-    stream.write(reinterpret_cast<const char*>(&dsize), sizeof(unsigned));
+    stream.write(reinterpret_cast<const char*>(&dsize), sizeof(uint));
     stream.write(reinterpret_cast<const char*>(b.m_data.data()), dsize);
   }
 
@@ -544,11 +545,11 @@ bool soundSampler::s_sampler_Opus::decodeSlot(const soundData::s_Opus &data, uns
   if (slot == m_decompressedSlot)
     return true;
 
-  const int blockSampleCount = opus_packet_get_nb_samples(data.m_blokcs[slot].m_data.data(), data.m_blokcs[slot].m_data.size(), soundData::s_Opus::m_freq);
+  const int blockSampleCount = opus_packet_get_nb_samples(data.m_blokcs[slot].m_data.data(), opus_int32(data.m_blokcs[slot].m_data.size()), soundData::s_Opus::m_freq);
   if (blockSampleCount < 0 || blockSampleCount > 2880)
     return false;
 
-  const int ret = opus_decode(m_decoder, data.m_blokcs[slot].m_data.data(), data.m_blokcs[slot].m_data.size(), m_decompressedBuffer.data(), blockSampleCount, 0);
+  const int ret = opus_decode(m_decoder, data.m_blokcs[slot].m_data.data(), opus_int32(data.m_blokcs[slot].m_data.size()), m_decompressedBuffer.data(), blockSampleCount, 0);
   m_decompressedSlot = slot;
   m_decompressedCount = blockSampleCount;
 

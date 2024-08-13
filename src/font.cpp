@@ -138,13 +138,13 @@ font::s_fontCache font::loadFromTTF(const std::string &filename, const uint font
         }
         // load fontmap (keep pixel-unit for now)
         s_charInfo &charInfo = ret.m_map.m_charMap[unicode];
-        charInfo.xadvance = glyph->advance.x / 64;
+        charInfo.xadvance = float(glyph->advance.x / 64.f);
         charInfo.cax = float(posGlyph.x);
         charInfo.cay = float(posGlyph.y);
         charInfo.cbx = float(posGlyph.x + sizeGlyph.x);
         charInfo.cby = float(posGlyph.y + sizeGlyph.y);
-        charInfo.xoffs = glyph->bitmap_left;
-        charInfo.yoffs = int(fontSizePixel * (1.f + faceDescent)) - int(glyph->bitmap_top);
+        charInfo.xoffs = float(glyph->bitmap_left);
+        charInfo.yoffs = float(fontSizePixel * (1 + faceDescent) - glyph->bitmap_top);
         charInfo.flag = 1;
         // advance (part 2)
         if (posMax.x < posGlyph.x + sizeGlyph.x) posMax.x = posGlyph.x + sizeGlyph.x + 2;
@@ -320,8 +320,8 @@ font::s_fontCache font::loadProceduralLed(const uint ptSize, const uint ptMargin
     const uint px = spanW * (ic % 8);
     const uint py = spanH * (ic / 8);
 
-    charInfo.cax = px;
-    charInfo.cay = py;
+    charInfo.cax = float(px);
+    charInfo.cay = float(py);
     charInfo.cbx = charInfo.cax + gliphSize.x;
     charInfo.cby = charInfo.cay + gliphSize.y;
     charInfo.xadvance = spanSize.x + float(_kLED_gliph[ic].m_xAdvanceOffset) * ptSize;
@@ -558,7 +558,7 @@ font::s_fontMap font::_readFNT(const std::string &fileFNT)
   {
     int lineHegiht;
     sscanf(line.data(),"common lineHeight=%d",&lineHegiht);
-    fontMap.m_hline = lineHegiht;
+    fontMap.m_hline = float(lineHegiht);
   }
   std::getline(myFile,line); //header page
   std::getline(myFile,line); //header chars
@@ -569,13 +569,13 @@ font::s_fontMap font::_readFNT(const std::string &fileFNT)
     sscanf(line.data(),"char id=%d x=%d y=%d width=%d height=%d xoffset=%d yoffset=%d xadvance=%d",
                             &id,  &x,  &y,  &wp,     &hp,      &xoffs,    &yoffs,    &xadvance);
     s_charInfo tmpvalue;
-    tmpvalue.cax =  x;
-    tmpvalue.cbx =  (x+wp);
-    tmpvalue.cay =  y;
-    tmpvalue.cby =  (y+hp);
-    tmpvalue.xoffs = xoffs;
-    tmpvalue.yoffs = yoffs;
-    tmpvalue.xadvance = xadvance;
+    tmpvalue.cax =  float(x);
+    tmpvalue.cbx =  float(x+wp);
+    tmpvalue.cay =  float(y);
+    tmpvalue.cby =  float(y+hp);
+    tmpvalue.xoffs = float(xoffs);
+    tmpvalue.yoffs = float(yoffs);
+    tmpvalue.xadvance = float(xadvance);
     if (id<0 || id>=128) continue;
     tmpvalue.flag = (id <= 32) ? 2 : 1;
     fontMap.m_charMap[id] = tmpvalue;

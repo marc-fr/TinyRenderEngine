@@ -452,8 +452,7 @@ void gizmo::_applyMouseMouve(const glm::ivec2 &mouseScreenPosition)
     }
     else if (projAxisX || projAxisY || projAxisZ)
     {
-      const std::size_t  axisIdx = projAxisZ ? 2 : (projAxisY ? 1 : 0);
-      const glm::vec3 axis = frame[axisIdx];
+      const glm::vec3 axis = frame[projAxisZ ? 2 : (projAxisY ? 1 : 0)];
 #if 1 // pre-2D-Projection (not perfect but better than nothing)
       glm::vec3   newMouseDirection = mouseDirection;
       const glm::vec2 gizmoScreenPosition = projectPointOnScreen(m_transformPrev[3], m_PV, m_viewportSize);

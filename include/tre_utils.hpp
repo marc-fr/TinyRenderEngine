@@ -49,6 +49,33 @@ void chunkVector<_T, chunkSize>::push_back(_T &&element)
 
 // ============================================================================
 
+template<typename _T, std::size_t capacity>
+void arrayCounted<_T, capacity>::resize(std::size_t size)
+{
+  TRE_ASSERT(size < capacity);
+  m_size = size;
+}
+
+// ----------------------------------------------------------------------------
+
+template<typename _T, std::size_t capacity>
+void arrayCounted<_T, capacity>::push_back(const _T& element)
+{
+  resize(m_size + 1);
+  this->operator[](m_size - 1) = element;
+}
+
+// ----------------------------------------------------------------------------
+
+template<typename _T, std::size_t capacity>
+void arrayCounted<_T, capacity>::push_back(_T&& element)
+{
+  resize(m_size + 1);
+  this->operator[](m_size - 1) = std::move(element);
+}
+
+// ============================================================================
+
 template<class _T> void sortInsertion(tre::span<_T> array)
 {
   for (size_t i = 1, iend = array.size(); i < iend; ++i)
@@ -168,9 +195,8 @@ template<class _T> static void _sortQuick_permutation(tre::span<_T> &array, tre:
 
 template<class _T> void sortQuick_permutation(tre::span<_T> array, tre::span<uint> permut)
 {
-  const uint n = array.size();
-  TRE_ASSERT(permut.size() == n);
-  _sortQuick_permutation<_T>(array, permut, 0, n);
+  TRE_ASSERT(permut.size() == array.size());
+  _sortQuick_permutation<_T>(array, permut, 0, array.size());
 }
 
 // ----------------------------------------------------------------------------

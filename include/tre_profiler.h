@@ -165,9 +165,9 @@ private:
   shader        *m_shader = nullptr;
   bool          m_shaderOwner = true;
 
-  uint m_partTri;
-  uint m_partLine;
-  uint m_partText;
+  std::size_t m_partTri;
+  std::size_t m_partLine;
+  std::size_t m_partText;
 
   // geometry data
   const float m_xTitle   = 0.f;

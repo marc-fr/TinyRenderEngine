@@ -59,29 +59,28 @@ static tre::font          font;
 static tre::modelRaw2D    meshFps;
 #endif
 
+template <std::size_t _size>
 struct s_particleBatch
 {
 private:
-  std::vector<glm::vec4> m_pos; // 3D-position + initial-rotation
-  std::vector<glm::vec4> m_color;
-  std::vector<float>     m_life;
-  std::vector<float>     m_lifeEnd;
+  std::array<glm::vec4, _size> m_pos; // 3D-position + initial-rotation
+  std::array<glm::vec4, _size> m_color;
+  std::array<float, _size>     m_life;
+  std::array<float, _size>     m_lifeEnd;
 
 public:
-  std::size_t size() const { return m_pos.size(); }
+  std::size_t size() const { return _size; }
 
-  void resize(std::size_t newSize)
+  void reset()
   {
-    m_pos.resize(newSize);
-    m_color.resize(newSize);
-    m_life.resize(newSize, 1.f);
-    m_lifeEnd.resize(newSize, 0.f);
+    m_life.fill(1.f);
+    m_lifeEnd.fill(0.f);
   }
 
   void update(float dt)
   {
     static const float invRandMax = 1.f / float(RAND_MAX);
-    for (std::size_t i = 0; i < size(); ++i)
+    for (std::size_t i = 0; i < _size; ++i)
     {
       if ((m_life[i] += dt) > m_lifeEnd[i])
       {
@@ -111,7 +110,7 @@ public:
   }
 };
 
-static s_particleBatch particleBatch;
+static s_particleBatch<1024> particleBatch;
 
 // ----------------------------------------------------------------------------
 
@@ -230,7 +229,7 @@ static int app_init()
 
   // Particles
 
-  particleBatch.resize(1024);
+  particleBatch.reset();
 
   // End Init
 

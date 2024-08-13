@@ -100,7 +100,6 @@ public:
      private:
       _T *m_ptr;
     };
-
     iterator begin() noexcept { return iterator(data()); }
     iterator end() noexcept { return iterator(dataEnd()); }
 
@@ -116,7 +115,6 @@ public:
      private:
       const _T *m_ptr;
     };
-
     const_iterator begin() const noexcept { return const_iterator(data()); }
     const_iterator end() const noexcept { return const_iterator(dataEnd()); }
 
@@ -154,8 +152,65 @@ public:
   void        resize(std::size_t size);
   void        push_back(const _T &element);
   void        push_back(_T &&element);
+  void        pop_back() { TRE_ASSERT(m_size != 0); --m_size; }
 
-  // TODO: iterator ?
+  class iterator
+  {
+  public:
+    iterator(const chunkVector<_T, chunkSize> &self, std::size_t index) : m_self(self), m_index(index) {}
+    inline iterator& operator++() { ++m_index; return *this; }
+    inline iterator  operator++(int) { return iterator(m_self, m_index++); }
+    inline bool      operator==(const iterator& other) const { return m_index == other.m_index; }
+    inline bool      operator!=(const iterator& other) const { return m_index != other.m_index; }
+    inline _T& operator*() { return m_self[m_index]; }
+  private:
+    const chunkVector<_T, chunkSize> &m_self;
+    std::size_t                       m_index;
+  };
+  iterator begin() noexcept { return iterator(this, 0); }
+  iterator end() noexcept { return iterator(this, m_size); }
+
+  class const_iterator
+  {
+  public:
+    const_iterator(const chunkVector<_T, chunkSize>& self, std::size_t index) : m_self(self), m_index(index) {}
+    inline const_iterator& operator++() { ++m_index; return *this; }
+    inline const_iterator  operator++(int) { return const_iterator(m_self, m_index++); }
+    inline bool      operator==(const const_iterator& other) const { return m_index == other.m_index; }
+    inline bool      operator!=(const const_iterator& other) const { return m_index != other.m_index; }
+    inline _T& operator*() { return m_self[m_index]; }
+  private:
+    const chunkVector<_T, chunkSize>& m_self;
+    std::size_t                       m_index;
+  };
+  iterator begin() const noexcept { return const_iterator(this, 0); }
+  iterator end() const noexcept { return const_iterator(this, m_size); }
+};
+
+/**
+ * @brief class arrayCounted
+ * This extends the std::array with a dynamic size.
+ * The size cannot exceed the given capacity.
+ */
+template<typename _T, std::size_t capacity>
+class arrayCounted : public std::array<_T, capacity>
+{
+private:
+  std::size_t m_sizeCounted;
+
+public:
+  arrayCounted() : array(), m_sizeCounted(0) {}
+
+  bool        emptyCounted() const noexcept { return m_sizeCounted == 0; }
+  std::size_t sizeCounted() const noexcept { return m_sizeCounted; }
+
+  void        clear() noexcept { resize(0); } ///< clear but do not free memory
+  void        resize(std::size_t size);
+  void        push_back(const _T& element);
+  void        push_back(_T&& element);
+
+  iterator end() noexcept { return begin() + m_sizeCounted; } // this overwrites the std::array<>::end()
+  const_iterator end() const noexcept { return begin() + m_sizeCounted; } // this overwrites the std::array<>::end()
 };
 
 /// @}

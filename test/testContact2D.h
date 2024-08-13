@@ -24,7 +24,7 @@ static const glm::vec4 magenta   = glm::vec4(1.f, 0.f, 1.f, 1.f);
 class sceneObjectBase
 {
 public:
-  sceneObjectBase(tre::modelRaw2D *model, unsigned partSize);
+  sceneObjectBase(tre::modelRaw2D *model, std::size_t partSize);
   virtual void treatEvent(glm::vec2 mousePos, bool mouseLeft, bool &hasSelection) = 0;
   virtual void updateForDraw() = 0;
 
@@ -36,7 +36,7 @@ public:
 protected:
   void treatEventPt(glm::vec2 mousePos, bool mouseLeft, glm::vec2 &pt, bool &isSelected, bool &isHovered, bool &hasSelection);
   tre::modelRaw2D *m_model;
-  unsigned         m_part;
+  std::size_t      m_part;
 };
 
 // ----------------------------------------------------------------------------

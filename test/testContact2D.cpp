@@ -12,7 +12,7 @@
 
 // Scene implementation =======================================================
 
-sceneObjectBase::sceneObjectBase(tre::modelRaw2D *model, unsigned partSize)
+sceneObjectBase::sceneObjectBase(tre::modelRaw2D *model, std::size_t partSize)
 {
   m_model = model;
   m_part = model->createPart(partSize);
@@ -282,8 +282,8 @@ int main(int argc, char **argv)
   shaderSolid.loadShader(tre::shader::PRGM_2D, tre::shader::PRGM_COLOR);
 
   // Scene
-  tre::modelRaw2D               meshDraw;
-  std::vector<sceneObjectBase*> sceneObjects;
+  tre::modelRaw2D                         meshDraw;
+  tre::arrayCounted<sceneObjectBase*, 64> sceneObjects;
 
   sceneObjectPoint objectPoint(&meshDraw, glm::vec2(1.f, 0.f));
   sceneObjects.push_back(&objectPoint);
@@ -336,7 +336,7 @@ int main(int argc, char **argv)
 
   // End scene creation
 
-  const unsigned partCnt = meshDraw.createPart(128);
+  const std::size_t partCnt = meshDraw.createPart(128);
 
   meshDraw.loadIntoGPU();
 
