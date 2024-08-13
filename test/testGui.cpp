@@ -25,8 +25,8 @@ struct s_sceneOption
   float m_ui_backalpha = 0.5f; // main window's background transparency
   float m_ui_size = 0.95f;     // main window's font-size
   float m_ui_saturation = 0.f; // main window's color saturation (color masking)
-  float m_ui_cellMargin = 1.f; // main window's cells margin
-  float m_ui_col0Spacing = 0.f;// main window's spacing between column 0 and 1
+  int   m_ui_cellMargin = 1;   // main window's cells margin
+  int   m_ui_col0Spacing = 0;  // main window's spacing between column 0 and 1
   uint  m_ui_language = 0;     // main window's language
 };
 
@@ -196,7 +196,7 @@ bool s_uiManager::load(const s_loadArgs &args)
     };
 
     menuWmain->set_layoutGrid(12,5);
-    menuWmain->set_cellMargin(tre::ui::s_size(m_sceneOption.m_ui_cellMargin, tre::ui::SIZE_PIXEL));
+    menuWmain->set_cellMargin(tre::ui::s_size(float(m_sceneOption.m_ui_cellMargin), tre::ui::SIZE_PIXEL));
 
     const std::size_t pic1_Slot = menu.addTexture(args.picture1);
 
@@ -218,6 +218,7 @@ bool s_uiManager::load(const s_loadArgs &args)
     menuWmain->create_widgetBar(3,1)->set_withthreshold(true)->set_valuethreshold(0.5f)->set_withtext(true)->set_value(0.4f);
     menuWmain->create_widgetBar(3,2)->set_withthreshold(true)->set_valuethreshold(0.5f)->set_withtext(true)->set_value(0.4f)->set_isactive(true);
     menuWmain->create_widgetBar(3,3)->set_withthreshold(true)->set_valuethreshold(0.5f)->set_withtext(true)->set_value(0.4f)->set_isactive(true)->set_iseditable(true);
+    menuWmain->get_widgetBar(3,3)->wcb_valuePrinter = [](float v) { std::string t(' ', 16); std::snprintf(const_cast<char*>(t.data()), 15, "e:%.1f", v); return t; };
 
     menuWmain->create_widgetText(4,0)->set_text("- widget Slider:");
     menuWmain->create_widgetSlider(4,1)->set_value(0.3f);
@@ -328,21 +329,21 @@ bool s_uiManager::load(const s_loadArgs &args)
     };
 
     menuWoption->create_widgetText(5,0)->set_text("cell margin (in Pixel)");
-    tre::ui::widget *wCellMargin = menuWoption->create_widgetBar(5,1)->set_value(m_sceneOption.m_ui_cellMargin)->set_valuemin(0.f)->set_valuemax(16.f)->set_snapInterval(1.f)->set_isactive(true)->set_iseditable(true);
+    tre::ui::widget *wCellMargin = menuWoption->create_widgetSliderInt(5,1)->set_value(m_sceneOption.m_ui_cellMargin)->set_valuemin(0)->set_valuemax(16)->set_isactive(true)->set_iseditable(true);
     wCellMargin->wcb_modified_ongoing = [this] (tre::ui::widget *self)
     {
-      this->m_sceneOption.m_ui_cellMargin = static_cast<tre::ui::widgetBar*>(self)->get_value();
-      if (this->menuWmain != nullptr) this->menuWmain->set_cellMargin(tre::ui::s_size(this->m_sceneOption.m_ui_cellMargin, tre::ui::SIZE_PIXEL));
-      if (this->hudWmain != nullptr) this->hudWmain->set_cellMargin(tre::ui::s_size(this->m_sceneOption.m_ui_cellMargin, tre::ui::SIZE_PIXEL));
-      if (this->hudWfixedSize != nullptr) this->hudWfixedSize->set_cellMargin(tre::ui::s_size(this->m_sceneOption.m_ui_cellMargin, tre::ui::SIZE_PIXEL));
+      this->m_sceneOption.m_ui_cellMargin = static_cast<tre::ui::widgetSliderInt*>(self)->get_value();
+      if (this->menuWmain != nullptr) this->menuWmain->set_cellMargin(tre::ui::s_size(float(this->m_sceneOption.m_ui_cellMargin), tre::ui::SIZE_PIXEL));
+      if (this->hudWmain != nullptr) this->hudWmain->set_cellMargin(tre::ui::s_size(float(this->m_sceneOption.m_ui_cellMargin), tre::ui::SIZE_PIXEL));
+      if (this->hudWfixedSize != nullptr) this->hudWfixedSize->set_cellMargin(tre::ui::s_size(float(this->m_sceneOption.m_ui_cellMargin), tre::ui::SIZE_PIXEL));
     };
 
     menuWoption->create_widgetText(6,0)->set_text("col-0 spacing (in Pixel)");
-    tre::ui::widget *wCol0Spacing = menuWoption->create_widgetBar(6,1)->set_value(m_sceneOption.m_ui_col0Spacing)->set_valuemin(0.f)->set_valuemax(16.f)->set_snapInterval(1.f)->set_isactive(true)->set_iseditable(true);
+    tre::ui::widget *wCol0Spacing = menuWoption->create_widgetSliderInt(6,1)->set_value(m_sceneOption.m_ui_col0Spacing)->set_valuemin(0)->set_valuemax(16)->set_isactive(true)->set_iseditable(true);
     wCol0Spacing->wcb_modified_ongoing = [this] (tre::ui::widget *self)
     {
-      this->m_sceneOption.m_ui_col0Spacing = static_cast<tre::ui::widgetBar*>(self)->get_value();
-      if (this->menuWmain != nullptr) this->menuWmain->set_colSpacement(0, tre::ui::s_size(this->m_sceneOption.m_ui_col0Spacing, tre::ui::SIZE_PIXEL), false);
+      this->m_sceneOption.m_ui_col0Spacing = static_cast<tre::ui::widgetSliderInt*>(self)->get_value();
+      if (this->menuWmain != nullptr) this->menuWmain->set_colSpacement(0, tre::ui::s_size(float(this->m_sceneOption.m_ui_col0Spacing), tre::ui::SIZE_PIXEL), false);
     };
 
     menuWoption->create_widgetText(7,0, 1,2)->set_text("Scene controls")->set_fontsizeModifier(1.1f)->set_color(glm::vec4(1.f, 0.f, 1.f, 1.f));
@@ -546,8 +547,8 @@ bool s_uiManager::load(const s_loadArgs &args)
     hudWmain->create_widgetText(0, 0)->set_text("Control bar");
     hudWmain->create_widgetBar(0,1)->set_value(0.2f)->set_valuethreshold(0.3f)->set_withthreshold(true)->set_iseditable(true)->set_isactive(true);
 
-    hudWmain->create_widgetText(1, 0)->set_text("Control bar 2");
-    hudWmain->create_widgetBarZero(1,1)->set_value(0.4f)->set_valuemin(-0.8f)->set_iseditable(true)->set_isactive(true);
+    hudWmain->create_widgetText(1, 0)->set_text("Control slider");
+    hudWmain->create_widgetSlider(1,1)->set_value(0.4f)->set_valuemin(-0.8f)->set_iseditable(true)->set_isactive(true);
 
     hudWfixedSize = hud.create_window();
     TRE_ASSERT(hudWfixedSize != nullptr);
@@ -569,8 +570,8 @@ bool s_uiManager::load(const s_loadArgs &args)
     hudWfixedSize->create_widgetText(0, 0)->set_text("Control bar");
     hudWfixedSize->create_widgetBar(0,1)->set_value(0.2f)->set_valuethreshold(0.3f)->set_withthreshold(true)->set_iseditable(true)->set_isactive(true);
 
-    hudWfixedSize->create_widgetText(1, 0)->set_text("Control bar 2");
-    hudWfixedSize->create_widgetBarZero(1,1)->set_value(0.4f)->set_valuemin(-0.8f)->set_iseditable(true)->set_isactive(true);
+    hudWfixedSize->create_widgetText(1, 0)->set_text("Control slider");
+    hudWfixedSize->create_widgetSlider(1,1)->set_value(0.4f)->set_valuemin(-0.8f)->set_iseditable(true)->set_isactive(true);
   }
 
   hud.loadIntoGPU();

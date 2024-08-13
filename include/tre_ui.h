@@ -336,6 +336,9 @@ class widgetBar : public widget
   widget_DECLAREATTRIBUTE(widgetBar,bool,withtext,= false, m_isUpdateNeededAdress)
   widget_DECLAREATTRIBUTE(widgetBar,float,snapInterval, = 0.f, m_isUpdateNeededData) ///< Negative or zero value means no snapping
   widget_DECLAREATTRIBUTE(widgetBar,float,widthFactor, = 5.f, m_isUpdateNeededData) ///< Width/Height ratio
+
+public:
+  std::function<std::string(float value)>  wcb_valuePrinter;
 };
 
 class widgetBarZero : public widgetBar
@@ -355,8 +358,17 @@ class widgetSlider : public widget
   widget_DECLAREATTRIBUTE(widgetSlider,float,valuemin,= 0.f, m_isUpdateNeededData)
   widget_DECLAREATTRIBUTE(widgetSlider,float,valuemax,= 1.f, m_isUpdateNeededData)
   widget_DECLAREATTRIBUTE(widgetSlider,float,value,= 0.f, m_isUpdateNeededData)
-  widget_DECLAREATTRIBUTE(widgetSlider,float,snapInterval, = 0.f, m_isUpdateNeededData) ///< Negative or zero value means no snapping
   widget_DECLAREATTRIBUTE(widgetSlider,float,widthFactor, = 5.f, m_isUpdateNeededData) ///< Width/Height ratio
+};
+
+class widgetSliderInt : public widget
+{
+  widget_DECLARECONSTRUCTORS(widgetSliderInt)
+  widget_DECLARECOMMUNMETHODS()
+  widget_DECLAREATTRIBUTE(widgetSliderInt, int, valuemin, = 0, m_isUpdateNeededData)
+  widget_DECLAREATTRIBUTE(widgetSliderInt, int, valuemax, = 10, m_isUpdateNeededData)
+  widget_DECLAREATTRIBUTE(widgetSliderInt, int, value, = 0, m_isUpdateNeededData)
+  widget_DECLAREATTRIBUTE(widgetSliderInt, float, widthFactor, = 5.f, m_isUpdateNeededData) ///< Width/Height ratio
 };
 
 class widgetBoxCheck : public widget
@@ -504,6 +516,7 @@ public:
   window_DECLAREWIDGETHELPER(widgetBar)
   window_DECLAREWIDGETHELPER(widgetBarZero)
   window_DECLAREWIDGETHELPER(widgetSlider)
+  window_DECLAREWIDGETHELPER(widgetSliderInt)
   window_DECLAREWIDGETHELPER(widgetBoxCheck)
   window_DECLAREWIDGETHELPER(widgetLineChoice)
 

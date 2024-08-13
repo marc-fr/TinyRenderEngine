@@ -303,7 +303,7 @@ void widgetTextEdit::acceptEvent(s_eventIntern &event)
     {
       if (!wtext.empty() && wcursorPos != 0)
       {
-        int posLast = wtext.size();
+        int posLast = int(wtext.size());
         int &posErase = (wcursorPos == -1) ? posLast : wcursorPos;
         char cErased;
         do
@@ -329,7 +329,7 @@ void widgetTextEdit::acceptEvent(s_eventIntern &event)
       }
       else if (!wtext.empty()) // same as SDLK_BACKSPACE
       {
-        int posErase = wtext.size();
+        int posErase = int(wtext.size());
         char cErased;
         do
         {
@@ -345,7 +345,7 @@ void widgetTextEdit::acceptEvent(s_eventIntern &event)
     {
       if (wcursorPos != 0 && !wtext.empty())
       {
-        if (wcursorPos == -1) wcursorPos = wtext.size();
+        if (wcursorPos == -1) wcursorPos = int(wtext.size());
         --wcursorPos;
         while (wcursorPos != 0 && wtext[wcursorPos] < 0 && (wtext[wcursorPos] & 0x40) == 0) // non-ASCII char, handle UFT-8 encoding
           --wcursorPos;
@@ -407,7 +407,7 @@ void widgetTextEdit::acceptEvent(s_eventIntern &event)
       if (wcursorPos != -1)
       {
         wtext.insert(wcursorPos, event.textInput);
-        wcursorPos += strlen(event.textInput);
+        wcursorPos += int(strlen(event.textInput));
       }
       else
       {
@@ -525,13 +525,20 @@ void widgetBar::compute_data()
   }
   if (wwithtext)
   {
-    char curtxt[16];
-    std::snprintf(curtxt, 15, "%.3f", wvalue);
-    curtxt[15] = 0;
+    std::string curtxt;
+    if (wcb_valuePrinter)
+    {
+      curtxt = wcb_valuePrinter(wvalue);
+    }
+    else
+    {
+      curtxt.resize(16);
+      std::snprintf(const_cast<char*>(curtxt.data()), 15, "%.3f", wvalue);
+    }
 
     textgenerator::s_textInfo tInfo;
     textgenerator::s_textInfoOut tOut;
-    tInfo.setupBasic(get_parentUI()->get_defaultFont(), m_zone.w-m_zone.y, curtxt);
+    tInfo.setupBasic(get_parentUI()->get_defaultFont(), m_zone.w-m_zone.y, curtxt.data());
     tInfo.m_pixelSize = get_parentWindow()->resolve_sizeWH(s_size::ONE_PIXEL);
     tInfo.m_zone = m_zone;
     textgenerator::generate(tInfo, nullptr, 0, 0, &tOut);
@@ -545,7 +552,7 @@ void widgetBar::compute_data()
 
     tInfo.m_color = colorInv;
 
-    TRE_ASSERT(textgenerator::geometry_VertexCount(curtxt) <= get_vcountText());
+    TRE_ASSERT(textgenerator::geometry_VertexCount(curtxt.data()) <= get_vcountText());
 
     objsolid.layout().colorize(objsolid.partInfo(m_adrText.part).m_offset + m_adrText.offset, get_vcountText(), glm::vec4(0.f));
 
@@ -652,7 +659,7 @@ void widgetSlider::compute_data()
   {
     objsolid.fillDataRectangle(m_adSolid.part, m_adSolid.offset + 4 * 3, glm::vec4(xVal - cursorIn, ycenter - cursorIn, xVal + cursorIn, ycenter + cursorIn), colorFront, glm::vec4(0.f));
 
-    const uint      vertexPartOffset = objsolid.partInfo(m_adSolid.part).m_offset + m_adSolid.offset + 6 * 3;
+    const std::size_t vertexPartOffset = objsolid.partInfo(m_adSolid.part).m_offset + m_adSolid.offset + 6 * 3;
     auto objPos = objsolid.layout().m_positions.begin<glm::vec2>(vertexPartOffset);
     auto objColor = objsolid.layout().m_colors.begin<glm::vec4>(vertexPartOffset);
 
@@ -726,7 +733,138 @@ void widgetSlider::acceptEvent(s_eventIntern &event)
     float newvalue = wvaluemin + (event.mousePos.x - m_zone.x - cursorRadius) / (m_zone.z - m_zone.x - 2.f * cursorRadius) * (wvaluemax - wvaluemin);
     if (newvalue < wvaluemin) newvalue = wvaluemin;
     if (newvalue > wvaluemax) newvalue = wvaluemax;
-    if (wsnapInterval > 0.f) newvalue = std::roundf(newvalue / wsnapInterval) * wsnapInterval;
+    set_value(newvalue);
+    event.accepted = true;
+  }
+
+  if (isPressedLeft)
+  {
+    if (wcb_modified_ongoing != nullptr) wcb_modified_ongoing(this);
+  }
+  if (isReleasedLeft)
+  {
+    TRE_ASSERT(!isPressedLeft);
+    if (wcb_modified_finished != nullptr) wcb_modified_finished(this);
+    else if (wcb_modified_ongoing != nullptr) wcb_modified_ongoing(this);
+  }
+}
+
+// widgetSliderInt =============================================================
+
+uint widgetSliderInt::get_vcountSolid() const { return 10 * 3; }
+uint widgetSliderInt::get_vcountLine() const { return 8 * 2; }
+uint widgetSliderInt::get_vcountPict() const { return 0; }
+uint widgetSliderInt::get_vcountText() const { return 0; }
+uint widgetSliderInt::get_textureSlot() const { return uint(-1); }
+glm::vec2 widgetSliderInt::get_zoneSizeDefault() const
+{
+  const float h = get_parentWindow()->resolve_sizeH(get_parentWindow()->get_fontSize());
+  return glm::vec2(wwidthFactor * h, h);
+}
+void widgetSliderInt::compute_data()
+{
+  auto & objsolid = get_parentUI()->getDrawModel();
+
+  const glm::vec4 colorFront = resolve_color();
+  const glm::vec4 colorParent = get_parent()->resolve_color();
+  const glm::vec4 colorBack = blendColor(colorFront, colorParent, 0.5f);
+
+  const float cursorRadius = 0.35f * (m_zone.w - m_zone.y);
+  const float ycenter = 0.5f * (m_zone.y + m_zone.w);
+
+  const glm::vec4 zoneBack = glm::vec4(m_zone.x + cursorRadius,
+                                       ycenter - 0.15f * cursorRadius,
+                                       m_zone.z - cursorRadius,
+                                       ycenter + 0.15f * cursorRadius);
+  objsolid.fillDataRectangle(m_adSolid.part, m_adSolid.offset, zoneBack, colorBack, glm::vec4(0.f));
+
+  const float xBase = m_zone.x + cursorRadius;
+  const float xVal  = m_zone.x + cursorRadius + (m_zone.z - m_zone.x - 2.f * cursorRadius) * (wvalue - wvaluemin) / (wvaluemax - wvaluemin);
+  if (xBase < xVal - cursorRadius)
+    objsolid.fillDataRectangle(m_adSolid.part, m_adSolid.offset + 2 * 3, glm::vec4(xBase, zoneBack.y, xVal - cursorRadius, zoneBack.w), colorFront, glm::vec4(0.f));
+  else
+    objsolid.fillDataRectangle(m_adSolid.part, m_adSolid.offset + 2 * 3, glm::vec4(0.f), glm::vec4(0.f), glm::vec4(0.f));
+
+  static const float sqrtHalf = 0.707f;
+  const float        cursorIn = cursorRadius * sqrtHalf;
+
+  {
+    objsolid.fillDataRectangle(m_adSolid.part, m_adSolid.offset + 4 * 3, glm::vec4(xVal - cursorIn, ycenter - cursorIn, xVal + cursorIn, ycenter + cursorIn), colorFront, glm::vec4(0.f));
+
+    const std::size_t vertexPartOffset = objsolid.partInfo(m_adSolid.part).m_offset + m_adSolid.offset + 6 * 3;
+    auto objPos = objsolid.layout().m_positions.begin<glm::vec2>(vertexPartOffset);
+    auto objColor = objsolid.layout().m_colors.begin<glm::vec4>(vertexPartOffset);
+
+    *objPos++ = glm::vec2(xVal - cursorIn, ycenter - cursorIn);
+    *objPos++ = glm::vec2(xVal + cursorIn, ycenter - cursorIn);
+    *objPos++ = glm::vec2(xVal           , ycenter - cursorRadius);
+
+    *objColor++ = colorFront;
+    *objColor++ = colorFront;
+    *objColor++ = colorFront;
+
+    *objPos++ = glm::vec2(xVal - cursorIn, ycenter + cursorIn);
+    *objPos++ = glm::vec2(xVal + cursorIn, ycenter + cursorIn);
+    *objPos++ = glm::vec2(xVal           , ycenter + cursorRadius);
+
+    *objColor++ = colorFront;
+    *objColor++ = colorFront;
+    *objColor++ = colorFront;
+
+    *objPos++ = glm::vec2(xVal - cursorIn    , ycenter - cursorIn);
+    *objPos++ = glm::vec2(xVal - cursorIn    , ycenter + cursorIn);
+    *objPos++ = glm::vec2(xVal - cursorRadius, ycenter           );
+
+    *objColor++ = colorFront;
+    *objColor++ = colorFront;
+    *objColor++ = colorFront;
+
+    *objPos++ = glm::vec2(xVal + cursorIn    , ycenter - cursorIn);
+    *objPos++ = glm::vec2(xVal + cursorIn    , ycenter + cursorIn);
+    *objPos++ = glm::vec2(xVal + cursorRadius, ycenter           );
+
+    *objColor++ = colorFront;
+    *objColor++ = colorFront;
+    *objColor++ = colorFront;
+  }
+
+  const glm::vec4 colorBorderTop = transformColor(colorFront, COLORTHEME_LIGHTNESS, wishighlighted ?  0.2f : -0.2f);
+  const glm::vec4 colorBorderBot = transformColor(colorFront, COLORTHEME_LIGHTNESS, (!wisactive || wishighlighted) ? -0.2f :  0.2f);
+
+  const float xVal1 = std::max(xVal - cursorRadius, zoneBack.x);
+  const float xVal2 = std::min(xVal + cursorRadius, zoneBack.z);
+
+  objsolid.fillDataLine(m_adrLine.part, m_adrLine.offset + 0, glm::vec2(zoneBack.x, zoneBack.w), glm::vec2(xVal1, zoneBack.w), colorBorderTop);
+  objsolid.fillDataLine(m_adrLine.part, m_adrLine.offset + 2, glm::vec2(xVal2, zoneBack.w), glm::vec2(zoneBack.z, zoneBack.w), colorBorderTop);
+
+  objsolid.fillDataLine(m_adrLine.part, m_adrLine.offset + 4, glm::vec2(zoneBack.x, zoneBack.y), glm::vec2(xVal1, zoneBack.y), colorBorderBot);
+  objsolid.fillDataLine(m_adrLine.part, m_adrLine.offset + 6, glm::vec2(xVal2, zoneBack.y), glm::vec2(zoneBack.z, zoneBack.y), colorBorderBot);
+
+  objsolid.fillDataLine(m_adrLine.part, m_adrLine.offset + 8 , glm::vec2(xVal - cursorIn, ycenter + cursorIn), glm::vec2(xVal, ycenter + cursorRadius), colorBorderTop);
+  objsolid.fillDataLine(m_adrLine.part, m_adrLine.offset + 10, glm::vec2(xVal + cursorIn, ycenter + cursorIn), glm::vec2(xVal, ycenter + cursorRadius), colorBorderTop);
+
+  objsolid.fillDataLine(m_adrLine.part, m_adrLine.offset + 12, glm::vec2(xVal - cursorIn, ycenter - cursorIn), glm::vec2(xVal, ycenter - cursorRadius), colorBorderBot);
+  objsolid.fillDataLine(m_adrLine.part, m_adrLine.offset + 14, glm::vec2(xVal + cursorIn, ycenter - cursorIn), glm::vec2(xVal, ycenter - cursorRadius), colorBorderBot);
+}
+void widgetSliderInt::acceptEvent(s_eventIntern &event)
+{
+  if (!wisactive) return;
+
+  const bool canBeEdited = wiseditable && getIsOverPosition(event.mousePosPrev) && !event.accepted;
+  const bool isPressedLeft = canBeEdited && (event.mouseButtonIsPressed & SDL_BUTTON_LMASK) != 0;
+  const bool isReleasedLeft = canBeEdited && (event.mouseButtonPrev & SDL_BUTTON_LMASK) != 0 && (event.mouseButtonIsPressed & SDL_BUTTON_LMASK) == 0;
+
+  if (isPressedLeft)
+    wishighlighted = true;
+  else
+    acceptEventBase_focus(event);
+
+  if (isPressedLeft || isReleasedLeft)
+  {
+    const float cursorRadius = 0.4f * (m_zone.w - m_zone.y);
+    int newvalue = wvaluemin + int((event.mousePos.x - m_zone.x - cursorRadius) / (m_zone.z - m_zone.x - 2.f * cursorRadius) * (wvaluemax - wvaluemin) + 0.5f);
+    if (newvalue < wvaluemin) newvalue = wvaluemin;
+    if (newvalue > wvaluemax) newvalue = wvaluemax;
     set_value(newvalue);
     event.accepted = true;
   }
@@ -758,7 +896,7 @@ glm::vec2 widgetBoxCheck::get_zoneSizeDefault() const
 void widgetBoxCheck::compute_data()
 {
   auto & objsolid = get_parentUI()->getDrawModel();
-  const uint      vertexPartOffset = objsolid.partInfo(m_adSolid.part).m_offset + m_adSolid.offset;
+  const std::size_t vertexPartOffset = objsolid.partInfo(m_adSolid.part).m_offset + m_adSolid.offset;
   auto            objPos = objsolid.layout().m_positions.begin<glm::vec2>(vertexPartOffset);
   auto            objColor = objsolid.layout().m_colors.begin<glm::vec4>(vertexPartOffset);
   const glm::vec4 colorFront = resolve_color();
@@ -882,7 +1020,7 @@ void widgetLineChoice::compute_data()
   const float yCenter = 0.5f * (m_zone.y + m_zone.w);
   const float ySize = (m_zone.w - m_zone.y);
 
-  const uint objsolid_vertex_first = objsolid.partInfo(m_adSolid.part).m_offset + m_adSolid.offset;
+  const std::size_t objsolid_vertex_first = objsolid.partInfo(m_adSolid.part).m_offset + m_adSolid.offset;
   auto posPtr = objsolid.layout().m_positions.begin<glm::vec2>(objsolid_vertex_first);
   auto colPtr = objsolid.layout().m_colors.begin<glm::vec4>(objsolid_vertex_first);
 
@@ -961,7 +1099,7 @@ void widgetLineChoice::acceptEvent(s_eventIntern &event)
     if (wisHoveredLeft && (wselectedIndex != 0 || wcyclic))
     {
       event.accepted = true;
-      set_selectedIndex((wselectedIndex == 0) ? wvalues.size() - 1 : wselectedIndex - 1);
+      set_selectedIndex((wselectedIndex == 0) ? uint(wvalues.size()) - 1 : wselectedIndex - 1);
       if (wcb_clicked_left != nullptr) wcb_clicked_left(this);
       if (wcb_modified_finished != nullptr) wcb_modified_finished(this);
       else if (wcb_modified_ongoing != nullptr) wcb_modified_ongoing(this);
