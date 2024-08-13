@@ -5,6 +5,7 @@
 
 #include <array>
 #include <vector>
+#include <iostream>
 
 // macros =====================================================================
 
@@ -12,7 +13,6 @@
 
 #ifdef _WIN32
 
-#include <iostream>
 #include <sstream>
 
 namespace tre {
@@ -23,8 +23,6 @@ namespace tre {
 #define TRE_FATAL(msg) { std::stringstream ss; ss << "TRE: error: " << msg << std::endl; tre::debugPrint_Win32(ss.str().c_str()); abort(); }
 
 #else
-
-#include <iostream>
 
 #define TRE_LOG(msg) std::cout << "TRE: " << msg << std::endl
 #define TRE_FATAL(msg) { std::cout << "TRE: error: " << msg << std::endl; abort(); }
