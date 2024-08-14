@@ -53,7 +53,7 @@ template<typename _T, std::size_t capacity>
 void arrayCounted<_T, capacity>::resize(std::size_t size)
 {
   TRE_ASSERT(size < capacity);
-  m_size = size;
+  m_sizeCounted = size;
 }
 
 // ----------------------------------------------------------------------------
@@ -61,8 +61,8 @@ void arrayCounted<_T, capacity>::resize(std::size_t size)
 template<typename _T, std::size_t capacity>
 void arrayCounted<_T, capacity>::push_back(const _T& element)
 {
-  resize(m_size + 1);
-  this->operator[](m_size - 1) = element;
+  resize(m_sizeCounted + 1);
+  this->operator[](m_sizeCounted - 1) = element;
 }
 
 // ----------------------------------------------------------------------------
@@ -70,8 +70,8 @@ void arrayCounted<_T, capacity>::push_back(const _T& element)
 template<typename _T, std::size_t capacity>
 void arrayCounted<_T, capacity>::push_back(_T&& element)
 {
-  resize(m_size + 1);
-  this->operator[](m_size - 1) = std::move(element);
+  resize(m_sizeCounted + 1);
+  this->operator[](m_sizeCounted - 1) = std::move(element);
 }
 
 // ============================================================================
