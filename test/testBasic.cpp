@@ -93,7 +93,7 @@ public:
     }
   }
 
-  void fillGPUBuffer(const tre::s_modelDataLayout &layout, unsigned offset, unsigned count) const
+  void fillGPUBuffer(const tre::s_modelDataLayout &layout, std::size_t offset, std::size_t count) const
   {
     TRE_ASSERT(count <= size());
 

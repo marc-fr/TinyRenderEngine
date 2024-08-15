@@ -243,6 +243,9 @@ struct s_taskMeshProcessingContext
     tre::s_modelDataLayout::s_vertexData::iterator<glm::vec3> norIt = meshOut.layout().m_normals.begin<glm::vec3>(meshOutIndiceStart);
     tre::s_modelDataLayout::s_vertexData::iterator<glm::vec4> colIt = meshOut.layout().m_colors.begin<glm::vec4>(meshOutIndiceStart);
 
+    const float fReduct = 0.10f;
+    const float fReductComp = 1.f - fReduct;
+
     for (std::size_t iT = 0; iT < inTetraCount; ++iT)
     {
       const glm::vec3 ptA = inPositions.get<glm::vec3>(listTetra[iT * 4 + 0]);
@@ -250,10 +253,10 @@ struct s_taskMeshProcessingContext
       const glm::vec3 ptC = inPositions.get<glm::vec3>(listTetra[iT * 4 + 2]);
       const glm::vec3 ptD = inPositions.get<glm::vec3>(listTetra[iT * 4 + 3]);
       const glm::vec3 ptCenter = 0.25f * (ptA + ptB + ptC + ptD); // not barycentric - but dont care.
-      const glm::vec3 ptA_in = 0.95f * ptA + 0.05f * ptCenter;
-      const glm::vec3 ptB_in = 0.95f * ptB + 0.05f * ptCenter;
-      const glm::vec3 ptC_in = 0.95f * ptC + 0.05f * ptCenter;
-      const glm::vec3 ptD_in = 0.95f * ptD + 0.05f * ptCenter;
+      const glm::vec3 ptA_in = fReductComp * ptA + fReduct * ptCenter;
+      const glm::vec3 ptB_in = fReductComp * ptB + fReduct * ptCenter;
+      const glm::vec3 ptC_in = fReductComp * ptC + fReduct * ptCenter;
+      const glm::vec3 ptD_in = fReductComp * ptD + fReduct * ptCenter;
       glm::vec3       nABC = glm::normalize(glm::cross(ptB - ptA, ptC - ptA));
       if (glm::dot(nABC, ptD - ptA) > 0.f) nABC = -nABC;
       glm::vec3       nABD = glm::normalize(glm::cross(ptB - ptA, ptD - ptA));
@@ -365,8 +368,8 @@ int main(int argc, char **argv)
   {
     const float     cosA = cosf(2.6f), sinA = sinf(2.6f);
     const GLuint    indices[8 * 3] = { 0,1,2,  3,4,5,  0,2,5,5,3,0, 2,1,4,4,5,2, 1,4,3,3,0,1 };
-    const GLfloat   vertices[6 * 3] = { -0.5f,0.f,-2.f,  0.5f,0.f,-2.f,  0.f,0.7f,-2.f,
-                                        -0.5f*cosA,-0.5f*sinA,2.f,  0.5f*cosA,0.5f*sinA,2.f,  -0.7f*sinA,0.7f*cosA,2.f };
+    const GLfloat   vertices[6 * 3] = { -0.5f,0.f,-1.f,  0.5f,0.f,-1.f,  0.f,0.7f,-1.f,
+                                        -0.5f*cosA,-0.5f*sinA,1.f,  0.5f*cosA,0.5f*sinA,1.f,  -0.7f*sinA,0.7f*cosA,1.f };
     meshes.createPartFromIndexes(&indices[0], 24, &vertices[0]);
     meshes.layout().m_normals.get<glm::vec3>(0) = -glm::normalize(meshes.layout().m_positions.get<glm::vec3>(0));
     meshes.layout().m_normals.get<glm::vec3>(1) = -glm::normalize(meshes.layout().m_positions.get<glm::vec3>(1));
@@ -418,7 +421,7 @@ int main(int argc, char **argv)
   // - Create thread context for mesh processing
 
   const std::size_t meshPartCount = meshes.partCount();
-  std::size_t       meshPartSelected = 3; // TODO: 0
+  std::size_t       meshPartSelected = 0;
 
   if (argc >= 3)
   {
@@ -588,14 +591,12 @@ int main(int argc, char **argv)
   // - load UI
 
   tre::font font;
-  {
-    font.load({ tre::font::loadFromBMPandFNT(TESTIMPORTPATH "resources/font_arial_88") }, true);
-  }
+  font.load({ tre::font::loadFromBMPandFNT(TESTIMPORTPATH "resources/font_arial_88") }, true);
 
   tre::baseUI2D bUI_main;
   bUI_main.set_defaultFont(&font);
   tre::ui::window &wUI_main = *bUI_main.create_window();
-  wUI_main.set_layoutGrid(4, 2);
+  wUI_main.set_layoutGrid(5, 2);
   wUI_main.set_fontSize(tre::ui::s_size(20, tre::ui::SIZE_PIXEL));
   wUI_main.set_color(glm::vec4(0.f, 0.f, 0.f, 0.5f));
   wUI_main.set_cellMargin(tre::ui::s_size(3, tre::ui::SIZE_PIXEL));
@@ -606,8 +607,10 @@ int main(int argc, char **argv)
   wUI_main.create_widgetText(1, 1);
   wUI_main.create_widgetText(2, 0)->set_text("visu (F6/F7):");
   wUI_main.create_widgetText(2, 1);
-  wUI_main.create_widgetText(3, 0)->set_text("show tetra. (F9):");
+  wUI_main.create_widgetText(3, 0)->set_text("show tetra (F9):");
   wUI_main.create_widgetText(3, 1);
+  wUI_main.create_widgetText(4, 0)->set_text("show contour (F10):");
+  wUI_main.create_widgetText(4, 1);
 
   tre::ui::window &wUI_result = *bUI_main.create_window();
   wUI_result.set_layoutGrid(8, 3);
@@ -655,6 +658,7 @@ int main(int argc, char **argv)
   const int NvisuMode = 5;
   std::string listDataVisu[NvisuMode] = { "area", "quality", "curvature", "distance" };
 
+  bool  showContour = true;
   bool  showTetrahedrization = false;
 
   glm::mat4 mView = glm::mat4(1.f);
@@ -694,7 +698,8 @@ int main(int argc, char **argv)
         else if (event.key.keysym.sym == SDLK_F6) { visuMode = visuMode == 0 ? NvisuMode - 1 : visuMode - 1; }
         else if (event.key.keysym.sym == SDLK_F7) { visuMode = visuMode == NvisuMode - 1 ? 0 : visuMode + 1; }
 
-        else if (event.key.keysym.sym == SDLK_F9) { showTetrahedrization = ! showTetrahedrization; }
+        else if (event.key.keysym.sym == SDLK_F9)  { showTetrahedrization = ! showTetrahedrization; }
+        else if (event.key.keysym.sym == SDLK_F10) { showContour = ! showContour; }
 
         else if (event.key.keysym.sym == SDLK_o) { myTimings.scenetime = 0.f; }
 
@@ -823,7 +828,7 @@ int main(int argc, char **argv)
 
     glDisable(GL_DEPTH_TEST);
 
-    if (meshContextSelected.m_completed && !meshContextSelected.m_ongoing)
+    if (meshContextSelected.m_completed && !meshContextSelected.m_ongoing && showContour)
     {
       glViewport(myWindow.m_resolutioncurrent.x / 2, 0, myWindow.m_resolutioncurrent.x / 2, myWindow.m_resolutioncurrent.y);
 
@@ -857,15 +862,16 @@ int main(int argc, char **argv)
     else
       wUI_main.get_widgetText(2, 1)->set_text("");
     wUI_main.get_widgetText(3, 1)->set_text(showTetrahedrization ? "ON" : "OFF");
+    wUI_main.get_widgetText(4, 1)->set_text(showContour ? "ON" : "OFF");
 
     char txt[128];
 
     if (meshContextSelected.m_completed && !meshContextSelected.m_ongoing)
     {
-      std::snprintf(txt, 127, "%ld tri", meshContextSelected.m_mesh->partInfo(meshContextSelected.m_part).m_size / 3);
+      std::snprintf(txt, 127, "%zd tri", meshContextSelected.m_mesh->partInfo(meshContextSelected.m_part).m_size / 3);
       wUI_result.get_widgetText(1, 1)->set_text(txt);
 
-      std::snprintf(txt, 127, "%ld tri", meshContextSelected.m_mesh->partInfo(meshContextSelected.m_partDecimateLevel1).m_size / 3);
+      std::snprintf(txt, 127, "%zd tri", meshContextSelected.m_mesh->partInfo(meshContextSelected.m_partDecimateLevel1).m_size / 3);
       wUI_result.get_widgetText(2, 1)->set_text(txt);
 
       std::snprintf(txt, 127, "%d ms", int(meshContextSelected.m_timeElapsedDecimateLevel1 * 1.e3));

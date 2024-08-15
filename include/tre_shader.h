@@ -20,21 +20,9 @@ class shader : public shaderGenerator
 public:
   shader() : shaderGenerator() { m_uniformVars.fill(-2); }
   shader(const shader &) = delete;
-  shader(shader &&other) { *this = std::move(other); }
   ~shader() { TRE_ASSERT(m_drawProgram==0); }
 
-private:
-  shader & operator =(const shader &) = default;
-public:
-  shader & operator =(shader &&other)
-  {
-    if (this != &other)
-    {
-      *this = other;
-      other.m_drawProgram = 0;
-    }
-    return *this;
-  }
+  shader & operator =(const shader &) = delete;
 
   /// @name Compile
   /// @{

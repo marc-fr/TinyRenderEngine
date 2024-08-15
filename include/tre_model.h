@@ -70,10 +70,10 @@ struct s_modelDataLayout
     }
   };
   s_vertexData m_positions;
+  s_vertexData m_colors;
   s_vertexData m_normals;
   s_vertexData m_tangents;
   s_vertexData m_uvs;
-  s_vertexData m_colors;
   std::size_t  m_vertexCount = 0;
   /// @}
 

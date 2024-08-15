@@ -16,19 +16,9 @@ class font
 public:
   font() {}
   font(const font &) = delete;
-  font(font &&other) : m_texture(std::move(other.m_texture)), m_fontMaps(std::move(other.m_fontMaps)) {}
   ~font() { TRE_ASSERT(m_texture.m_handle == 0); TRE_ASSERT(m_fontMaps.empty()); }
 
   font & operator =(const font &) = delete;
-  font & operator =(font &&other)
-  {
-    if (this != &other)
-    {
-      m_texture = std::move(other.m_texture);
-      m_fontMaps = std::move(other.m_fontMaps);
-    }
-    return *this;
-  }
 
   struct s_charInfo
   {

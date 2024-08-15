@@ -6,9 +6,14 @@
 #include <glm/gtx/component_wise.hpp>
 #include <glm/gtx/norm.hpp> // for glm::length2()
 
-#include <fstream> // TODO: remove
-#include <string>  // TODO: remove
-#include <algorithm> // TODO: remove (for the std::find)
+//#define TETRA_DEBUG // Tetrahedralizer debugging
+
+#ifdef TETRA_DEBUG
+#include <fstream>
+#include <string>
+#endif // TETRA_DEBUG
+
+#include <algorithm> // for std::find
 
 namespace tre {
 
@@ -628,6 +633,7 @@ std::size_t decimateKeepVertex(const s_modelDataLayout &layout, const s_partInfo
     TRE_LOG(" - Vertices with flat surface = " << nvertFlatCurvature);
 
     // 3. Clear triangles
+    if (triangleToRemove.empty()) break;
     sortQuick<uint>(triangleToRemove);
     for (std::size_t k = 0; k < triangleToRemove.size(); ++k)
     {
@@ -1001,12 +1007,12 @@ struct s_tetrahedron
     if (t1.adjACD != nullptr) t1.adjACD->replaceNeigbourTetra(&t1, &t2);
     if (t2.adjACD != nullptr) t2.adjACD->replaceNeigbourTetra(&t2, &t2);
     // split
-    TRE_FATAL("TODO: flags");
+    uint flagsNew = t1.flags | t2.flags;
     const glm::vec3 *t2ptA = t2.ptA;
     s_tetrahedron   *t2adjABD = t2.adjABD;
-    t3 = s_tetrahedron(t1.ptA, t2.ptA, t1.ptB, t1.ptC, t2.adjABC, t1.adjABC, &t2, &t1);
-    t2 = s_tetrahedron(t1.ptA, t2.ptA, t1.ptC, t1.ptD, t2.adjACD, t1.adjACD, &t1, &t3);
-    t1 = s_tetrahedron(t1.ptA, t2ptA , t1.ptD, t1.ptB, t2adjABD , t1.adjABD, &t3, &t2);
+    t3 = s_tetrahedron(t1.ptA, t2.ptA, t1.ptB, t1.ptC, t2.adjABC, t1.adjABC, &t2, &t1, flagsNew);
+    t2 = s_tetrahedron(t1.ptA, t2.ptA, t1.ptC, t1.ptD, t2.adjACD, t1.adjACD, &t1, &t3, flagsNew);
+    t1 = s_tetrahedron(t1.ptA, t2ptA , t1.ptD, t1.ptB, t2adjABD , t1.adjABD, &t3, &t2, flagsNew);
     TRE_ASSERT(t1.valid() && t2.valid() && t3.valid());
   }
 
@@ -1064,17 +1070,17 @@ struct s_tetrahedron
     // replace neighbors
     TRE_FATAL("TODO: neighbors");
     // flip
-    TRE_FATAL("TODO: flags");
+    uint flagsNew = t1.flags | t2.flags | t3.flags | t4.flags;
     s_tetrahedron *tStart = (t1.ptA == ptNewEdge1) ? &t1 : t1.adjBCD;
     TRE_ASSERT(tStart->ptA == ptNewEdge1);
     s_tetrahedron *tSide = t1.adjACD;
     s_tetrahedron *tOpp = t1.adjBCD;
     s_tetrahedron *tOppSide = tSide->adjBCD;
     TRE_ASSERT(tSide->adjBCD == tOpp->adjACD);
-    *tStart   = s_tetrahedron(ptNewEdge1, ptNewEdge2, tStart->ptC  , tStart->ptB  , nullptr, nullptr, nullptr, nullptr);
-    *tOpp     = s_tetrahedron(ptNewEdge1, ptNewEdge2, tOpp->ptD    , tOpp->ptB    , nullptr, nullptr, nullptr, nullptr);
-    *tSide    = s_tetrahedron(ptNewEdge1, ptNewEdge2, tSide->ptC   , tSide->ptB   , nullptr, nullptr, nullptr, nullptr);
-    *tOppSide = s_tetrahedron(ptNewEdge1, ptNewEdge2, tOppSide->ptC, tOppSide->ptB, nullptr, nullptr, nullptr, nullptr);
+    *tStart   = s_tetrahedron(ptNewEdge1, ptNewEdge2, tStart->ptC  , tStart->ptB  , nullptr, nullptr, nullptr, nullptr, flagsNew);
+    *tOpp     = s_tetrahedron(ptNewEdge1, ptNewEdge2, tOpp->ptD    , tOpp->ptB    , nullptr, nullptr, nullptr, nullptr, flagsNew);
+    *tSide    = s_tetrahedron(ptNewEdge1, ptNewEdge2, tSide->ptC   , tSide->ptB   , nullptr, nullptr, nullptr, nullptr, flagsNew);
+    *tOppSide = s_tetrahedron(ptNewEdge1, ptNewEdge2, tOppSide->ptC, tOppSide->ptB, nullptr, nullptr, nullptr, nullptr, flagsNew);
 
     TRE_ASSERT(t1.valid() && t2.valid() && t3.valid() && t4.valid());
   }
@@ -1280,7 +1286,7 @@ struct s_meshTriangle
     resolved = false;
   }
 
-  bool hasPoint(const glm::vec3 *pt)
+  bool hasPoint(const glm::vec3 *pt) const
   {
     return (pt == ptF) | (pt == ptG) | (pt == ptH);
   }
@@ -1288,7 +1294,7 @@ struct s_meshTriangle
 
 // ----------------------------------------------------------------------------
 
-// TOTO: remove that !!
+#ifdef TETRA_DEBUG
 
 static std::ostream& operator<<(std::ostream& out, const glm::vec3 &pt)
 {
@@ -1512,6 +1518,23 @@ struct s_tetraReporter
     ++stepId;
   }
 };
+
+#else
+
+struct s_tetraReporter
+{
+  s_tetraReporter(const char *) {}
+
+  void report_Step1(const tre::chunkVector<s_tetrahedron, 128>&, const std::vector<s_tetrahedron*>&, const glm::vec3&, const std::vector<glm::vec3>&) {}
+  void report_Step1_Fail(const std::vector<s_tetrahedron*>&, const s_surface*, const glm::vec3&, uint) {}
+  void report_Step2_SurfFail(const std::vector<s_tetrahedron*>&, const s_meshTriangle&) {}
+  void report_Step2_Edge(const std::vector<s_tetrahedron*>&, const glm::vec3&, const glm::vec3&) {}
+  void report_Step2_EdgeFail(const std::vector<s_tetrahedron*>&, const glm::vec3&, const glm::vec3&, const char*) {}
+  void report_Step3_Interior_Exterior(const tre::chunkVector<s_tetrahedron, 128>&, const char*) {}
+  void report_Step3_Triangle_Resolution(s_meshTriangle&, const std::vector<s_tetrahedron*>&, const char*) {}
+};
+
+#endif // TETRA_DEBUG
 
 // ----------------------------------------------------------------------------
 
@@ -1970,8 +1993,6 @@ bool tetrahedralize(const s_modelDataLayout &layout, const s_partInfo &part, std
       TRE_ASSERT(tOnPtF != nullptr && tOnPtG != nullptr);
       tri.tetraNearby = tOnPtF;
 
-      break; // TMP Disabled !
-
       if (((keyEdges     & 0x1) != 0) + ((keyEdges     & 0x2) != 0) + ((keyEdges     & 0x4) != 0) <=
           ((keyEdgesPrev & 0x1) != 0) + ((keyEdgesPrev & 0x2) != 0) + ((keyEdgesPrev & 0x4) != 0))
       {
@@ -2078,26 +2099,22 @@ bool tetrahedralize(const s_modelDataLayout &layout, const s_partInfo &part, std
         const bool isInterior_BD = volPBD_NextPt < -tetraMinVolume;
         const bool isInterior_CD = volPCD_NextPt < -tetraMinVolume;
         const uint isInteriorCount = isInterior_BC + isInterior_BD + isInterior_CD;
+        const glm::vec3 *ptSharedEdge1 = nullptr;
+        const glm::vec3 *ptSharedEdge2 = nullptr;
         if (isInteriorCount == 3) // The ray from P towards the next-tetra exterme point hits a tetra's surface.
         {
           exporter.report_Step2_EdgeFail({tStart, tNext}, *ptEdgeP, *ptEdgeQ, "RayHitsSurface_BeforeSplit");
-
-          listTetra.push_back(s_tetrahedron());
-          s_tetrahedron *tNew = &listTetra[listTetra.size() - 1];
-          s_tetrahedron::split_2tetras_to_3tetras(*tStart, *tNext, *tNew);
-
-          exporter.report_Step2_EdgeFail({tStart, tNext, tNew}, *ptEdgeP, *ptEdgeQ, "RayHitsSurface_AfterSplit");
-
+          // No, detect the edge to remove. (like when 'isInteriorCount == 2')
           break; // ?
         }
         else if (isInteriorCount == 2) // The ray from P towards the next-tetra exterme point hits an edge
         {
-          const glm::vec3 *ptSharedEdge1 = isInterior_CD ? tStart->ptB : tStart->ptC;
-          const glm::vec3 *ptSharededge2 = isInterior_BC ? tStart->ptD : tStart->ptC;
+          ptSharedEdge1 = isInterior_CD ? tStart->ptB : tStart->ptC;
+          ptSharedEdge2 = isInterior_BC ? tStart->ptD : tStart->ptC;
 
           listTetraToProcess.clear();
           listTetraToProcess.push_back(tStart);
-          _walkTetrahedronOnEdge(listTetraToProcess, ptSharedEdge1, ptSharededge2);
+          _walkTetrahedronOnEdge(listTetraToProcess, ptSharedEdge1, ptSharedEdge2);
 
           exporter.report_Step2_EdgeFail(listTetraToProcess, *ptEdgeP, *ptEdgeQ, "RayHitsEdge_BeforeSplit");
 
@@ -2123,8 +2140,8 @@ bool tetrahedralize(const s_modelDataLayout &layout, const s_partInfo &part, std
                 s_tetrahedron *tNew = &listTetra[listTetra.size() - 1];
                 s_tetrahedron::split_2tetras_to_3tetras(*t1, *t2, *tNew);
                 listTetraToProcess.erase(listTetraToProcess.begin() + it);
-                if       (t1->hasPoint(ptSharedEdge1) && t1->hasPoint(ptSharededge2)) listTetraToProcess[it] = t1;
-                else if  (t2->hasPoint(ptSharedEdge1) && t2->hasPoint(ptSharededge2)) listTetraToProcess[it] = t2;
+                if       (t1->hasPoint(ptSharedEdge1) && t1->hasPoint(ptSharedEdge2)) listTetraToProcess[it] = t1;
+                else if  (t2->hasPoint(ptSharedEdge1) && t2->hasPoint(ptSharedEdge2)) listTetraToProcess[it] = t2;
                 else                                                                  listTetraToProcess[it] = tNew;
                 it = 0;
               }
@@ -2142,7 +2159,7 @@ bool tetrahedralize(const s_modelDataLayout &layout, const s_partInfo &part, std
           }
 
           s_tetrahedron::swapEdge_4tetras(*listTetraToProcess[0], *listTetraToProcess[1], *listTetraToProcess[2], *listTetraToProcess[3],
-                                          ptSharedEdge1, ptSharededge2,
+                                          ptSharedEdge1, ptSharedEdge2,
                                           tStart->ptA, tStart->ptD);
 
           exporter.report_Step2_EdgeFail(listTetraToProcess, *ptEdgeP, *ptEdgeQ, "RayHitsEdge_AfterSplit");
@@ -2300,8 +2317,8 @@ bool tetrahedralize(const s_modelDataLayout &layout, const s_partInfo &part, std
 
     }
 
-    if (!tri.resolved && exporter.stepId < 100)
-      exporter.report_Step3_Triangle_Resolution(tri, listTetraToProcess, "FAILED");
+    //if (!tri.resolved && exporter.stepId < 100)
+    //  exporter.report_Step3_Triangle_Resolution(tri, listTetraToProcess, "FAILED");
 
     if (tri.resolved)
     {
@@ -2370,7 +2387,7 @@ bool tetrahedralize(const s_modelDataLayout &layout, const s_partInfo &part, std
     {
       TRE_LOG("tetrahedralize: main-step 3: input mesh does not seem to be closed (the interior volume is not well defined). Algo failed.");
     }
-    listTetra.clear(); // clear all :(
+    //listTetra.clear(); // clear all :(
   }
 
   // final-step: compute output tetrahedra-list
@@ -2379,7 +2396,8 @@ bool tetrahedralize(const s_modelDataLayout &layout, const s_partInfo &part, std
   for (std::size_t iT = 0; iT < listTetra.size(); ++iT)
   {
     const s_tetrahedron &t = listTetra[iT];
-    if ((t.flags & flagDelete) == 0)
+    //if ((t.flags & flagDelete) == 0)
+    if (_indP(t.ptA) < layout.m_vertexCount && _indP(t.ptB) < layout.m_vertexCount && _indP(t.ptC) < layout.m_vertexCount && _indP(t.ptD) < layout.m_vertexCount)
     {
       listTetrahedrons.push_back(_indP(t.ptA));
       listTetrahedrons.push_back(_indP(t.ptB));

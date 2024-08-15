@@ -71,6 +71,17 @@ static GLenum getTexFormatSource(const SDL_Surface *surface)
 
 //-----------------------------------------------------------------------------
 
+///< Helper function to get the GL-target from the texture type
+static GLenum getGLTarget(texture::textureInfoType t)
+{
+  static_assert(texture::TI_NONE == 0, "bad textureInfoType(TI_NONE) value");
+  static_assert(texture::TI_3D   == 4, "bad textureInfoType(TI_3D) value");
+  static constexpr GLenum kGLTargets[5] = { 0, GL_TEXTURE_2D, GL_TEXTURE_2D_ARRAY, GL_TEXTURE_CUBE_MAP, GL_TEXTURE_3D };
+  return kGLTargets[t];
+}
+
+//==============================================================================
+
 SDL_Surface* texture::loadTextureFromBMP(const std::string & filename)
 {
   SDL_Surface* tex = SDL_LoadBMP(filename.c_str());
@@ -155,10 +166,30 @@ bool texture::load(SDL_Surface *surface, int modemask, const bool freeSurface)
 
   m_type = TI_2D;
   m_mask = modemask;
+  m_w = surface->w;
+  m_h = surface->h;
+  TRE_ASSERT(m_w >= 4 && (m_w & 0x03) == 0);
+  TRE_ASSERT(m_h >= 4 && (m_h & 0x03) == 0);
+  TRE_ASSERT(!useAnisotropic() || useMipmap()); // Mipmap is need for Anisotropic
+#ifdef TRE_OPENGL_ES
+  if (useMipmap() && useCompress())
+  {
+    TRE_LOG("OpenGL-ES: Cannot generate mipmaps of compressed texture. Skip compression."); // handle offline mipmaps generation ?
+    m_mask &= ~MMASK_COMPRESS;
+  }
+#endif
+
+  m_components = surface->format->BytesPerPixel;
+  if (modemask & MMASK_FORCE_NO_ALPHA) m_components = 3;
+  if (modemask & MMASK_RG_ONLY) m_components = 2;
+  if (modemask & MMASK_ALPHA_ONLY) m_components = 1;
+#ifdef TRE_OPENGL_ES
+  if (useMipmap() && useGammeCorreciton() && m_components == 3) m_components = 4;
+#endif
 
   glGenTextures(1,&m_handle);
 
-  if (!update(surface, modemask, freeSurface)) // upload pixels
+  if (!update(surface, freeSurface, false)) // upload pixels
   {
     glBindTexture(GL_TEXTURE_2D,0);
     return false;
@@ -175,6 +206,60 @@ bool texture::load(SDL_Surface *surface, int modemask, const bool freeSurface)
   if (freeSurface) SDL_FreeSurface(surface);
   glBindTexture(GL_TEXTURE_2D,0);
   return IsOpenGLok("texture::load - complete texture");
+}
+
+//-----------------------------------------------------------------------------
+
+bool texture::loadArray(const span<SDL_Surface*> &surfaces, int modemask, const bool freeSurface)
+{
+  if (surfaces.empty() || surfaces[0] == nullptr) return false;
+
+  m_type = TI_2DARRAY;
+  m_mask = modemask;
+  m_w = surfaces[0]->w;
+  m_h = surfaces[0]->h;
+  TRE_ASSERT(m_w >= 4 && (m_w & 0x03) == 0);
+  TRE_ASSERT(m_h >= 4 && (m_h & 0x03) == 0);
+  TRE_ASSERT(!useAnisotropic() || useMipmap()); // Mipmap is need for Anisotropic
+#ifdef TRE_OPENGL_ES
+  if (useMipmap() && useCompress())
+  {
+    TRE_LOG("OpenGL-ES: Cannot generate mipmaps of compressed texture. Skip compression."); // handle offline mipmaps generation ?
+    m_mask &= ~MMASK_COMPRESS;
+  }
+#endif
+
+  m_components = surfaces[0]->format->BytesPerPixel;
+  if (modemask & MMASK_FORCE_NO_ALPHA) m_components = 3;
+  if (modemask & MMASK_RG_ONLY) m_components = 2;
+  if (modemask & MMASK_ALPHA_ONLY) m_components = 1;
+#ifdef TRE_OPENGL_ES
+  if (useMipmap() && useGammeCorreciton() && m_components == 3) m_components = 4;
+#endif
+
+  glGenTextures(1, &m_handle);
+
+  {
+    static GLenum externalformats[5] = { 0, GL_RED, GL_RG, GL_RGB, GL_RGBA };
+    const GLenum internalformat = getTexInternalFormat(m_components, useCompress(), useGammeCorreciton());
+    glBindTexture(GL_TEXTURE_2D_ARRAY, m_handle);
+    glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, internalformat, m_w, m_h, m_d, 0, externalformats[m_components], GL_UNSIGNED_BYTE, nullptr); // just allocate
+  }
+
+  bool success = true;
+  for (std::size_t d = 0; d < surfaces.size(); ++d)
+  {
+    if (surfaces[d] != nullptr)
+    {
+      success &= updateArray(surfaces[d], int(d), freeSurface, false);
+      if (surfaces[d]) SDL_FreeSurface(surfaces[d]);
+    }
+  }
+
+  if (success) set_parameters();
+
+  glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+  return IsOpenGLok("texture::loadArray - complete texture") && success;
 }
 
 //-----------------------------------------------------------------------------
@@ -208,7 +293,6 @@ bool texture::loadCube(const std::array<SDL_Surface *, 6> &cubeFaces, int modema
   }
 #endif
 
-  // retrieve info from texture
   m_w = cubeFaces[0]->w;
   m_h = cubeFaces[0]->h;
   TRE_ASSERT(m_w >= 4 && (m_w & 0x03) == 0);
@@ -297,33 +381,48 @@ bool texture::loadCube(const std::array<SDL_Surface *, 6> &cubeFaces, int modema
 
 //-----------------------------------------------------------------------------
 
-bool texture::update(SDL_Surface *surface, int modemask, const bool freeSurface)
+bool texture::load3D(const uint8_t *data, int w, int h, int d, bool formatFloat, int components, int modemask)
+{
+  m_type = TI_3D;
+  m_mask = modemask & (~MMASK_ANISOTROPIC) & (~MMASK_MIPMAP);
+  m_w = w;
+  m_h = h;
+  TRE_ASSERT(m_w >= 4 && (m_w & 0x03) == 0);
+  TRE_ASSERT(m_h >= 4 && (m_h & 0x03) == 0);
+
+  if (useCompress())
+  {
+    TRE_LOG("Cannot compress 3D-textures. Skip compression.");
+    m_mask &= ~MMASK_COMPRESS;
+  }
+
+  if (modemask & (MMASK_FORCE_NO_ALPHA | MMASK_RG_ONLY | MMASK_ALPHA_ONLY))
+  {
+    TRE_ASSERT("Cannot apply modifiers on 3D-textures.");
+    return false;
+  }
+
+  glGenTextures(1, &m_handle);
+
+  const bool success = update3D(data, w, h, d, formatFloat, components, false);
+
+  if (success) set_parameters();
+
+  glBindTexture(GL_TEXTURE_3D, 0);
+  return IsOpenGLok("texture::load3D - complete texture");
+}
+
+//-----------------------------------------------------------------------------
+
+bool texture::update(SDL_Surface *surface, const bool freeSurface, const bool unbind /* = true */)
 {
   if (surface == nullptr) return false;
   if (m_handle == 0) return false;
 
-  m_w = surface->w;
-  m_h = surface->h;
-  TRE_ASSERT(m_w >= 4 && (m_w & 0x03) == 0);
-  TRE_ASSERT(m_h >= 4 && (m_h & 0x03) == 0);
-  TRE_ASSERT(!useAnisotropic() || useMipmap()); // Mipmap is need for Anisotropic
-#ifdef TRE_OPENGL_ES
-  if (useMipmap() && useCompress())
-  {
-    TRE_LOG("OpenGL-ES: Cannot generate mipmaps of compressed texture. Skip compression."); // handle offline mipmaps generation ?
-    m_mask &= ~MMASK_COMPRESS;
-  }
-#endif
+  TRE_ASSERT(surface->w == m_w);
+  TRE_ASSERT(surface->h == m_h);
 
-  GLenum externalformat = getTexFormatSource(surface);
-  m_components = surface->format->BytesPerPixel;
-  if (modemask & MMASK_FORCE_NO_ALPHA) m_components = 3;
-  if (modemask & MMASK_RG_ONLY) m_components = 2;
-  if (modemask & MMASK_ALPHA_ONLY) m_components = 1;
-#ifdef TRE_OPENGL_ES
-  if (useMipmap() && useGammeCorreciton() && m_components == 3) m_components = 4;
-#endif
-
+  GLenum       externalformat = getTexFormatSource(surface);
   const GLenum internalformat = getTexInternalFormat(m_components, useCompress(), useGammeCorreciton());
 
   // apply modifiers
@@ -382,7 +481,7 @@ bool texture::update(SDL_Surface *surface, int modemask, const bool freeSurface)
     const uint  bufferByteSize = _rawCompress(surfLocal, internalformat); // in-place
     if (bufferByteSize == 0)
     {
-      TRE_LOG("texture::load - failed to compress the picture (CPU compressor)");
+      TRE_LOG("texture::update - failed to compress the picture (CPU compressor)");
       return false;
     }
     else
@@ -398,7 +497,132 @@ bool texture::update(SDL_Surface *surface, int modemask, const bool freeSurface)
     glTexImage2D(GL_TEXTURE_2D, 0, internalformat, surfLocal.w, surfLocal.h, 0, externalformat, GL_UNSIGNED_BYTE, surfLocal.pixels);
   }
 
-  return IsOpenGLok("texture::load - upload pixels");
+  if (unbind) glBindTexture(GL_TEXTURE_2D, 0);
+
+  return IsOpenGLok("texture::update - upload pixels");
+}
+
+//-----------------------------------------------------------------------------
+
+bool texture::updateArray(SDL_Surface* surface, int depthIndex, const bool freeSurface, const bool unbind /* = true */)
+{
+  if (surface == nullptr) return false;
+  if (m_handle == 0) return false;
+
+  TRE_ASSERT(surface->w == m_w);
+  TRE_ASSERT(surface->h == m_h);
+  TRE_ASSERT(depthIndex < m_d);
+
+  GLenum       externalformat = getTexFormatSource(surface);
+  const GLenum internalformat = getTexInternalFormat(m_components, useCompress(), useGammeCorreciton());
+
+  // apply modifiers
+
+  s_SurfaceTemp surfLocal = s_SurfaceTemp(surface);
+
+  if (m_components == 1 && surface->format->BytesPerPixel != 1)
+  {
+    if (!freeSurface) surfLocal.copyToOwnBuffer();
+    // WebGL does not support texture swizzle.
+#ifdef TRE_EMSCRIPTEN
+    TRE_ASSERT(surfLocal.pxByteSize == 4);
+    const int npixels = surfLocal.w * surfLocal.h;
+    uint * pixels = reinterpret_cast<uint*>(surfLocal.pixels);
+    for (uint ip=0;ip<npixels;++ip) pixels[ip] |= 0x00FFFFFF;
+    m_components = 4;
+#else
+    _rawPack_A8(surfLocal);
+    externalformat = GL_RED;
+#endif
+  }
+  if (m_components == 3 && surface->format->BytesPerPixel != 3)
+  {
+    if (!freeSurface) surfLocal.copyToOwnBuffer();
+    _rawPack_RemoveAlpha8(surfLocal);
+    TRE_ASSERT(externalformat == GL_BGRA || externalformat == GL_RGBA);
+    externalformat = (externalformat == GL_BGRA) ? GL_BGR : GL_RGB;
+  }
+  if (m_components == 4 && surface->format->BytesPerPixel != 4)
+  {
+    _rawExtend_AddAlpha8(surfLocal);
+    TRE_ASSERT(externalformat == GL_BGR || externalformat == GL_RGB);
+    externalformat = (externalformat == GL_BGR) ? GL_BGRA : GL_RGBA;
+  }
+  if (externalformat == GL_BGR || externalformat == GL_BGRA)
+  {
+    if (!freeSurface) surfLocal.copyToOwnBuffer();
+    _rawConvert_BRG_to_RGB(surfLocal);
+    externalformat = (externalformat == GL_BGR) ? GL_RGB : GL_RGBA;
+  }
+  if (m_components == 2 && surface->format->BytesPerPixel != 2)
+  {
+    if (!freeSurface) surfLocal.copyToOwnBuffer();
+    _rawPack_RG8(surfLocal);
+    externalformat = GL_RG;
+  }
+
+  // upload
+
+  glBindTexture(GL_TEXTURE_2D_ARRAY,m_handle);
+
+  if (useCompress())
+  {
+#if 1 // always use the CPU-compressor
+    if (!freeSurface) surfLocal.copyToOwnBuffer();
+    const uint  bufferByteSize = _rawCompress(surfLocal, internalformat); // in-place
+    if (bufferByteSize == 0)
+    {
+      TRE_LOG("texture::updateArray - failed to compress the picture (CPU compressor)");
+      return false;
+    }
+    else
+    {
+      glCompressedTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, depthIndex, surfLocal.w, surfLocal.h, 1, internalformat, bufferByteSize, surfLocal.pixels);
+    }
+#else
+    glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, depthIndex,  surfLocal.w, surfLocal.h, 1, externalformat, GL_UNSIGNED_BYTE, surfLocal.pixels);
+#endif
+  }
+  else
+  {
+    glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, depthIndex, surfLocal.w, surfLocal.h, 1, externalformat, GL_UNSIGNED_BYTE, surfLocal.pixels);
+  }
+
+  if (unbind) glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+
+  return IsOpenGLok("texture::updateArray - upload pixels");
+}
+
+//-----------------------------------------------------------------------------
+
+bool texture::update3D(const uint8_t* data, int w, int h, int d, bool formatFloat, int components, const bool unbind /* = true */)
+{
+  if (m_handle == 0) return false;
+
+  TRE_ASSERT(w == m_w);
+  TRE_ASSERT(h == m_h);
+  TRE_ASSERT(d == m_d);
+  TRE_ASSERT(components == m_components);
+
+  static GLenum externalformats[5] = { 0, GL_RED, GL_RG, GL_RGB, GL_RGBA };
+  GLenum       externalformat = externalformats[components];
+  const GLenum internalformat = getTexInternalFormat(m_components, useCompress(), useGammeCorreciton());
+
+  // no modifier (for now)
+
+  // upload
+
+  glBindTexture(GL_TEXTURE_3D,m_handle);
+
+  TRE_ASSERT(!useCompress()); // (for now)
+
+  {
+    glTexImage3D(GL_TEXTURE_3D, 0, internalformat, w, h, d, 0, externalformat, GL_UNSIGNED_BYTE, data);
+  }
+
+  if (unbind) glBindTexture(GL_TEXTURE_3D, 0);
+
+  return IsOpenGLok("texture::update3D - upload pixels");
 }
 
 //-----------------------------------------------------------------------------
@@ -453,7 +677,7 @@ bool texture::write(std::ostream &outbuffer, SDL_Surface *surface, int modemask,
   tinfo[2] = (surface != nullptr) ? surface->h : 0u;
   tinfo[3] = modemask;
   tinfo[4] = k_Config; // internal
-  tinfo[5] = 0; // unused
+  tinfo[5] = 0; // depth
   tinfo[6] = components;
   tinfo[7] = TEXTURE_BIN_VERSION;
 
@@ -510,6 +734,111 @@ bool texture::write(std::ostream &outbuffer, SDL_Surface *surface, int modemask,
   return true;
 }
 
+//-----------------------------------------------------------------------------
+
+bool texture::writeArray(std::ostream& outbuffer, const span<SDL_Surface*> &surfaces, int modemask, const bool freeSurface)
+{
+  bool isValid = !surfaces.empty();
+  int w = 0, h = 0, components = 0;
+  for (const auto &s : surfaces)
+  {
+    if (s == nullptr)
+    {
+      isValid = false;
+    }
+    else
+    {
+      if (w == 0) w = s->w;
+      if (h == 0) w = s->h;
+      if (components == 0) components = s->format->BytesPerPixel;
+      isValid &= (w != 0 && w == s->w && h != 0 && h == s->h && components != 0 && components == s->format->BytesPerPixel);
+    }
+  }
+  if (modemask & MMASK_FORCE_NO_ALPHA) components = 3;
+  if (modemask & MMASK_RG_ONLY) components = 2;
+  if (modemask & MMASK_ALPHA_ONLY) components = 1;
+
+  // header
+  uint tinfo[8];
+  tinfo[0] = isValid ? TI_2DARRAY : TI_NONE;
+  tinfo[1] = w;
+  tinfo[2] = h;
+  tinfo[3] = modemask;
+  tinfo[4] = k_Config; // internal
+  tinfo[5] = uint(surfaces.size());
+  tinfo[6] = components;
+  tinfo[7] = TEXTURE_BIN_VERSION;
+
+  outbuffer.write(reinterpret_cast<const char*>(&tinfo), sizeof(tinfo));
+
+  if (!isValid)
+  {
+    if (freeSurface)
+    {
+      for (auto& s : surfaces) { if (s != nullptr) SDL_FreeSurface(s); }
+    }
+    return false;
+  }
+
+  GLenum sourceformat = getTexFormatSource(surfaces[0]);
+
+  uint pixelData_ByteSize = components * w * h;
+
+  if ((modemask & MMASK_COMPRESS) != 0)
+  {
+    // pixelData_ByteSize = ? (TODO: the compression gives the same size given the texture's dimension and components)
+    return false; // not implemented
+  }
+  outbuffer.write(reinterpret_cast<const char*>(&pixelData_ByteSize), sizeof(pixelData_ByteSize));
+
+  for (std::size_t d = 0; d < surfaces.size(); ++d)
+  {
+    s_SurfaceTemp surfLocal = s_SurfaceTemp(surfaces[d]);
+
+    // transform data
+    if (components == 1 && surfaces[d]->format->BytesPerPixel != 1)
+    {
+      if (!freeSurface) surfLocal.copyToOwnBuffer();
+      _rawPack_A8(surfLocal);
+      sourceformat = GL_RED;
+    }
+    if (components == 2 && surfaces[d]->format->BytesPerPixel != 2)
+    {
+      if (!freeSurface) surfLocal.copyToOwnBuffer();
+      _rawPack_RG8(surfLocal);
+      sourceformat = GL_RG;
+    }
+    if (components == 3 && surfaces[d]->format->BytesPerPixel != 3)
+    {
+      if (!freeSurface) surfLocal.copyToOwnBuffer();
+      _rawPack_RemoveAlpha8(surfLocal);
+      TRE_ASSERT(sourceformat == GL_BGRA || sourceformat == GL_RGBA);
+      sourceformat = (sourceformat == GL_BGRA) ? GL_BGR : GL_RGB;
+    }
+    if (sourceformat == GL_BGR || sourceformat == GL_BGRA)
+    {
+      if (!freeSurface) surfLocal.copyToOwnBuffer();
+      _rawConvert_BRG_to_RGB(surfLocal);
+      sourceformat = (sourceformat == GL_BGR) ? GL_RGB : GL_RGBA;
+    }
+
+    if ((modemask & MMASK_COMPRESS) != 0)
+    {
+      if (!freeSurface) surfLocal.copyToOwnBuffer();
+      pixelData_ByteSize = _rawCompress(surfLocal, getTexInternalFormat(components, true, (modemask & MMASK_SRBG_SPACE) != 0));
+    }
+
+    outbuffer.write(reinterpret_cast<const char*>(surfLocal.pixels), pixelData_ByteSize);
+  }
+
+  if (freeSurface)
+  {
+    for (auto& s : surfaces) { if (s != nullptr) SDL_FreeSurface(s); }
+  }
+
+  return true;
+}
+
 // ----------------------------------------------------------------------------
 
 bool texture::writeCube(std::ostream &outbuffer, const std::array<SDL_Surface *, 6> &cubeFaces, int modemask, const bool freeSurface)
@@ -529,7 +858,7 @@ bool texture::writeCube(std::ostream &outbuffer, const std::array<SDL_Surface *,
   tinfo[2] = isValid ? cubeFaces[0]->h : 4u;
   tinfo[3] = modemask;
   tinfo[4] = k_Config; // internal
-  tinfo[5] = 0; // unused
+  tinfo[5] = 0; // depth
   tinfo[6] = components;
   tinfo[7] = TEXTURE_BIN_VERSION;
 
@@ -539,12 +868,13 @@ bool texture::writeCube(std::ostream &outbuffer, const std::array<SDL_Surface *,
   {
     if (freeSurface)
     {
-      for (auto &s : cubeFaces) SDL_FreeSurface(s);
+      for (auto &s : cubeFaces) { if (s != nullptr) SDL_FreeSurface(s); }
     }
     return false;
   }
 
   uint pixelData_ByteSize = components * cubeFaces[0]->w * cubeFaces[0]->h;
+  // TODO: the compression gives the same size given the texture's dimension and components
 
   if ((modemask & MMASK_COMPRESS) != 0)
   {
@@ -568,7 +898,7 @@ bool texture::writeCube(std::ostream &outbuffer, const std::array<SDL_Surface *,
 
   if (freeSurface)
   {
-    for (auto &s : cubeFaces) SDL_FreeSurface(s);
+    for (auto &s : cubeFaces) { if (s != nullptr) SDL_FreeSurface(s); }
   }
 
   return true;
@@ -582,8 +912,10 @@ bool texture::read(std::istream &inbuffer)
   uint tinfo[8];
   inbuffer.read(reinterpret_cast<char*>(&tinfo), sizeof(tinfo) );
 
-  if      (tinfo[0]==TI_2D     ) m_type = TI_2D;
-  else if (tinfo[0]==TI_CUBEMAP) m_type = TI_CUBEMAP;
+  if      (tinfo[0] == TI_2D     ) m_type = TI_2D;
+  else if (tinfo[0] == TI_2DARRAY) m_type = TI_2DARRAY;
+  else if (tinfo[0] == TI_CUBEMAP) m_type = TI_CUBEMAP;
+  else if (tinfo[0] == TI_3D     ) m_type = TI_3D;
   else
   {
     TRE_LOG("texture::read invalid texture type (reading " << tinfo[0] << ")");
@@ -592,6 +924,7 @@ bool texture::read(std::istream &inbuffer)
   m_w = tinfo[1];
   m_h = tinfo[2];
   m_mask = tinfo[3];
+  m_d = tinfo[5];
   m_components = tinfo[6];
   // validation
   if (tinfo[7] != TEXTURE_BIN_VERSION)
@@ -648,21 +981,35 @@ bool texture::read(std::istream &inbuffer)
   TRE_ASSERT(int(dataSize) > 0);
 
   glGenTextures(1,&m_handle);
-  if (m_type==TI_2D)
+  if (m_type == TI_2D)
   {
     readBuffer.resize(dataSize);
     TRE_ASSERT(readBuffer.size() == dataSize);
     inbuffer.read(readBuffer.data(), int(dataSize));
     if (doConvertAtoRGBA) _rawUnpack_A8_to_RGBA8(readBuffer);
     glBindTexture(GL_TEXTURE_2D,m_handle);
-    if (useCompress()) glCompressedTexImage2D(GL_TEXTURE_2D,0,internalformat,m_w,m_h,0,readBuffer.size(),readBuffer.data());
+    if (useCompress()) glCompressedTexImage2D(GL_TEXTURE_2D,0,internalformat,m_w,m_h,0, dataSize,readBuffer.data());
     else               glTexImage2D(GL_TEXTURE_2D,0,internalformat,m_w,m_h,0,format,GL_UNSIGNED_BYTE,readBuffer.data());
-    success &= tre::IsOpenGLok("texture::read - upload pixels");
+    success &= tre::IsOpenGLok("texture::read (TI_2D) upload pixels");
     set_parameters();
-    success &= tre::IsOpenGLok("texture::read - complete texture");
+    success &= tre::IsOpenGLok("texture::read (TI_2D) complete texture");
     glBindTexture(GL_TEXTURE_2D,0);
   }
-  else if (m_type==TI_CUBEMAP)
+  else if (m_type == TI_2DARRAY)
+  {
+    readBuffer.resize(dataSize);
+    TRE_ASSERT(readBuffer.size() == dataSize);
+    inbuffer.read(readBuffer.data(), int(dataSize));
+    if (doConvertAtoRGBA) _rawUnpack_A8_to_RGBA8(readBuffer);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, m_handle);
+    if (useCompress()) glCompressedTexImage3D(GL_TEXTURE_2D_ARRAY, 0, internalformat, m_w, m_h, m_d, 0, dataSize, readBuffer.data());
+    else               glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, internalformat, m_w, m_h, m_d, 0, format, GL_UNSIGNED_BYTE, readBuffer.data());
+    success &= tre::IsOpenGLok("texture::read (TI_2DARRAY) upload pixels");
+    set_parameters();
+    success &= tre::IsOpenGLok("texture::read (TI_2DARRAY) complete texture");
+    glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+  }
+  else if (m_type == TI_CUBEMAP)
   {
     glBindTexture(GL_TEXTURE_CUBE_MAP,m_handle);
     for (uint iface = 0; iface < 6; ++iface)
@@ -671,13 +1018,18 @@ bool texture::read(std::istream &inbuffer)
       TRE_ASSERT(readBuffer.size() == dataSize);
       inbuffer.read(readBuffer.data(), int(dataSize));
       if (doConvertAtoRGBA) _rawUnpack_A8_to_RGBA8(readBuffer);
-      if (useCompress()) glCompressedTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X+iface,0,internalformat,m_w,m_h,0,readBuffer.size(),readBuffer.data());
+      if (useCompress()) glCompressedTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X+iface,0,internalformat,m_w,m_h,0, dataSize,readBuffer.data());
       else               glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X+iface,0,internalformat,m_w,m_h,0,format,GL_UNSIGNED_BYTE,readBuffer.data());
-      success &= tre::IsOpenGLok("texture::read - upload cube face pixels");
+      success &= tre::IsOpenGLok("texture::read (TI_CUBEMAP) upload cube face pixels");
     }
     set_parameters();
-    success &= tre::IsOpenGLok("texture::read - complete cube texture");
+    success &= tre::IsOpenGLok("texture::read (TI_CUBEMAP) complete texture");
     glBindTexture(GL_TEXTURE_CUBE_MAP,0);
+  }
+  else if (m_type == TI_3D)
+  {
+    success = false;
+    TRE_FATAL("texture::read (TI_3D) not implemented. Cannot write a 3D-texture, so this case should not be reached.");
   }
 
   return success;
@@ -693,26 +1045,26 @@ void texture::clear()
   m_handle = 0;
   m_mask = 0;
   m_type = TI_NONE;
-  m_w = m_h = 0;
+  m_w = m_h = m_d = 0;
+  m_components = 0;
 }
 
 //-----------------------------------------------------------------------------
 
 void texture::set_parameters()
 {
-  TRE_ASSERT(m_type==TI_2D || m_type==TI_CUBEMAP);
-
-  const GLenum target = (m_type==TI_2D) ? GL_TEXTURE_2D : GL_TEXTURE_CUBE_MAP;
+  const GLenum target = getGLTarget(m_type);
 
   if (useMipmap()) glGenerateMipmap(target);
   glTexParameteri(target,GL_TEXTURE_WRAP_S,GL_REPEAT);
   glTexParameteri(target,GL_TEXTURE_WRAP_T,GL_REPEAT);
+  if (m_type == TI_3D) glTexParameteri(target, GL_TEXTURE_WRAP_R, GL_REPEAT);
   if (useMagFilterNearest()) glTexParameteri(target,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
   else                       glTexParameteri(target,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
   if (useMipmap())                glTexParameteri(target,GL_TEXTURE_MIN_FILTER,GL_LINEAR_MIPMAP_LINEAR);
   else if (useMagFilterNearest()) glTexParameteri(target,GL_TEXTURE_MIN_FILTER,GL_NEAREST);
   else                            glTexParameteri(target,GL_TEXTURE_MIN_FILTER,GL_LINEAR);
-  if (m_components==1)
+  if (m_components==1 && m_type != TI_3D)
   {
 #ifdef TRE_OPENGL_ES
     glTexParameteri(target, GL_TEXTURE_SWIZZLE_R, GL_ONE);

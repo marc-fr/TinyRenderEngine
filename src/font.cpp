@@ -470,7 +470,7 @@ bool font::write(std::ostream &outbuffer, const std::vector<s_fontCache> &fonts,
   std::vector<s_fontMap> localMaps;
   localMaps.resize(fonts.size());
 
-  for (uint it = 0, istop = fonts.size(); it < istop; ++it)
+  for (std::size_t it = 0, istop = fonts.size(); it < istop; ++it)
   {
     const glm::vec2 uvOffset = glm::vec2(textureCoords[it]) * invFinalSize;
 

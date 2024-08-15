@@ -19,7 +19,7 @@ class texture
 {
 public:
 
-  enum textureInfoType { TI_NONE, TI_2D, TI_2DARRAY, TI_CUBEMAP };
+  enum textureInfoType { TI_NONE, TI_2D, TI_2DARRAY, TI_CUBEMAP, TI_3D };
 
   static const int MMASK_MIPMAP             = 0x0001;
   static const int MMASK_COMPRESS           = 0x0002;
@@ -32,21 +32,9 @@ public:
 
   texture() {}
   texture(const texture &) = delete;
-  texture(texture &&other) { *this = std::move(other); }
   ~texture() { TRE_ASSERT(m_handle == 0); }
 
-private:
-  texture & operator =(const texture &) = default;
-public:
-  texture & operator =(texture &&other)
-  {
-    if (this != &other)
-    {
-      *this = other;
-      other.m_handle = 0;
-    }
-    return *this;
-  }
+  texture & operator =(const texture &) = delete;
 
   static SDL_Surface *loadTextureFromBMP(const std::string & filename); ///< Load from a BMP file and create an SDL_Surface. Returns nullptr on failure. The caller becomes the owner of the SDL_Surface (and is responsible to free it).
   static SDL_Surface *loadTextureFromFile(const std::string & filename); ///< Load from a file (any file format supported by SDL_Image) and create an SDL_Surface. Returns nullptr on failure. The caller becomes the owner of the SDL_Surface (and is responsible to free it).
@@ -54,24 +42,30 @@ public:
   static SDL_Surface *combine(const SDL_Surface *surfaceR, const SDL_Surface *surfaceG); ///< Combine surfaceR and surfaceG into a single surface with 2 channels. Returns nullptr on failure. The caller becomes the owner of the SDL_Surface (and is responsible to free it).
 
   bool load(SDL_Surface *surface, int modemask, const bool freeSurface); ///< Load from SDL_Surface into GPU as 2D-Texture. Using freeSurface=true allows to apply modifiers in-place to the pixel data.
+  bool loadArray(const span<SDL_Surface*> &surfaces, int modemask, const bool freeSurface); ///< Load from multiple SDL_Surface into GPU as 2D-Array-Texture. Using freeSurface=true allows to apply modifiers in-place to the pixel data.
   bool loadCube(const std::array<SDL_Surface *, 6> &cubeFaces, int modemask, const bool freeSurface);  ///< Load from SDL_Surface into GPU as CubeMap-Texture. Textures lost: X+, X-, Y+, Y-, Z+, Z-. Using freeSurface=true allows to apply modifiers in-place to the pixel data.
+  bool load3D(const uint8_t *data, int w, int h, int d, bool formatFloat, int components, int modemask); ///< Load from SDL_Surface into GPU as 3D-Texture. Using modifiers is not allowed. data can be null.
 
-  bool update(SDL_Surface *surface, int modemask, const bool freeSurface); ///< Upload new pixels into the texture. Using freeSurface=true allows to apply modifiers in-place to the pixel data.
+  bool update(SDL_Surface *surface, const bool freeSurface, const bool unbind = true); ///< Upload new pixels into a 2D-texture. Using freeSurface=true allows to apply modifiers in-place to the pixel data.
+  bool updateArray(SDL_Surface *surface, int depthIndex, const bool freeSurface, const bool unbind = true); ///< Upload new pixels into a 2D-Array-Texture. Using freeSurface=true allows to apply modifiers in-place to the pixel data.
+  bool update3D(const uint8_t* data, int w, int h, int d, bool formatFloat, int components, const bool unbind = true); ///< Upload new pixels into a 3D-Texture. Using modifiers is not allowed.
 
-  bool loadColor(const uint32_t cARGB);
-  bool loadWhite() { return loadColor(0xFFFFFFFF); } ///< Load a plain-white texture into GPU as 2D-texture.
-  bool loadCheckerboard(uint width, uint height); ///< Load a texture with checker-board pattern into GPU as 2D-texture.
+  bool loadColor(const uint32_t cARGB); ///< Load a plain-colored texture into GPU as 2D-Texture.
+  bool loadWhite() { return loadColor(0xFFFFFFFF); } ///< Load a plain-white texture into GPU as 2D-Texture.
+  bool loadCheckerboard(uint width, uint height); ///< Load a texture with checker-board pattern into GPU as 2D-Texture.
 
   static bool write(std::ostream &outbuffer, SDL_Surface *surface, int modemask, const bool freeSurface); ///< Bake and write a surface into binary-format. Using freeSurface=true allows to apply modifiers in-place to the pixel data.
+  static bool writeArray(std::ostream &outbuffer, const span<SDL_Surface*> &surfaces, int modemask, const bool freeSurface);
   static bool writeCube(std::ostream &outbuffer, const std::array<SDL_Surface *, 6> &cubeFaces, int modemask, const bool freeSurface); ///< Bake and write a cubemap-surface into binary-format. Using freeSurface=true allows to apply modifiers in-place to the pixel data.
 
   bool read(std::istream &inbuffer); ///< load texture from binary-file, and load it into GPU.
 
   void clear(); ///< Clear texture from GPU
 
-  uint    m_w = 0;      ///< Width
-  uint    m_h = 0;      ///< Height
-  GLuint  m_handle = 0; ///< OpenGL handle
+  int    m_w = 0;      ///< Width
+  int    m_h = 0;      ///< Height
+  int    m_d = 0;      ///< Depth (for 2D-Array or 3D textures)
+  GLuint m_handle = 0; ///< OpenGL handle
 
 protected:
 
@@ -96,7 +90,7 @@ private:
 
      std::vector<uint8_t> pixelsLocalBuffer;
 
-     s_SurfaceTemp() : pixels(nullptr) {}
+     s_SurfaceTemp() : w(0), h(0), pitch(0), pxByteSize(0), pixels(nullptr) {}
      s_SurfaceTemp(SDL_Surface *surf);
 
      void copyToOwnBuffer();

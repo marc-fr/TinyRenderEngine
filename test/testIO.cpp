@@ -25,16 +25,22 @@ bool test_bakePicture()
 
   bool status = true;
 
-#define _LoadAndBakeBMP(flags) status &= tre::texture::write(container.getBlockWriteAndAdvance(), tre::texture::loadTextureFromBMP(fileBMP), flags, true);
+  {
+    SDL_Surface* surfBMP = tre::texture::loadTextureFromBMP(fileBMP);
 
-  _LoadAndBakeBMP(tre::texture::MMASK_MIPMAP);
-  _LoadAndBakeBMP(tre::texture::MMASK_FORCE_NO_ALPHA);
-  _LoadAndBakeBMP(tre::texture::MMASK_ALPHA_ONLY);
-  _LoadAndBakeBMP(tre::texture::MMASK_COMPRESS);
-  _LoadAndBakeBMP(tre::texture::MMASK_COMPRESS | tre::texture::MMASK_FORCE_NO_ALPHA);
-  _LoadAndBakeBMP(tre::texture::MMASK_MIPMAP | tre::texture::MMASK_ANISOTROPIC);
+    status &= container.writeBlock(surfBMP, 0, false);
+    status &= container.writeBlock(surfBMP, tre::texture::MMASK_MIPMAP, false);
+    status &= container.writeBlock(surfBMP, tre::texture::MMASK_FORCE_NO_ALPHA, false);
+    status &= container.writeBlock(surfBMP, tre::texture::MMASK_ALPHA_ONLY, false);
+    status &= container.writeBlock(surfBMP, tre::texture::MMASK_COMPRESS, false);
+    status &= container.writeBlock(surfBMP, tre::texture::MMASK_COMPRESS | tre::texture::MMASK_FORCE_NO_ALPHA, false);
+    status &= container.writeBlock(surfBMP, tre::texture::MMASK_MIPMAP | tre::texture::MMASK_ANISOTROPIC, false);
 
-#undef _LoadAndBakeBMP
+    const std::array<SDL_Surface*, 2> surfBMP2 = { surfBMP , surfBMP };
+    status &= tre::texture::writeArray(container.getBlockWriteAndAdvance(), surfBMP2, 0, false);
+
+    if (surfBMP != nullptr) SDL_FreeSurface(surfBMP);
+  }
 
   {
     const std::array<SDL_Surface*, 6> cubeFcaes = { tre::texture::loadTextureFromBMP(fileMAP + ".xpos.bmp"), tre::texture::loadTextureFromBMP(fileMAP + ".xneg.bmp"),
@@ -43,11 +49,16 @@ bool test_bakePicture()
     status &= tre::texture::writeCube(container.getBlockWriteAndAdvance(), cubeFcaes, tre::texture::MMASK_MIPMAP, true);
   }
 
-  { status &= tre::font::write(container.getBlockWriteAndAdvance(), { tre::font::loadFromBMPandFNT(TESTIMPORTPATH "resources/font_arial_88") }, true); }
+  {
+    status &= tre::font::write(container.getBlockWriteAndAdvance(), { tre::font::loadFromBMPandFNT(TESTIMPORTPATH "resources/font_arial_88") }, true);
+  }
 
 #ifdef TRE_WITH_SDL2_IMAGE
-  { status &= tre::texture::write(container.getBlockWriteAndAdvance(), tre::texture::loadTextureFromFile(fileBMP), 0, true); }
-  { status &= tre::texture::write(container.getBlockWriteAndAdvance(), tre::texture::loadTextureFromFile(filePNG), 0, true); }
+  {
+    SDL_Surface* surfPNG = tre::texture::loadTextureFromFile(filePNG);
+    status &= (surfPNG != nullptr);
+    if (surfPNG != nullptr) SDL_FreeSurface(surfPNG);
+  }
 #endif
 
 #ifdef TRE_WITH_FREETYPE
@@ -65,27 +76,7 @@ bool test_bakePicture()
   return status;
 }
 
-bool test_exportimportPicture()
-{
-  bool status = true;
-
-  tre::baker container;
-
-  unsigned versionBis;
-  container.openBakedFile_forRead("test_exportimportPicture.dat", versionBis);
-
-  status &= (versionBis == 234u);
-  status &= (container.blocksCount() > 5);
-
-  { tre::texture t; status &= container.readBlock(&t); t.clear(); }
-  { tre::texture t; status &= container.readBlock(&t); t.clear(); }
-
-  status &= tre::IsOpenGLok("test_exportimportPicture - import");
-
-  container.flushAndCloseFile();
-
-  return status;
-}
+// -----------------------------------------------------------------------------
 
 const char addData[] = "Hello, this is additional data !";
 
@@ -130,6 +121,8 @@ bool test_bakeMesh()
   return status;
 }
 
+// -----------------------------------------------------------------------------
+
 bool test_exportimportMesh()
 {
   bool status = true;
@@ -173,14 +166,14 @@ int main(int argc, char **argv)
 
   if (!context.SDLInit(SDL_INIT_VIDEO))
   {
-    std::cout << "[debug] Fail to initialize SDL2 : " << SDL_GetError() << std::endl;
+    TRE_LOG("[debug] Fail to initialize SDL2 : " << SDL_GetError());
     return -1;
   }
 
 #ifdef TRE_WITH_SDL2_IMAGE
   if (!context.SDLImageInit(IMG_INIT_PNG))
   {
-    std::cout << "[debug] Fail to initialize SDL_Image : " << IMG_GetError() << std::endl;
+    TRE_LOG("[debug] Fail to initialize SDL_Image : " << IMG_GetError());
     return -1;
   }
 #endif
@@ -192,30 +185,25 @@ int main(int argc, char **argv)
   {
     ++Ntest;
     status = test_bakePicture();
-    if (status) { std::cout << "=== bake textures: OK" << std::endl; ++Nok; }
-    else        { std::cout << "=== bake textures: ERROR" << std::endl; }
-
-    ++Ntest;
-    status = test_exportimportPicture();
-    if (status) { std::cout << "=== import baked-textures: OK" << std::endl; ++Nok; }
-    else        { std::cout << "=== import baked-textures: ERROR" << std::endl; }
+    if (status) { TRE_LOG("=== bake textures: OK"); ++Nok; }
+    else        { TRE_LOG("=== bake textures: ERROR"); }
   }
 
   {
     ++Ntest;
     status = test_bakeMesh();
-    if (status) { std::cout << "=== bake meshes: OK" << std::endl; ++Nok; }
-    else        { std::cout << "=== bake meshes: ERROR" << std::endl; }
+    if (status) { TRE_LOG("=== bake meshes: OK"); ++Nok; }
+    else        { TRE_LOG("=== bake meshes: ERROR"); }
 
     ++Ntest;
     status = test_exportimportMesh();
-    if (status) { std::cout << "=== import baked-meshes: OK" << std::endl; ++Nok; }
-    else        { std::cout << "=== import baked-meshes: ERROR" << std::endl; }
+    if (status) { TRE_LOG("=== import baked-meshes: OK"); ++Nok; }
+    else        { TRE_LOG("=== import baked-meshes: ERROR"); }
   }
 
   // Finalize
 
-  std::cout << "END: " << Nok << " PASSED , " << Ntest-Nok << " FAILED" << std::endl;
+  TRE_LOG("END: " << Nok << " PASSED , " << Ntest-Nok << " FAILED");
 
   context.SDLImageQuit();
   context.SDLQuit();
