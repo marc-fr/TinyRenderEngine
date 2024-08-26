@@ -337,28 +337,6 @@ void triangleQuality(const glm::vec3 &vA, const glm::vec3 &vB, const glm::vec3 &
  */
 void tetrahedronQuality(const glm::vec3 &vA, const glm::vec3 &vB, const glm::vec3 &vC, const glm::vec3 &vD, float * volume, float * quality);
 
-/**
- * @brief surfaceCurvature
- * Returns curvature (k1, k2) on main curvature direction (e1, e2), in the point's local frame
- * @param pCenter
- * @param plocalFrame transform matrix global-frame -> local-space, such as local-frame = (tanU, tanV, normal)
- * @param pOthers
- * @param curve1 curvature vector in the local space
- * @param curve2 curvature vector in the local space
- */
-void surfaceCurvature(const glm::vec3 &pCenter, const glm::mat3 &plocalFrame, const tre::span<glm::vec3> pOthers, glm::vec2 &curve1, glm::vec2 &curve2);
-
-/**
- * @brief surfaceCurvature
- * Returns curvature (k1, k2) on main curvature direction (e1, e2)
- * @param[in] pCenter
- * @param[in] normal of a surface (an approximation can be used here, such as the projection of pOthers on the normal plane does not produce irregularities)
- * @param[in] pOthers
- * @param[out] curve1 curvature vector
- * @param[out] curve2 curvature vector
- */
-void surfaceCurvature(const glm::vec3 &pCenter, const glm::vec3 &normal, const tre::span<glm::vec3> pOthers, glm::vec3 &curve1, glm::vec3 &curve2);
-
 /// @}
 // Sort algorithm =====================================================================
 /// @name Sort algorithms

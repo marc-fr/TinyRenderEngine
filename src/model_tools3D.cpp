@@ -6,16 +6,42 @@
 #include <glm/gtx/component_wise.hpp>
 #include <glm/gtx/norm.hpp> // for glm::length2()
 
-//#define TETRA_DEBUG // Tetrahedralizer debugging
-
-#ifdef TETRA_DEBUG
+//#define MESH_DEBUG // Mesh debugging
+#ifdef MESH_DEBUG
 #include <fstream>
 #include <string>
-#endif // TETRA_DEBUG
+
+static std::ostream& operator<<(std::ostream& out, const glm::vec3 &pt)
+{
+  out << pt.x << ' ' <<  pt.y << ' ' << pt.z;
+  return out;
+}
+
+#define osprinti3(_i) (_i < 100 ? "0" : "") << (_i < 10 ? "0" : "") << _i
+
+#endif // MESH_DEBUG
 
 #include <algorithm> // for std::find
 
 namespace tre {
+
+// == Helpers =================================================================
+
+static void _computeConnectivity_vert2tri(const s_modelDataLayout &data, std::size_t offset, std::size_t count, std::vector<std::vector<uint> > &vertexToTriangles)
+{
+  TRE_ASSERT(data.m_indexCount > 0);
+  vertexToTriangles.clear();
+  vertexToTriangles.resize(data.m_vertexCount);
+  const std::size_t istop = offset + count;
+  for (std::size_t i = offset, iT = 0; i < istop; i+=3, iT++)
+  {
+    vertexToTriangles[data.m_index[i + 0]].push_back(iT);
+    vertexToTriangles[data.m_index[i + 1]].push_back(iT);
+    vertexToTriangles[data.m_index[i + 2]].push_back(iT);
+  }
+}
+
+// == Model Tools =============================================================
 
 namespace modelTools {
 
@@ -74,7 +100,7 @@ glm::vec4 computeBarycenter3D(const s_modelDataLayout &layout, const s_partInfo 
 
 // ============================================================================
 
-void computeConvexeSkin3D(const s_modelDataLayout &layout, const s_partInfo &part, const glm::mat4 &transform, const float threshold, std::vector<glm::vec3> &outSkinTri)
+void computeConvexeSkin3D(const s_modelDataLayout &layout, const s_partInfo &part, const float threshold, std::vector<glm::vec3> &outSkinTri)
 {
   TRE_ASSERT(layout.m_vertexCount > 0);
   TRE_ASSERT(layout.m_positions.m_size == 3);
@@ -86,7 +112,7 @@ void computeConvexeSkin3D(const s_modelDataLayout &layout, const s_partInfo &par
   const std::size_t offset = part.m_offset;
   const std::size_t end = offset + count;
 
-  const glm::vec3 boxExtend = part.m_bbox.transform(transform).extend();
+  const glm::vec3 boxExtend = part.m_bbox.extend();
   const float radiusThreshold = threshold * fmaxf(boxExtend.x, boxExtend.y);
   const float thresholdSquared = radiusThreshold * radiusThreshold;
 
@@ -97,16 +123,14 @@ void computeConvexeSkin3D(const s_modelDataLayout &layout, const s_partInfo &par
   {
     for (std::size_t ipt = offset, j = 0; ipt < end; ++ipt, ++j)
     {
-      const glm::vec4 pt = glm::vec4(layout.m_positions.get<glm::vec3>(ipt), 1.f); // TODO : naive, not optimized ...
-      points[j] = glm::vec3(transform * pt);
+      points[j] = layout.m_positions.get<glm::vec3>(ipt);
     }
   }
   else
   {
     for (std::size_t ipt = offset, j = 0; ipt < end; ++ipt, ++j)
     {
-      const glm::vec4 pt = glm::vec4(layout.m_positions.get<glm::vec3>(layout.m_index[ipt]), 1.f); // TODO : naive, not optimized ...
-      points[j] = glm::vec3(transform * pt);
+      points[j] = layout.m_positions.get<glm::vec3>(layout.m_index[ipt]);
     }
   }
 
@@ -117,7 +141,7 @@ void computeConvexeSkin3D(const s_modelDataLayout &layout, const s_partInfo &par
 
 // ============================================================================
 
-void computeSkin3D(const s_modelDataLayout &layout, const s_partInfo &part, const glm::mat4 &transform, std::vector<glm::vec3> &outSkinTri)
+void computeSkin3D(const s_modelDataLayout &layout, const s_partInfo &part, std::vector<glm::vec3> &outSkinTri)
 {
   TRE_ASSERT(layout.m_vertexCount > 0);
   TRE_ASSERT(layout.m_positions.m_size == 3);
@@ -182,84 +206,7 @@ void computeSkin3D(const s_modelDataLayout &layout, const s_partInfo &part, cons
 
 // ============================================================================
 
-static void _computeConnectivity_vert2tri(const s_modelDataLayout &data, std::size_t offset, std::size_t count, std::vector<std::vector<uint> > &vertexToTriangles)
-{
-  TRE_ASSERT(data.m_indexCount > 0);
-  vertexToTriangles.clear();
-  vertexToTriangles.resize(data.m_vertexCount);
-  const std::size_t istop = offset + count;
-  for (std::size_t i = offset, iT = 0; i < istop; i+=3, iT++)
-  {
-    vertexToTriangles[data.m_index[i + 0]].push_back(iT);
-    vertexToTriangles[data.m_index[i + 1]].push_back(iT);
-    vertexToTriangles[data.m_index[i + 2]].push_back(iT);
-  }
-}
-
-// ----------------------------------------------------------------------------
-
-static void _computeConnectivity_tri2tri(const s_modelDataLayout &data, std::size_t offset, std::size_t count, std::vector<std::vector<uint> > &triNeighbors)
-{
-  TRE_ASSERT(data.m_indexCount > 0);
-
-  std::vector<std::vector<uint> > vertexToTriangles;
-  _computeConnectivity_vert2tri(data, offset, count, vertexToTriangles);
-
-  const std::size_t nTri = count / 3;
-  triNeighbors.resize(nTri);
-
-  const std::size_t iend = offset + count;
-
-  for (std::size_t i = offset, iT = 0; i < iend; i += 3, ++iT)
-  {
-    std::vector<uint>	&triangleNeighbors = triNeighbors[iT];
-    triangleNeighbors.clear();
-    triangleNeighbors.reserve(3);
-
-    const uint vertexA = data.m_index[i + 0];
-    const uint vertexB = data.m_index[i + 1];
-    const uint vertexC = data.m_index[i + 2];
-
-    std::vector<uint>	allNeighbors;
-    allNeighbors.reserve(vertexToTriangles[vertexA].size() + vertexToTriangles[vertexB].size() + vertexToTriangles[vertexC].size());
-
-    for(uint tri : vertexToTriangles[vertexA])
-    {
-      if (tri != iT)
-        allNeighbors.push_back(tri);
-    }
-    for(uint tri : vertexToTriangles[vertexB])
-    {
-      if (tri != iT)
-        allNeighbors.push_back(tri);
-    }
-    for(uint tri : vertexToTriangles[vertexC])
-    {
-      if (tri != iT)
-        allNeighbors.push_back(tri);
-    }
-
-    if (allNeighbors.empty())
-      continue;
-
-    sortInsertion<uint>(allNeighbors);
-
-    for (std::size_t iN = 0, stop = allNeighbors.size() - 1; iN < stop; ++iN)
-    {
-      if (allNeighbors[iN] == allNeighbors[iN + 1])
-      {
-        const uint	neighbor = allNeighbors[iN++];
-        triangleNeighbors.push_back(neighbor);
-        while (iN < stop && allNeighbors[iN] == neighbor) { ++iN; }
-        --iN;
-      }
-    }
-  }
-}
-
-// ----------------------------------------------------------------------------
-
-void computeOutNormal(const s_modelDataLayout &layout, const s_partInfo &part)
+void computeOutNormal(const s_modelDataLayout &layout, const s_partInfo &part, const bool clockwisedTriangles)
 {
   TRE_ASSERT(layout.m_vertexCount > 0);
 
@@ -270,86 +217,63 @@ void computeOutNormal(const s_modelDataLayout &layout, const s_partInfo &part)
 
   // compute data per triangle
   std::vector<glm::vec3> normalPerTri;
-  std::vector<glm::vec3> centerPerTri;
 
   const std::size_t nTriangles = count / 3;
   normalPerTri.resize(nTriangles);
-  centerPerTri.resize(nTriangles);
 
   {
-    const std::size_t Sind = offset;
-    const std::size_t Eind = Sind + count;
-
     if (layout.m_indexCount > 0)
     {
-      for (std::size_t Iind = Sind, iT = 0; Iind < Eind; Iind += 3, ++iT)
+      for (std::size_t i = offset, Eind = offset + count, iT = 0; i < Eind; i += 3, ++iT)
       {
-        const glm::vec3 pt0 = layout.m_positions.get<glm::vec3>(layout.m_index[Iind    ]);
-        const glm::vec3 pt1 = layout.m_positions.get<glm::vec3>(layout.m_index[Iind + 1]);
-        const glm::vec3 pt2 = layout.m_positions.get<glm::vec3>(layout.m_index[Iind + 2]);
-        centerPerTri[iT] = (pt0 + pt1 + pt2) / 3.f;
-        normalPerTri[iT] = glm::normalize(glm::cross(pt1 - pt0, pt2 - pt0));
+        const glm::vec3 pt0 = layout.m_positions.get<glm::vec3>(layout.m_index[i    ]);
+        const glm::vec3 pt1 = layout.m_positions.get<glm::vec3>(layout.m_index[i + 1]);
+        const glm::vec3 pt2 = layout.m_positions.get<glm::vec3>(layout.m_index[i + 2]);
+        normalPerTri[iT] = glm::cross(pt1 - pt0, pt2 - pt0);
       }
     }
     else
     {
-      for (std::size_t Iind = Sind, iT = 0; Iind < Eind; Iind += 3, ++iT)
+      for (std::size_t ind = offset, Eind = offset + count, iT = 0; ind < Eind; ind += 3, ++iT)
       {
-        const glm::vec3 pt0 = layout.m_positions.get<glm::vec3>(Iind    );
-        const glm::vec3 pt1 = layout.m_positions.get<glm::vec3>(Iind + 1);
-        const glm::vec3 pt2 = layout.m_positions.get<glm::vec3>(Iind + 2);
-        centerPerTri[iT] = (pt0 + pt1 + pt2) / 3.f;
-        normalPerTri[iT] = glm::normalize(glm::cross(pt1 - pt0, pt2 - pt0));
+        const glm::vec3 pt0 = layout.m_positions.get<glm::vec3>(ind    );
+        const glm::vec3 pt1 = layout.m_positions.get<glm::vec3>(ind + 1);
+        const glm::vec3 pt2 = layout.m_positions.get<glm::vec3>(ind + 2);
+        normalPerTri[iT] = glm::cross(pt1 - pt0, pt2 - pt0);
       }
     }
   }
 
+  if (!clockwisedTriangles)
   {
     // oriente normals (per triangle)
-    TRE_FATAL("TODO computeOutNormal");
-
-    // if indexed, compute 1 ray and deduct from connectivity (when posible)
-    // if not, compute a 1 of each triange (HEAVY !!)
+    TRE_FATAL("Not implemented.");
   }
 
   // finally, synthetize normals
   if (layout.m_indexCount == 0)
   {
     TRE_ASSERT(offset + count <= layout.m_vertexCount);
-
     s_modelDataLayout::s_vertexData::iterator<glm::vec3> normalIt = layout.m_normals.begin<glm::vec3>(offset);
-
     for (std::size_t i = 0, iT = 0; i < count; i += 3, ++iT)
     {
-      *normalIt++ = normalPerTri[iT];
-      *normalIt++ = normalPerTri[iT];
-      *normalIt++ = normalPerTri[iT];
+      const glm::vec3 n = glm::normalize(normalPerTri[iT]);
+      *normalIt++ = n;
+      *normalIt++ = n;
+      *normalIt++ = n;
     }
   }
   else
   {
     TRE_ASSERT(offset + count <= layout.m_indexCount);
-
     std::vector<std::vector<uint> > connectivity;
     _computeConnectivity_vert2tri(layout, offset, count, connectivity);
-
-    s_modelDataLayout::s_vertexData::iterator<glm::vec3> posIt = layout.m_normals.begin<glm::vec3>(offset);
-    s_modelDataLayout::s_vertexData::iterator<glm::vec3> normalIt = layout.m_normals.begin<glm::vec3>(offset);
-
-    for (std::size_t iV=0;iV<layout.m_vertexCount;++iV)
+    for (std::size_t iV = 0; iV < layout.m_vertexCount; ++iV)
     {
-      if (connectivity[iV].empty()) { ++posIt; ++normalIt; continue; }
-      // for each vertice, the normal is the weigthed normal of all neighbor triangles
-      const glm::vec3 vposition = *posIt++;
-      glm::vec3 normal;
-      // loop on the triangles
-      for (const uint triInd : connectivity[iV])
-      {
-        const glm::vec3 vVP = centerPerTri[triInd] - vposition;
-        const float w = 1.f / (glm::length(vVP) + 1.e-10f);
-        normal += w * normalPerTri[triInd];
-      }
-      *normalIt++ = glm::normalize(normal);
+      if (connectivity[iV].empty()) continue;
+      glm::vec3 normal = glm::vec3(0.f);
+      for (const uint tri : connectivity[iV]) normal += normalPerTri[tri]; // for each vertex, the normal is the weigthed normal of all neighbor triangles
+      layout.m_normals.get<glm::vec3>(iV) = glm::normalize(normal);
     }
   }
 }
@@ -442,54 +366,314 @@ void computeTangentFromUV(const s_modelDataLayout &layout, const s_partInfo &par
 
 // ============================================================================
 
-std::size_t decimateKeepVertex(const s_modelDataLayout &layout, const s_partInfo &part, const float threshold)
+struct s_starCollapser
 {
+  struct s_pt
+  {
+    float x,y,z; uint ind;
+    s_pt() : x(0.f), y(0.f), z(0.f), ind(0) {}
+    s_pt(const glm::vec3 &p, uint i) : x(p.x), y(p.y), z(p.z), ind(i) {}
+    glm::vec3 operator-(const s_pt &other) const { return glm::vec3(other.x - x, other.y - y, other.z - z); }
+  };
+  s_pt              center;
+  std::size_t       ntri;
+  std::vector<s_pt> edges;
+  std::vector<s_pt> belt;
+
+  void init(const s_modelDataLayout &layout, const uint indCenter, const std::size_t triangleCount)
+  {
+    center = s_pt(layout.m_positions.get<glm::vec3>(indCenter), indCenter);
+    ntri = triangleCount;
+    edges.clear();
+    edges.reserve(2 * triangleCount);
+    belt.clear();
+  }
+
+  bool addTri(const s_modelDataLayout &layout, uint ai, uint bi, uint ci)
+  {
+    ai = layout.m_index[ai];
+    bi = layout.m_index[bi];
+    ci = layout.m_index[ci];
+    if ((ai == bi) || (ai == ci) || (bi == ci)) return false;
+    const bool ax = (ai == center.ind);
+    const bool bx = (bi == center.ind);
+    const bool cx = (ci == center.ind);
+    const glm::vec3 &av = layout.m_positions.get<glm::vec3>(ai);
+    const glm::vec3 &bv = layout.m_positions.get<glm::vec3>(bi);
+    const glm::vec3 &cv = layout.m_positions.get<glm::vec3>(ci);
+    if (ax + bx + cx != 1) return false;
+    if (ax) { edges.emplace_back(bv, bi); edges.emplace_back(cv, ci); }
+    if (bx) { edges.emplace_back(cv, ci); edges.emplace_back(av, ai); }
+    if (cx) { edges.emplace_back(av, ai); edges.emplace_back(bv, bi); }
+    return true;
+  }
+
+  bool computeClosedBelt()
+  {
+    TRE_ASSERT(ntri * 2 == edges.size());
+    if (edges.size() / 2 < 3) return false;
+    belt.reserve(ntri);
+    // first
+    belt.push_back(edges[0]);
+    belt.push_back(edges[1]);
+    edges[1] = edges.back(); edges.pop_back();
+    edges[0] = edges.back(); edges.pop_back();
+    // other
+    for (std::size_t is = 1; is < ntri; ++is)
+    {
+      for (std::size_t ic = 0; ic < edges.size() / 2; ++ic)
+      {
+        const uint indB1 = edges[ic * 2 + 0].ind;
+        const uint indB2 = edges[ic * 2 + 1].ind;
+        if (indB1 == belt.back().ind)
+        {
+          belt.push_back(edges[ic * 2 + 1]);
+          edges[ic * 2 + 1] = edges.back(); edges.pop_back();
+          edges[ic * 2 + 0] = edges.back(); edges.pop_back();
+          break;
+        }
+        else if (indB2 == belt.back().ind)
+        {
+          TRE_LOG("s_starCollapser: wrong index order. It may produce bad result. The input mesh probably does not follow the clockwise index ordering for the triangles.");
+          belt.push_back(edges[ic * 2 + 0]);
+          edges[ic * 2 + 1] = edges.back(); edges.pop_back();
+          edges[ic * 2 + 0] = edges.back(); edges.pop_back();
+          break;
+        }
+      }
+    }
+    if (belt.size() != ntri + 1 || belt.front().ind != belt.back().ind) { belt.clear(); return false; } // the contour is not closed.
+    belt.pop_back();
+    return true;
+  }
+
+  float computeMeanCurvature() const
+  {
+    TRE_ASSERT(belt.size() == ntri && edges.empty());
+    // Using the discrete Laplace operator: dP{i} = MeanCurvature{i} Normal{i}
+    //                                            = 1/(Area/3) sum_{j}[ (cot(angleOppTriA_ij) + cot(angleOppTriB_ij))/2 (p_j-p_i) ]
+    float     area = 0.f;
+    glm::vec3 dP = glm::vec3(0.f);
+    for (std::size_t j = 0; j < ntri; ++j)
+    {
+      const s_pt &ptA = belt[j != 0 ? j - 1 : ntri - 1];
+      const s_pt &ptB = belt[j];
+      // triangle <center, A, B>
+      const glm::vec3 edgeCA = ptA - center;
+      const glm::vec3 edgeCB = ptB - center;
+      const glm::vec3 edgeAB = ptB - ptA;
+      const float triArea = 0.5f * std::abs(glm::length(glm::cross(edgeCA, edgeCB)));
+      if (triArea < 1.e-8f) return std::numeric_limits<float>::infinity();
+      area +=triArea;
+      const glm::vec3 edgeCA_n = glm::normalize(edgeCA);
+      const glm::vec3 edgeCB_n = glm::normalize(edgeCB);
+      const glm::vec3 edgeAB_n = glm::normalize(edgeAB);
+      const float cosAngleA = glm::dot(edgeAB_n, -edgeCA_n);
+      const float sinAngleA = glm::length(glm::cross(edgeAB_n, -edgeCA_n)); // or sqrt(1-cos**2) ?
+      const float cosAngleB = glm::dot(edgeAB_n, edgeCB_n);
+      const float sinAngleB = glm::length(glm::cross(edgeAB_n, edgeCB_n));
+      dP += 0.5f * (cosAngleA/sinAngleA) * edgeCB;
+      dP += 0.5f * (cosAngleB/sinAngleB) * edgeCA;
+    }
+    dP = dP * (1.f / area);
+    const float ret = glm::length(dP);
+    return ret;
+  }
+
+  bool collapse(std::vector<uint> &outIndex)
+  {
+    TRE_ASSERT(belt.size() == ntri && edges.empty());
+    outIndex.clear();
+    outIndex.reserve(3 * ntri);
+    // 2D-triangulation
+    // -> find the plane's normal and project
+    glm::vec3 normal = glm::vec3(0.f);
+    for (std::size_t j = 0; j < ntri; ++j)
+    {
+      const s_pt &ptA = belt[j != 0 ? j - 1 : ntri - 1];
+      const s_pt &ptB = belt[j];
+      const glm::vec3 edgeCA = ptA - center;
+      const glm::vec3 edgeCB = ptB - center;
+      normal += glm::cross(edgeCA, edgeCB);
+    }
+    normal = glm::normalize(normal);
+    const glm::vec3 tangU = glm::normalize(glm::cross(normal, glm::vec3(belt[0].x - center.x, belt[0].y - center.y, belt[0].z - center.z)));
+    const glm::vec3 tangV = glm::normalize(glm::cross(normal, tangU));
+    if (glm::any(glm::isnan(tangU)) || glm::any(glm::isnan(tangV))) return false;
+    std::vector<glm::vec2> ptsRing2D(ntri);
+    for (std::size_t j = 0; j < ntri; ++j)
+    {
+      const glm::vec3 edgeCP = belt[j] - center;
+      ptsRing2D[j] = glm::vec2(glm::dot(edgeCP, tangU), glm::dot(edgeCP, tangV));
+    }
+    // -> run the triangulation
+    triangulate(ptsRing2D, outIndex);
+    if (outIndex.size() != 3 * (ntri - 2)) return false;
+    // -> check
+#ifdef TRE_DEBUG
+    for (std::size_t iT = 0; iT < ntri - 2; ++iT)
+    {
+      const s_pt &pt0 = belt[outIndex[iT * 3 + 0]];
+      const s_pt &pt1 = belt[outIndex[iT * 3 + 1]];
+      const s_pt &pt2 = belt[outIndex[iT * 3 + 2]];
+      const glm::vec3 edge01 = glm::normalize(pt1 - pt0);
+      const glm::vec3 edge02 = glm::normalize(pt2 - pt0);
+      const float normalAlignCos = glm::dot(glm::cross(edge01, edge02), normal);
+      TRE_ASSERT(normalAlignCos > 0.f);
+    }
+#endif
+    // -> end
+    for (uint &ind : outIndex) ind = belt[ind].ind;
+    return true;
+    // naive (and invalid !)
+    for (std::size_t ib = 0; ib < belt.size() - 2; ++ib)
+    {
+      const GLuint indA = belt[0].ind;
+      const GLuint indB = belt[ib + 1].ind;
+      const GLuint indC = belt[ib + 2].ind;
+      outIndex.push_back(indA);
+      outIndex.push_back(indB);
+      outIndex.push_back(indC);
+    }
+    return true;
+  }
+};
+
+// ----------------------------------------------------------------------------
+
+#ifdef MESH_DEBUG
+
+struct s_decimateExporter
+{
+  std::ofstream rawOBJ;
+  uint          offsetVert = 1;
+
+  s_decimateExporter(const std::string &filename) { rawOBJ.open(filename.c_str(), std::ofstream::out); if (rawOBJ.is_open()) rawOBJ << "# WAVEFRONT data - export skin" << std::endl; }
+  ~s_decimateExporter() { rawOBJ.close(); }
+
+  uint writeVertex(const s_modelDataLayout &layout, const uint vind, std::vector<glm::uvec2> &remapInd)
+  {
+    uint       vIndE = uint(-1);
+    for (const auto &r : remapInd) { if (r.x == vind) { vIndE = r.y; break; } }
+    if (vIndE == uint(-1))
+    {
+      rawOBJ << "v " << layout.m_positions.get<glm::vec3>(vind) << std::endl;
+      vIndE = offsetVert++;
+      remapInd.emplace_back(vind, vIndE);
+    }
+    return vIndE;
+  }
+
+  void report_processedStar(const std::size_t iter, const uint ivert, const std::size_t indexOffset, const std::vector<uint> &inTriangles, const std::vector<uint> &outIndices, const s_modelDataLayout &layout)
+  {
+    if (!rawOBJ.is_open()) return;
+    std::vector<glm::uvec2> remapInd; // {.x: index in the mesh, .y: index in the export}
+
+    rawOBJ << "o Step_" << osprinti3(iter) << "_Vert" << osprinti3(ivert) << "_0InZone" << std::endl;
+    remapInd.clear();
+    for (std::size_t i = 0; i < inTriangles.size(); ++i)
+    {
+      uint triIndE[3];
+      triIndE[0] = writeVertex(layout, layout.m_index[indexOffset + inTriangles[i] * 3 + 0], remapInd);
+      triIndE[1] = writeVertex(layout, layout.m_index[indexOffset + inTriangles[i] * 3 + 1], remapInd);
+      triIndE[2] = writeVertex(layout, layout.m_index[indexOffset + inTriangles[i] * 3 + 2], remapInd);
+      rawOBJ << "f " << triIndE[0] << ' ' << triIndE[1] << ' ' << triIndE[2] << ' ' << std::endl;
+    }
+
+    rawOBJ << "o Step_" << osprinti3(iter) << "_Vert" << osprinti3(ivert) << "_0OutZone" << std::endl;
+    remapInd.clear();
+    for (std::size_t i = 0; i < outIndices.size(); i += 3)
+    {
+      uint triIndE[3];
+      triIndE[0] = writeVertex(layout, outIndices[i + 0], remapInd);
+      triIndE[1] = writeVertex(layout, outIndices[i + 1], remapInd);
+      triIndE[2] = writeVertex(layout, outIndices[i + 2], remapInd);
+      rawOBJ << "f " << triIndE[0] << ' ' << triIndE[1] << ' ' << triIndE[2] << ' ' << std::endl;
+    }
+  }
+
+  void report_invalidStar(const std::size_t iter, const uint ivert, const std::size_t indexOffset, const std::vector<uint> &inTriangles, const s_modelDataLayout &layout, const char *msg)
+  {
+    if (!rawOBJ.is_open()) return;
+    std::vector<glm::uvec2> remapInd; // {.x: index in the mesh, .y: index in the export}
+
+    rawOBJ << "o Step_" << osprinti3(iter) << "_Vert" << osprinti3(ivert) << "_0Err_" << msg << std::endl;
+    remapInd.clear();
+    for (std::size_t i = 0; i < inTriangles.size(); ++i)
+    {
+      uint triIndE[3];
+      triIndE[0] = writeVertex(layout, layout.m_index[indexOffset + inTriangles[i] * 3 + 0], remapInd);
+      triIndE[1] = writeVertex(layout, layout.m_index[indexOffset + inTriangles[i] * 3 + 1], remapInd);
+      triIndE[2] = writeVertex(layout, layout.m_index[indexOffset + inTriangles[i] * 3 + 2], remapInd);
+      rawOBJ << "f " << triIndE[0] << ' ' << triIndE[1] << ' ' << triIndE[2] << ' ' << std::endl;
+    }
+  }
+};
+
+#else // MESH_DEBUG
+
+struct s_decimateExporter
+{
+  s_decimateExporter(const char *) {};
+
+  void report_processedStar(const std::size_t, const uint, const std::size_t, const std::vector<uint>&, const std::vector<uint>&, const s_modelDataLayout&) {}
+  void report_invalidStar(const std::size_t, const uint, const std::size_t, const std::vector<uint>&, const s_modelDataLayout&, const char*) {}
+};
+
+#endif // MESH_DEBUG
+
+// ----------------------------------------------------------------------------
+
+std::size_t decimateCurvature(modelIndexed &model, const std::size_t ipartIn, const float threshold)
+{
+  const s_modelDataLayout &layout = model.layout();
+
   TRE_ASSERT(layout.m_indexCount > 0); // needed for connectivity
   TRE_ASSERT(layout.m_vertexCount > 0);
 
-  const std::size_t count = part.m_size;
-  const std::size_t offset = part.m_offset;
+  const std::size_t countIn = model.partInfo(ipartIn).m_size;
 
-  TRE_ASSERT(count % 3 == 0);
+  TRE_ASSERT(countIn % 3 == 0);
 
-  if (count == 0 || threshold == 0.f) return count;
+  if (countIn == 0 || threshold == 0.f) return std::size_t(-1);
+
+  s_decimateExporter exporter("decimateCurvature.obj");
 
   // decimate patterm: star-collapsing
-  // collapse the vertex (i) taking account of all triangles {A,B,...}
-  // thus, reconstruct the surface {A,B,...} without the vertex (i)
+  // collapse vertices considering the local re-meshing of the direct neighbor triangles
+  // reconstructing the surface without the vertex results to new triangles, 2 in less.
 
-  TRE_LOG("decimate: it may take lot of time ... (Ntri = " << count / 3 << ")");
+  // TODO: rework this to process on larger zone, rather than a zone limited to the connected triangle by a vertex (the "star" collapsing).
+
+  TRE_LOG("decimateCurvature: processing mesh (Ntri = " << countIn / 3 << ")");
 
   // 1. prepare data
 
-  //...
+  std::size_t  vertexAddOffset = 0;
+  const size_t ipartOut = model.createPart(countIn, 0, vertexAddOffset);
+  if (ipartOut == std::size_t(-1)) return std::size_t(-1);
+  const std::size_t indexOffset = model.partInfo(ipartOut).m_offset;
+  layout.copyIndex(model.partInfo(ipartIn).m_offset, countIn, indexOffset);
 
   // 2. initialize loop
 
-  bool continueProcess = true;
-  std::size_t Ntri = count / 3;
+  std::size_t Niter = 0;
+  std::size_t Ntri = countIn / 3;
 
   std::vector<std::vector<uint> > vertexToTri;
-  std::vector<bool>                   triangleProcessed;
+  std::vector<bool>               triangleProcessed;
   std::vector<uint>               triangleToRemove;
 
-  while(continueProcess)
+  while(++Niter < 1024)
   {
-    TRE_LOG("New step with Ntriangles = " << Ntri);
-
     // 2.1 prepare data
-    triangleProcessed.resize(Ntri);
-    std::fill(triangleProcessed.begin(), triangleProcessed.end(), false);
+    triangleProcessed.clear();
+    triangleProcessed.resize(Ntri, false);
 
     triangleToRemove.clear();
 
-    uint nvertMoreThan3Triangles = 0; // for debug and stats only
-    uint nvertUntouched          = 0; // for debug and stats only
-    uint nvertFlatCurvature      = 0; // for debug and stats only
-    uint nvertValidStar          = 0; // for debug and stats only
-
     // 2.2 compute connectivity (from scratch)
-    _computeConnectivity_vert2tri(layout, offset, count, vertexToTri);
+    _computeConnectivity_vert2tri(layout, indexOffset, 3 * Ntri, vertexToTri);
 
     // 2.3 loop over vertices
     for (std::size_t ivert = 0; ivert < layout.m_vertexCount; ++ivert)
@@ -497,142 +681,58 @@ std::size_t decimateKeepVertex(const s_modelDataLayout &layout, const s_partInfo
       const std::vector<uint> &triangles = vertexToTri[ivert];
 
       // -> ignore stars with less than 3 triangles
-      if (triangles.size() < 3)
-        continue;
-      ++nvertMoreThan3Triangles;
+      if (triangles.size() < 3) continue;
 
-      // -> ignore stars with processed triangle(s)
-      bool hasProcessedTri = false;
-      for (uint tri : triangles)
-        hasProcessedTri |= triangleProcessed[tri];
-      if (hasProcessedTri)
-        continue;
-      ++nvertUntouched;
-
-      // -> Compute star-couples
-      std::vector<uint> couples;
-      couples.reserve(triangles.size() * 2);
-      for (uint tri : triangles)
+      // -> ignore stars with processed triangle(s) because the connectivity has not been updated yet.
       {
-        const uint v0 = layout.m_index[offset + tri * 3 + 0];
-        if (v0 != ivert) couples.push_back(v0);
-        const uint v1 = layout.m_index[offset + tri * 3 + 1];
-        if (v1 != ivert) couples.push_back(v1);
-        const uint v2 = layout.m_index[offset + tri * 3 + 2];
-        if (v2 != ivert) couples.push_back(v2);
+        bool hasProcessedTri = false;
+        for (uint tri : triangles) hasProcessedTri |= triangleProcessed[tri];
+        if (hasProcessedTri) continue;
       }
 
-      if (couples.size() != triangles.size() * 2)
-        continue; // ill-formed stars
-
-      // -> Compute the "belt" (points around the star)
-      std::vector<uint> belt;
-      belt.reserve(triangles.size());
-
-      { // first
-        const GLuint indA = layout.m_index[offset + triangles[0] * 3 + 0];
-        const GLuint indB = layout.m_index[offset + triangles[0] * 3 + 1];
-        const GLuint indC = layout.m_index[offset + triangles[0] * 3 + 2];
-        if      (indA == ivert) { belt.push_back(indB); belt.push_back(indC); }
-        else if (indB == ivert) { belt.push_back(indC); belt.push_back(indA); }
-        else                    { belt.push_back(indA); belt.push_back(indB); }
-        couples[1] = couples.back(); couples.pop_back();
-        couples[0] = couples.back(); couples.pop_back();
-      }
-      for (std::size_t is = 1; is < triangles.size(); ++is) // other
+      s_starCollapser star;
       {
-        for (std::size_t ic = 0; ic < couples.size() / 2; ++ic)
-        {
-          const uint indB1 = couples[ic * 2 + 0];
-          const uint indB2 = couples[ic * 2 + 1];
-          if (indB1 == belt.back())
-          {
-            belt.push_back(indB2);
-            couples[ic * 2 + 1] = couples.back(); couples.pop_back();
-            couples[ic * 2 + 0] = couples.back(); couples.pop_back();
-            break;
-          }
-          else if (indB2 == belt.back())
-          {
-            belt.push_back(indB1);
-            couples[ic * 2 + 1] = couples.back(); couples.pop_back();
-            couples[ic * 2 + 0] = couples.back(); couples.pop_back();
-            break;
-          }
-        }
+        bool starValid = true;
+        star.init(layout, ivert, triangles.size());
+        for (uint tri : triangles) starValid &= star.addTri(layout, indexOffset + tri * 3 + 0, indexOffset + tri * 3 + 1, indexOffset + tri * 3 + 2);
+        if (!starValid) continue;
       }
-      if (belt.size() != triangles.size() + 1) // ill-formed star ... sure ??
-        continue;
-      TRE_ASSERT(couples.empty());
-      if (belt.front() != belt.back()) // ill-formed star ... sure ??
-        continue;
-      belt.pop_back();
-
-      ++nvertValidStar;
-
-      // -> compute curvature on the vertex "ivert"
-      std::vector<glm::vec3> beltPts;
-      beltPts.reserve(belt.size());
-      for (uint ibelt : belt)
-        beltPts.push_back(layout.m_positions.get<glm::vec3>(ibelt));
-
-      glm::vec3 curve1, curve2;
-      surfaceCurvature(layout.m_positions.get<glm::vec3>(ivert), layout.m_normals.get<glm::vec3>(ivert), beltPts, curve1, curve2);
-
-      if (glm::length(curve1) + glm::length(curve2) >= 0.5f) // TODO : hqve the chqrqcteristic lenght of the mesh. then compare to 1/cLenght
-        continue;
-
-      ++nvertFlatCurvature;
-
-      // 2.2 Reconstruct triangles
-      std::size_t NtriLocal = 0;
-      while(belt.size() > 2)
+      if (!star.computeClosedBelt())
       {
-        std::size_t ibroot = 0; // choosen triangle
-        if (belt.size() > 3)
-        {
-          // get all triangle quality
-          std::vector<float> triQual(belt.size());
-          for (std::size_t ib = 0; ib < belt.size(); ++ib)
-          {
-            uint ibp1 = (ib + 1) % belt.size();
-            uint ibp2 = (ib + 2) % belt.size();
-            triangleQuality(layout.m_positions.get<glm::vec3>(belt[ib]), layout.m_positions.get<glm::vec3>(belt[ibp1]), layout.m_positions.get<glm::vec3>(belt[ibp2]), nullptr, & triQual[ib]);
-          }
-          // get max
-          float    maxQual = triQual[0];
-          for (std::size_t ib = 1; ib < belt.size(); ++ib)
-          {
-            if (maxQual > triQual[ib])
-            {
-              maxQual = triQual[ib];
-              ibroot = ib;
-            }
-          }
-        }
-        // get the spin
-        const GLuint indA = belt[ibroot];
-        const GLuint indB = belt[(ibroot + 1) % belt.size()];
-        const GLuint indC = belt[(ibroot + 2) % belt.size()];
-        // add the triangle + remove the vertex
-        const uint Itri = triangles[NtriLocal++];
-        layout.m_index[offset + Itri * 3 + 0] = indA;
-        layout.m_index[offset + Itri * 3 + 1] = indB;
-        layout.m_index[offset + Itri * 3 + 2] = indC;
-        belt.erase(belt.begin() + (ibroot + 1) % belt.size());
+        exporter.report_invalidStar(Niter, ivert, indexOffset, triangles, layout, "belt");
+        continue;
       }
-      TRE_ASSERT(NtriLocal + 2 == triangles.size());
-      triangleToRemove.push_back(triangles[NtriLocal]);
-      triangleToRemove.push_back(triangles[NtriLocal + 1]);
-      for (uint tri : triangles)
-        triangleProcessed[tri] = true;
+      if (star.computeMeanCurvature() > threshold)
+      {
+        //exporter.report_invalidStar(Niter, ivert, indexOffset, triangles, layout, "curvature");
+        continue;
+      }
+
+      std::vector<uint> indicesNew;
+      if (!star.collapse(indicesNew))
+      {
+        exporter.report_invalidStar(Niter, ivert, indexOffset, triangles, layout, "collapse");
+        continue;
+      }
+      TRE_ASSERT(indicesNew.size() == 3 * (triangles.size() - 2));
+
+      exporter.report_processedStar(Niter, ivert, indexOffset, triangles, indicesNew, layout);
+
+      // set new indices in the mesh's index-buffer
+      for (std::size_t it = 0; it < triangles.size() - 2; ++it)
+      {
+        const uint Itri = triangles[it];
+        layout.m_index[indexOffset + Itri * 3 + 0] = indicesNew[3 * it + 0];
+        layout.m_index[indexOffset + Itri * 3 + 1] = indicesNew[3 * it + 1];
+        layout.m_index[indexOffset + Itri * 3 + 2] = indicesNew[3 * it + 2];
+      }
+      triangleToRemove.push_back(triangles[triangles.size() - 2]);
+      triangleToRemove.push_back(triangles[triangles.size() - 1]);
+      for (uint tri : triangles) triangleProcessed[tri] = true;
     }
-    TRE_LOG(" - Vertices with 3-triangles  = " << nvertMoreThan3Triangles);
-    TRE_LOG(" - Vertices untouched         = " << nvertUntouched);
-    TRE_LOG(" - Vertices processed         = " << nvertValidStar);
-    TRE_LOG(" - Vertices with flat surface = " << nvertFlatCurvature);
 
     // 3. Clear triangles
+    TRE_LOG("decimate Curvature: New step with Ntriangles = " << Ntri << ", Triangles removed = " << triangleToRemove.size());
     if (triangleToRemove.empty()) break;
     sortQuick<uint>(triangleToRemove);
     for (std::size_t k = 0; k < triangleToRemove.size(); ++k)
@@ -640,218 +740,237 @@ std::size_t decimateKeepVertex(const s_modelDataLayout &layout, const s_partInfo
       const uint Itri = triangleToRemove[triangleToRemove.size() - k - 1];
       // copy the last into the triangle "Itri"
       Ntri--;
-      layout.m_index[offset + Itri * 3 + 0] = layout.m_index[offset + Ntri * 3 + 0];
-      layout.m_index[offset + Itri * 3 + 1] = layout.m_index[offset + Ntri * 3 + 1];
-      layout.m_index[offset + Itri * 3 + 2] = layout.m_index[offset + Ntri * 3 + 2];
+      layout.m_index[indexOffset + Itri * 3 + 0] = layout.m_index[indexOffset + Ntri * 3 + 0];
+      layout.m_index[indexOffset + Itri * 3 + 1] = layout.m_index[indexOffset + Ntri * 3 + 1];
+      layout.m_index[indexOffset + Itri * 3 + 2] = layout.m_index[indexOffset + Ntri * 3 + 2];
     }
-    TRE_LOG(" - Triangles removed          = " << triangleToRemove.size());
-
-    // End condition
-    //TODO : for star, add condition for convexe-form
-    //continueProcess = indTriangleRemove.size() > 0;
-    continueProcess = false;
   }
 
-  return Ntri * 3;
+  TRE_ASSERT(Ntri * 3 <= countIn);
+  model.resizeRawPart(ipartOut, Ntri * 3); // ok, we're not growing.
+
+  return ipartOut;
 }
 
 // ============================================================================
 
-std::size_t decimateChangeVertex(const s_modelDataLayout &layout, const s_partInfo &part, const float threshold)
+std::size_t decimateVoxel(modelIndexed &model, const std::size_t ipartIn, const float gridResolution, const bool keepSharpEdges)
 {
+  const s_modelDataLayout &layout = model.layout();
+
   TRE_ASSERT(layout.m_indexCount > 0); // needed for connectivity
   TRE_ASSERT(layout.m_vertexCount > 0);
 
-  const std::size_t count = part.m_size;
-  const std::size_t offset = part.m_offset;
+  const std::size_t offsetIn = model.partInfo(ipartIn).m_offset;
+  const std::size_t countIn = model.partInfo(ipartIn).m_size;
+  const glm::vec3   bbMin = model.partInfo(ipartIn).m_bbox.m_min;
+  const glm::vec3   bbMax = model.partInfo(ipartIn).m_bbox.m_max;
 
-  if (count == 0 || threshold == 0.f) return count;
+  TRE_ASSERT(countIn % 3 == 0);
+  if (countIn == 0 || gridResolution <= 0.f) return std::size_t(-1);
 
-  // decimate patterm: edge-collapsing
-  // collapse the edge (i,j) into the vertice (k),
-  // thus, foreach triangles, replace (i) or (j) by (k)
+  const glm::vec3  gridMin = bbMin - 0.05f * (bbMax - bbMin);
+  const glm::ivec3 gridDim = glm::ivec3(glm::ceil((bbMax - bbMin) * 1.1f / gridResolution));
 
-  TRE_ASSERT(count % 3 == 0);
+  // it collapses all vertices that are in the same cell of the 3D-grid.
+  // it creates a new vertex when needed, and it removes degenerated triangles.
 
-  TRE_LOG("decimate: it may take lot of time ... (Ntri = " << count / 3 << ")");
+  std::size_t Ntri = countIn / 3;
 
-  TRE_ASSERT(layout.m_vertexCount < UINT_MAX);
+  TRE_LOG("decimateVoxel: processing mesh (Ntri = " << Ntri << ") with grid " << gridDim.x <<" x " << gridDim.y << " x " << gridDim.z);
 
-  struct s_edge
+  // pre-step: fill the 3d-grid
+
+  std::vector<uint> gridVind(gridDim.x * gridDim.y * gridDim.z, 0);
+  for (std::size_t i = offsetIn, stop = offsetIn + countIn; i < stop; ++i)
   {
-    GLuint indA;
-    GLuint indB;
-    uint triA;
-    uint triB;
-    std::vector<uint> tri;
-    s_edge(GLuint iA, GLuint iB) : indA(iA), indB(iB) {}
-  };
-
-  std::vector<float> surfaceDiff(layout.m_vertexCount, 0.f); // store mesh-modification on each vertices (surface-diff ~= square of displacement)
-
-  bool continueProcess = true;
-  std::size_t Ntri = count / 3;
-
-  while(continueProcess)
-  {
-    TRE_LOG("New step with Ntriangles = " << Ntri);
-
-    // 1. get the edge-list (from scratch)
-    std::vector<s_edge> listEdges;
-    { // -> get "root"
-      std::vector<uint> allcodes;
-      allcodes.resize(Ntri * 3);
-      for (std::size_t Itri = 0; Itri < Ntri; ++Itri)
-      {
-        const GLuint indA = layout.m_index[offset + Itri * 3 + 0];
-        const GLuint indB = layout.m_index[offset + Itri * 3 + 1];
-        const GLuint indC = layout.m_index[offset + Itri * 3 + 2];
-        const uint codeAB = (indA < indB) ? indA * layout.m_vertexCount + indB : indB * layout.m_vertexCount + indA;
-        const uint codeBC = (indB < indC) ? indB * layout.m_vertexCount + indC : indC * layout.m_vertexCount + indB;
-        const uint codeAC = (indA < indC) ? indA * layout.m_vertexCount + indC : indC * layout.m_vertexCount + indA;
-        allcodes[Itri * 3 + 0] = codeAB;
-        allcodes[Itri * 3 + 0] = codeBC;
-        allcodes[Itri * 3 + 0] = codeAC;
-      }
-      sortAndUniqueCounting(allcodes);
-
-      listEdges.reserve(allcodes.size());
-      for (uint code : allcodes) listEdges.push_back(s_edge(code / layout.m_vertexCount, code % layout.m_vertexCount));
-    }
-    // get triA, triB and triAll ...
-
-    // remove not valid edges ....
-
-    TRE_FATAL("TODO");
-
-    TRE_LOG(" - Nedges = " << listEdges.size());
-
-    uint processedEdge = 0; // just for stats.
-
-    std::vector<uint> indTriangleRemove; // triangles to remove
-    indTriangleRemove.reserve(Ntri / 2);
-
-    for (s_edge & edge : listEdges)
-    {
-
-      const glm::vec3 midpoint = (layout.m_positions.get<glm::vec3>(edge.indA) + layout.m_positions.get<glm::vec3>(edge.indB)) * 0.5f;
-      // compute total surface and mesh quality
-      float surfaceBefore = 0.f;
-      float surfaceAfter = 0.f;
-      float minMeshQBefore = 1.f;
-      float minMeshQAfter = 1.f;
-      for (uint etri : edge.tri)
-      {
-        uint i0 = layout.m_index[etri*3+0];
-        uint i1 = layout.m_index[etri*3+1];
-        uint i2 = layout.m_index[etri*3+2];
-        if (i0 == i1 || i0 == i2 || i1 == i2) continue; // degenerated triangle - will be cleaned after
-        float area;
-        float meshQuality;
-        // triangle before edge collapsing
-        glm::vec3 v0 = layout.m_positions.get<glm::vec3>(i0);
-        glm::vec3 v1 = layout.m_positions.get<glm::vec3>(i1);
-        glm::vec3 v2 = layout.m_positions.get<glm::vec3>(i2);
-        triangleQuality(v0, v1, v2, &meshQuality, &area);
-        TRE_ASSERT(area > 0.f);
-        surfaceBefore += area;
-        if (meshQuality < minMeshQBefore) minMeshQBefore = meshQuality;
-        // triangle after edge collpasing
-        int nReplace = 0;
-        if (i0 == edge.indA || i0 == edge.indB)
-        {
-          v0 = midpoint;
-          ++nReplace;
-        }
-        if (i1 == edge.indA || i1 == edge.indB)
-        {
-          v1 = midpoint;
-          ++nReplace;
-        }
-        if (i2 == edge.indA || i2 == edge.indB)
-        {
-          v2 = midpoint;
-          ++nReplace;
-        }
-        TRE_ASSERT(nReplace>0);
-        if (nReplace==2) continue; // new triangle is degenerated (2 vertices replaced by the same vertex)
-        triangleQuality(v0, v1, v2, &meshQuality, &area);
-        TRE_ASSERT(area > 0.f);
-        surfaceAfter += area;
-        if (meshQuality < minMeshQAfter) minMeshQAfter = meshQuality;
-      }
-      // test if the edge will be collapsed
-      const float surfaceRelativeDiff = fabs(surfaceBefore-surfaceAfter)/surfaceBefore +
-                                        surfaceDiff[edge.indA] + surfaceDiff[edge.indB];
-      if (surfaceRelativeDiff > (threshold*threshold))
-      {
-        //TRE_LOG("decimate: skip edge because of mesh conservation; surfaceRelativeDiff= " << surfaceRelativeDiff << " > " << (threshold*threshold) << " diff_A=" << surfaceDiff[indices[edge.indAidx]] << " diff_B=" << surfaceDiff[indices[edge.indBidx]]) ;
-        continue;
-      }
-      if (minMeshQAfter < 0.33f && minMeshQAfter < minMeshQBefore)
-      {
-        //TRE_LOG("decimate: skip edge because it degrades too much the mesh quatily; before=" << minMeshQBefore << " after=" << minMeshQAfter);
-        //do edge flip ? (if (minMeshQAfter < minMeshQBefore)
-        continue;
-      }
-      // now, collapse the edge
-      //TRE_LOG("decimate: process edge : surfaceRelativeDiff="<< surfaceRelativeDiff << " meshQuatily=(before=" << minMeshQBefore << ",after=" << minMeshQAfter << ")");
-      const GLuint indC = edge.indA;
-      // TODO collapseVertex(edge.indA, edge.indB);
-      TRE_ASSERT(indC == edge.indA);
-      ++processedEdge;
-      if (indC>=surfaceDiff.size()) surfaceDiff.resize(indC+1, 0.f);
-      surfaceDiff[indC] = surfaceRelativeDiff;
-
-      // patch triangles
-      for (uint Itri : edge.tri)
-      {
-        const GLuint indA = layout.m_index[offset + Itri * 3 + 0];
-        const GLuint indB = layout.m_index[offset + Itri * 3 + 1];
-        const GLuint indC = layout.m_index[offset + Itri * 3 + 2];
-
-        const bool hasOneA = (indA == edge.indA) || (indB == edge.indA) || (indC == edge.indA);
-        bool hasOneB = false;
-        if (indA == edge.indB)
-        {
-          hasOneB = true;
-          layout.m_index[offset + Itri * 3 + 0] = edge.indA;
-        }
-        if (indB == edge.indB)
-        {
-          hasOneB = true;
-          layout.m_index[offset + Itri * 3 + 1] = edge.indA;
-        }
-        if (indC == edge.indB)
-        {
-          hasOneB = true;
-          layout.m_index[offset + Itri * 3 + 2] = edge.indA;
-        }
-        if (hasOneA && hasOneB) indTriangleRemove.push_back(Itri); // degenerated
-      }
-    }
-
-    TRE_LOG(" - Edge processed = " << processedEdge);
-
-    // 3. Clear triangles
-    sortQuick<uint>(indTriangleRemove);
-    for (std::size_t k = 0; k < indTriangleRemove.size(); ++k)
-    {
-      const std::size_t Itri = indTriangleRemove[indTriangleRemove.size() - k - 1];
-      // copy the last into the triangle "Itri"
-      Ntri--;
-      layout.m_index[offset + Itri * 3 + 0] = layout.m_index[offset + Ntri * 3 + 0];
-      layout.m_index[offset + Itri * 3 + 1] = layout.m_index[offset + Ntri * 3 + 1];
-      layout.m_index[offset + Itri * 3 + 2] = layout.m_index[offset + Ntri * 3 + 2];
-    }
-    TRE_LOG(" - Triangle removed = " << indTriangleRemove.size());
-
-    // End condition
-    //continueProcess = indTriangleRemove.size() > 0;
-    continueProcess = false;
+    const uint ind = layout.m_index[i];
+    const glm::vec3  pos = layout.m_positions.get<glm::vec3>(ind);
+    const glm::ivec3 posI =  glm::ivec3((pos - gridMin) / gridResolution);
+    const int        g = (posI.z * gridDim.y + posI.y) * gridDim.x + posI.x;
+    TRE_ASSERT(posI.x >= 0 && posI.x < gridDim.x);
+    TRE_ASSERT(posI.y >= 0 && posI.y < gridDim.y);
+    TRE_ASSERT(posI.z >= 0 && posI.z < gridDim.z);
+    gridVind[g] += 1;
   }
 
-  return 3 * Ntri;
+  // count before allocation
+
+  std::size_t verticesNew = 0;
+  if (keepSharpEdges)
+  {
+    for (const uint gvind : gridVind) verticesNew += gvind;
+  }
+  else
+  {
+    for (const uint gvind : gridVind) verticesNew += (gvind >= 2) ? 1 : 0;
+  }
+
+  // allocate mesh data
+
+  std::size_t  vertexAddOffset = 0;
+  const size_t ipartOut = model.createPart(countIn, verticesNew, vertexAddOffset);
+  if (ipartOut == std::size_t(-1)) return std::size_t(-1);
+  const std::size_t offsetOut = model.partInfo(ipartOut).m_offset;
+  layout.copyIndex(model.partInfo(ipartIn).m_offset, countIn, offsetOut);
+
+  // create the new vertices
+
+  std::vector<glm::uvec2> triCollected, triToProcess;
+  triCollected.reserve(16);
+  triToProcess.reserve(16);
+
+  for (int ik = 0, gc = int(gridVind.size()); ik < gc; ++ik)
+  {
+    if (gridVind[ik] >= 2)
+    {
+      // collect triangles
+      triCollected.clear();
+      glm::vec3 vpos = glm::vec3(0.f);
+      int       c = 0;
+      for (std::size_t iT = 0; iT < Ntri; ++iT)
+      {
+        const uint indA = layout.m_index[offsetOut + iT * 3 + 0];
+        const uint indB = layout.m_index[offsetOut + iT * 3 + 1];
+        const uint indC = layout.m_index[offsetOut + iT * 3 + 2];
+        const glm::ivec3 posA = glm::ivec3((layout.m_positions.get<glm::vec3>(indA) - gridMin) / gridResolution);
+        const glm::ivec3 posB = glm::ivec3((layout.m_positions.get<glm::vec3>(indB) - gridMin) / gridResolution);
+        const glm::ivec3 posC = glm::ivec3((layout.m_positions.get<glm::vec3>(indC) - gridMin) / gridResolution);
+        const int gA = (posA.z * gridDim.y + posA.y) * gridDim.x + posA.x;
+        const int gB = (posB.z * gridDim.y + posB.y) * gridDim.x + posB.x;
+        const int gC = (posC.z * gridDim.y + posC.y) * gridDim.x + posC.x;
+        const uint flag = (gA == ik) * 0x1 + (gB == ik) * 0x2 + (gC == ik) * 0x4;
+        if (gA == ik) { vpos += layout.m_positions.get<glm::vec3>(indA); c += 1; }
+        if (gB == ik) { vpos += layout.m_positions.get<glm::vec3>(indB); c += 1; }
+        if (gC == ik) { vpos += layout.m_positions.get<glm::vec3>(indC); c += 1; }
+        if (flag != 0) triCollected.push_back(glm::uvec2(iT, flag));
+      }
+      TRE_ASSERT(!triCollected.empty());
+      TRE_ASSERT(c > 1);
+      vpos /= float(c);
+      //
+      while (!triCollected.empty())
+      {
+        // assign a unique vertex per each set of triangles ...
+        triToProcess.clear();
+        triToProcess.push_back(triCollected.back()); triCollected.pop_back();
+        if (keepSharpEdges) // .. that share vertices
+        {
+          for (std::size_t j = 0; j < triCollected.size();)
+          {
+            const glm::uvec2 tri = triCollected[j];
+            const uint indA = layout.m_index[offsetOut + tri.x * 3 + 0];
+            const uint indB = layout.m_index[offsetOut + tri.x * 3 + 1];
+            const uint indC = layout.m_index[offsetOut + tri.x * 3 + 2];
+            bool hasSharedPoint = false;
+            for (const auto &triB : triToProcess)
+            {
+              const uint otherA = layout.m_index[offsetOut + triB.x * 3 + 0];
+              const uint otherB = layout.m_index[offsetOut + triB.x * 3 + 1];
+              const uint otherC = layout.m_index[offsetOut + triB.x * 3 + 2];
+              const int cmm = (indA == otherA) | (indA == otherB) | (indA == otherC) |
+                              (indB == otherA) | (indB == otherB) | (indB == otherC) |
+                              (indC == otherA) | (indC == otherB) | (indC == otherC);
+              if (cmm != 0) { hasSharedPoint = true; break; }
+            }
+            if (hasSharedPoint)
+            {
+              triToProcess.push_back(tri);
+              triCollected[j] = triCollected.back();
+              triCollected.pop_back();
+              j = 0;
+            }
+            else
+            {
+              ++j;
+            }
+          }
+        }
+        else // ... of all the triangles
+        {
+          for (const auto &tri : triCollected) triToProcess.push_back(tri);
+          triCollected.clear();
+        }
+        // create the vertex and assign triangles
+        bool duplicated = false;
+        for (const auto &tri : triToProcess)
+        {
+          uint &indA = layout.m_index[offsetOut + tri.x * 3 + 0];
+          uint &indB = layout.m_index[offsetOut + tri.x * 3 + 1];
+          uint &indC = layout.m_index[offsetOut + tri.x * 3 + 2];
+          if ((tri.y & 0x1) != 0)
+          {
+            if (!duplicated) layout.copyVertex(indA, 1, vertexAddOffset);
+            duplicated = true;
+            indA = vertexAddOffset;
+          }
+          if ((tri.y & 0x2) != 0)
+          {
+            if (!duplicated) layout.copyVertex(indB, 1, vertexAddOffset);
+            duplicated = true;
+            indB = vertexAddOffset;
+          }
+          if ((tri.y & 0x4) != 0)
+          {
+            if (!duplicated) layout.copyVertex(indC, 1, vertexAddOffset);
+            duplicated = true;
+            indC = vertexAddOffset;
+          }
+        }
+        TRE_ASSERT(duplicated);
+        layout.m_positions.get<glm::vec3>(vertexAddOffset) = vpos;
+        ++vertexAddOffset;
+      }
+    }
+    else if (keepSharpEdges && gridVind[ik] == 1)
+    {
+      // duplicate also the alone vertices
+      bool duplicated = false;
+      for (std::size_t i = offsetOut, stop = offsetOut + countIn; i < stop; ++i)
+      {
+        uint &ind = layout.m_index[i];
+        const glm::vec3  pos = layout.m_positions.get<glm::vec3>(ind);
+        const glm::ivec3 posI =  glm::ivec3((pos - gridMin) / gridResolution);
+        const int        g = (posI.z * gridDim.y + posI.y) * gridDim.x + posI.x;
+        if (g == ik)
+        {
+          if (!duplicated) layout.copyVertex(ind, 1, vertexAddOffset);
+          duplicated = true;
+          ind = vertexAddOffset;
+        }
+      }
+      TRE_ASSERT(duplicated);
+      ++vertexAddOffset;
+    }
+  }
+
+  // remove degenerated triangles
+
+  for (std::size_t iT = 0; iT < Ntri; )
+  {
+    uint &indA = layout.m_index[offsetOut + iT * 3 + 0];
+    uint &indB = layout.m_index[offsetOut + iT * 3 + 1];
+    uint &indC = layout.m_index[offsetOut + iT * 3 + 2];
+    if (indA == indB || indA == indC || indB == indC)
+    {
+      --Ntri;
+      indA = layout.m_index[offsetOut + Ntri * 3 + 0];
+      indB = layout.m_index[offsetOut + Ntri * 3 + 1];
+      indC = layout.m_index[offsetOut + Ntri * 3 + 2];
+    }
+    else
+    {
+      ++iT;
+    }
+  }
+
+  TRE_ASSERT(Ntri * 3 <= countIn);
+
+  model.resizeRawPart(ipartOut, Ntri * 3); // ok, we're not growing.
+
+  TRE_LOG("decimateVoxel: Completed, Ntriangles = " << Ntri << ", new vertices = " << verticesNew);
+
+  return ipartOut;
 }
 
 // ============================================================================
@@ -1014,75 +1133,6 @@ struct s_tetrahedron
     t2 = s_tetrahedron(t1.ptA, t2.ptA, t1.ptC, t1.ptD, t2.adjACD, t1.adjACD, &t1, &t3, flagsNew);
     t1 = s_tetrahedron(t1.ptA, t2ptA , t1.ptD, t1.ptB, t2adjABD , t1.adjABD, &t3, &t2, flagsNew);
     TRE_ASSERT(t1.valid() && t2.valid() && t3.valid());
-  }
-
-  static void swapEdge_4tetras(s_tetrahedron &t1, s_tetrahedron &t2, s_tetrahedron &t3, s_tetrahedron &t4,
-                               const glm::vec3 *ptEdgeC, const glm::vec3 *ptEdgeD,
-                               const glm::vec3 *ptNewEdge1, const glm::vec3 *ptNewEdge2)
-  {
-    TRE_ASSERT(t1.valid() && t2.valid() && t3.valid() && t4.valid());
-    // on each tetra, swap point that such the labeled points "ptC" and "ptD" are respectively "ptEdgeC" and "ptEdgeD"
-    // -> t1
-    if      (t1.ptA == ptEdgeC) t1.swapPoints_A_C();
-    else if (t1.ptB == ptEdgeC) t1.swapPoints_B_C();
-    else if (t1.ptD == ptEdgeC) t1.swapPoints_C_D();
-    TRE_ASSERT(t1.ptC == ptEdgeC);
-    if      (t1.ptA == ptEdgeD) t1.swapPoints_A_D();
-    else if (t1.ptB == ptEdgeD) t1.swapPoints_B_D();
-    TRE_ASSERT(t1.ptD == ptEdgeD);
-    // -> t2
-    if      (t2.ptA == ptEdgeC) t2.swapPoints_A_C();
-    else if (t2.ptB == ptEdgeC) t2.swapPoints_B_C();
-    else if (t2.ptD == ptEdgeC) t2.swapPoints_C_D();
-    TRE_ASSERT(t2.ptC == ptEdgeC);
-    if      (t2.ptA == ptEdgeD) t2.swapPoints_A_D();
-    else if (t2.ptB == ptEdgeD) t2.swapPoints_B_D();
-    TRE_ASSERT(t2.ptD == ptEdgeD);
-    // -> t3
-    if      (t3.ptA == ptEdgeC) t3.swapPoints_A_C();
-    else if (t3.ptB == ptEdgeC) t3.swapPoints_B_C();
-    else if (t3.ptD == ptEdgeC) t3.swapPoints_C_D();
-    TRE_ASSERT(t3.ptC == ptEdgeC);
-    if      (t3.ptA == ptEdgeD) t3.swapPoints_A_D();
-    else if (t3.ptB == ptEdgeD) t3.swapPoints_B_D();
-    TRE_ASSERT(t3.ptD == ptEdgeD);
-    // -> t4
-    if      (t4.ptA == ptEdgeC) t4.swapPoints_A_C();
-    else if (t4.ptB == ptEdgeC) t4.swapPoints_B_C();
-    else if (t4.ptD == ptEdgeC) t4.swapPoints_C_D();
-    TRE_ASSERT(t4.ptC == ptEdgeC);
-    if      (t4.ptA == ptEdgeD) t4.swapPoints_A_D();
-    else if (t4.ptB == ptEdgeD) t4.swapPoints_B_D();
-    TRE_ASSERT(t4.ptD == ptEdgeD);
-    // on each tetra, swap point that such the new-edge points are labeled "ptA"
-    // -> t1
-    if (t1.ptB == ptNewEdge1 || t1.ptB == ptNewEdge2) t1.swapPoints_A_B();
-    TRE_ASSERT(t1.ptA == ptNewEdge1 || t1.ptA == ptNewEdge2);
-    // -> t2
-    if (t2.ptB == ptNewEdge1 || t2.ptB == ptNewEdge2) t2.swapPoints_A_B();
-    TRE_ASSERT(t2.ptA == ptNewEdge1 || t2.ptA == ptNewEdge2);
-    // -> t3
-    if (t3.ptB == ptNewEdge1 || t3.ptB == ptNewEdge2) t3.swapPoints_A_B();
-    TRE_ASSERT(t3.ptA == ptNewEdge1 || t3.ptA == ptNewEdge2);
-    // -> t4
-    if (t4.ptB == ptNewEdge1 || t4.ptB == ptNewEdge2) t4.swapPoints_A_B();
-    TRE_ASSERT(t4.ptA == ptNewEdge1 || t4.ptA == ptNewEdge2);
-    // replace neighbors
-    TRE_FATAL("TODO: neighbors");
-    // flip
-    uint flagsNew = t1.flags | t2.flags | t3.flags | t4.flags;
-    s_tetrahedron *tStart = (t1.ptA == ptNewEdge1) ? &t1 : t1.adjBCD;
-    TRE_ASSERT(tStart->ptA == ptNewEdge1);
-    s_tetrahedron *tSide = t1.adjACD;
-    s_tetrahedron *tOpp = t1.adjBCD;
-    s_tetrahedron *tOppSide = tSide->adjBCD;
-    TRE_ASSERT(tSide->adjBCD == tOpp->adjACD);
-    *tStart   = s_tetrahedron(ptNewEdge1, ptNewEdge2, tStart->ptC  , tStart->ptB  , nullptr, nullptr, nullptr, nullptr, flagsNew);
-    *tOpp     = s_tetrahedron(ptNewEdge1, ptNewEdge2, tOpp->ptD    , tOpp->ptB    , nullptr, nullptr, nullptr, nullptr, flagsNew);
-    *tSide    = s_tetrahedron(ptNewEdge1, ptNewEdge2, tSide->ptC   , tSide->ptB   , nullptr, nullptr, nullptr, nullptr, flagsNew);
-    *tOppSide = s_tetrahedron(ptNewEdge1, ptNewEdge2, tOppSide->ptC, tOppSide->ptB, nullptr, nullptr, nullptr, nullptr, flagsNew);
-
-    TRE_ASSERT(t1.valid() && t2.valid() && t3.valid() && t4.valid());
   }
 };
 
@@ -1294,15 +1344,7 @@ struct s_meshTriangle
 
 // ----------------------------------------------------------------------------
 
-#ifdef TETRA_DEBUG
-
-static std::ostream& operator<<(std::ostream& out, const glm::vec3 &pt)
-{
-  out << pt.x << ' ' <<  pt.y << ' ' << pt.z;
-  return out;
-}
-
-#define osprinti3(_i) (_i < 100 ? "0" : "") << (_i < 10 ? "0" : "") << _i
+#ifdef MESH_DEBUG
 
 struct s_tetraReporter
 {
@@ -1408,34 +1450,20 @@ struct s_tetraReporter
     ++stepId;
   }
 
-  void report_Step2_SurfFail(const std::vector<s_tetrahedron *> &tetras, const s_meshTriangle &tri)
-  {
-    for (std::size_t i = 0; i < tetras.size(); ++i)
-    {
-      rawOBJ  << "o Step2_" << osprinti3(stepId) << "_Surf_FAILED_Tetra_" << osprinti3(i) << std::endl;
-      writeTetra(*tetras[i]);
-    }
-    {
-      rawOBJ << "o Step2_" << osprinti3(stepId) << "_Surf_FAILED_TriangleCurrent" << std::endl;
-      writeTriangle(tri);
-    }
-    ++stepId;
-  }
-
   void report_Step2_Edge(const std::vector<s_tetrahedron *> &tetras, const glm::vec3 &ptEdgeBegin, const glm::vec3 &ptEdgeEnd)
   {
-    rawOBJ  << "o Step2_" << osprinti3(stepId) << "_Edge_Tetras"  << std::endl;
+    rawOBJ  << "o Step2_" << osprinti3(stepId) << "_EdgeCREATED_Tetras"  << std::endl;
     for (std::size_t i = 0; i < tetras.size(); ++i)
     {
       rawOBJ << "g " << "pgroup_Tetra_" << osprinti3(i) << std::endl;
       writeTetra(*tetras[i]);
     }
     {
-      rawOBJ << "o Step2_" << osprinti3(stepId) << "_Edge_EdgePtBegin" << std::endl;
+      rawOBJ << "o Step2_" << osprinti3(stepId) << "_EdgeCREATED_EdgePtBegin" << std::endl;
       writePoint(ptEdgeBegin);
     }
     {
-      rawOBJ << "o Step2_" << osprinti3(stepId) << "_Edge_EdgePtEnd" << std::endl;
+      rawOBJ << "o Step2_" << osprinti3(stepId) << "_EdgeCREATED_EdgePtEnd" << std::endl;
       writePoint(ptEdgeEnd);
     }
     ++stepId;
@@ -1445,16 +1473,30 @@ struct s_tetraReporter
   {
     for (std::size_t i = 0; i < tetras.size(); ++i)
     {
-      rawOBJ  << "o Step2_" << osprinti3(stepId) << "_Edge_FAILED_" << label << "_Tetra_" << osprinti3(i) << std::endl;
+      rawOBJ  << "o Step2_" << osprinti3(stepId) << "_EdgeFAILED_" << label << "_Tetra_" << osprinti3(i) << std::endl;
       writeTetra(*tetras[i]);
     }
     {
-      rawOBJ << "o Step2_" << osprinti3(stepId) << "_Edge_FAILED_" << label << "_EdgePtBegin" << std::endl;
+      rawOBJ << "o Step2_" << osprinti3(stepId) << "_EdgeFAILED_" << label << "_EdgePtBegin" << std::endl;
       writePoint(ptEdgeBegin);
     }
     {
-      rawOBJ << "o Step2_" << osprinti3(stepId) << "_Edge_FAILED_" << label << "_EdgePtEnd" << std::endl;
+      rawOBJ << "o Step2_" << osprinti3(stepId) << "_EdgeFAILED_" << label << "_EdgePtEnd" << std::endl;
       writePoint(ptEdgeEnd);
+    }
+    ++stepId;
+  }
+
+  void report_Step3_TriFail(const std::vector<s_tetrahedron *> &tetras, const s_meshTriangle &tri, const char *label)
+  {
+    for (std::size_t i = 0; i < tetras.size(); ++i)
+    {
+      rawOBJ  << "o Step3_" << osprinti3(stepId) << "_TriFAILED_Tetra_" << osprinti3(i) << std::endl;
+      writeTetra(*tetras[i]);
+    }
+    {
+      rawOBJ << "o Step3_" << osprinti3(stepId) << "_TriFAILED_TriangleCurrent_" << label << std::endl;
+      writeTriangle(tri);
     }
     ++stepId;
   }
@@ -1503,23 +1545,9 @@ struct s_tetraReporter
     }
     ++stepId;
   }
-
-  void report_Step3_Triangle_Resolution(s_meshTriangle &tri, const std::vector<s_tetrahedron *> &tetras, const char *label)
-  {
-    for (std::size_t i = 0; i < tetras.size(); ++i)
-    {
-      rawOBJ  << "o Step3_" << osprinti3(stepId) << "_ResolutionTetra_" << label << "_Tetra_" << osprinti3(i) << std::endl;
-      writeTetra(*tetras[i]);
-    }
-    {
-      rawOBJ << "o Step3_" << osprinti3(stepId) << "_ResolutionTetra_" << label << "_Triangle" << std::endl;
-      writeTriangle(tri);
-    }
-    ++stepId;
-  }
 };
 
-#else
+#else // MESH_DEBUG
 
 struct s_tetraReporter
 {
@@ -1527,14 +1555,13 @@ struct s_tetraReporter
 
   void report_Step1(const tre::chunkVector<s_tetrahedron, 128>&, const std::vector<s_tetrahedron*>&, const glm::vec3&, const std::vector<glm::vec3>&) {}
   void report_Step1_Fail(const std::vector<s_tetrahedron*>&, const s_surface*, const glm::vec3&, uint) {}
-  void report_Step2_SurfFail(const std::vector<s_tetrahedron*>&, const s_meshTriangle&) {}
   void report_Step2_Edge(const std::vector<s_tetrahedron*>&, const glm::vec3&, const glm::vec3&) {}
   void report_Step2_EdgeFail(const std::vector<s_tetrahedron*>&, const glm::vec3&, const glm::vec3&, const char*) {}
+  void report_Step3_TriFail(const std::vector<s_tetrahedron*>&, const s_meshTriangle&, const char*) {}
   void report_Step3_Interior_Exterior(const tre::chunkVector<s_tetrahedron, 128>&, const char*) {}
-  void report_Step3_Triangle_Resolution(s_meshTriangle&, const std::vector<s_tetrahedron*>&, const char*) {}
 };
 
-#endif // TETRA_DEBUG
+#endif // MESH_DEBUG
 
 // ----------------------------------------------------------------------------
 
@@ -1545,7 +1572,7 @@ bool tetrahedralize(const s_modelDataLayout &layout, const s_partInfo &part, std
 
   if (part.m_size < 4) return false;
 
-  s_tetraReporter exporter("tetrahedralization.obj"); // TMP REMOVE
+  s_tetraReporter exporter("tetrahedralization.obj");
 
   GLuint                                *indicesData = layout.m_index.getPointer(part.m_offset);
   const s_modelDataLayout::s_vertexData &inPos = layout.m_positions;
@@ -1719,10 +1746,10 @@ bool tetrahedralize(const s_modelDataLayout &layout, const s_partInfo &part, std
     // -> prepare the insertion geometry
     s_tetrahedron &tRoot = *listTetraToProcess[0];
     // pt on vertex, edge or surface ?
-    const bool onSurfABC = fabsf(s_surface(tRoot.ptA, tRoot.ptB, tRoot.ptC, nullptr, *tRoot.ptD).volumeSignedWithPoint(*pt)) <= tetraMinVolume;
-    const bool onSurfABD = fabsf(s_surface(tRoot.ptA, tRoot.ptB, tRoot.ptD, nullptr, *tRoot.ptC).volumeSignedWithPoint(*pt)) <= tetraMinVolume;
-    const bool onSurfACD = fabsf(s_surface(tRoot.ptA, tRoot.ptC, tRoot.ptD, nullptr, *tRoot.ptB).volumeSignedWithPoint(*pt)) <= tetraMinVolume;
-    const bool onSurfBCD = fabsf(s_surface(tRoot.ptB, tRoot.ptC, tRoot.ptD, nullptr, *tRoot.ptA).volumeSignedWithPoint(*pt)) <= tetraMinVolume;
+    const bool onSurfABC = std::abs(s_surface(tRoot.ptA, tRoot.ptB, tRoot.ptC, nullptr, *tRoot.ptD).volumeSignedWithPoint(*pt)) <= tetraMinVolume;
+    const bool onSurfABD = std::abs(s_surface(tRoot.ptA, tRoot.ptB, tRoot.ptD, nullptr, *tRoot.ptC).volumeSignedWithPoint(*pt)) <= tetraMinVolume;
+    const bool onSurfACD = std::abs(s_surface(tRoot.ptA, tRoot.ptC, tRoot.ptD, nullptr, *tRoot.ptB).volumeSignedWithPoint(*pt)) <= tetraMinVolume;
+    const bool onSurfBCD = std::abs(s_surface(tRoot.ptB, tRoot.ptC, tRoot.ptD, nullptr, *tRoot.ptA).volumeSignedWithPoint(*pt)) <= tetraMinVolume;
 
     const uint onSurfCount = onSurfABC + onSurfABD + onSurfACD + onSurfBCD;
 
@@ -1732,7 +1759,6 @@ bool tetrahedralize(const s_modelDataLayout &layout, const s_partInfo &part, std
       if (onSurfABC & onSurfABD & onSurfBCD) indexRemapper[_indP(pt) - indexRemapperOffset] = _indP(tRoot.ptB);
       if (onSurfABC & onSurfACD & onSurfBCD) indexRemapper[_indP(pt) - indexRemapperOffset] = _indP(tRoot.ptC);
       if (onSurfABD & onSurfACD & onSurfBCD) indexRemapper[_indP(pt) - indexRemapperOffset] = _indP(tRoot.ptD);
-
       continue; // duplicated point, go to the next point
     }
     else if (onSurfCount == 2) // pt on edge
@@ -1929,7 +1955,6 @@ bool tetrahedralize(const s_modelDataLayout &layout, const s_partInfo &part, std
   TRE_LOG("tetrahedralize: main-step 1: there are " << indicesFailedCount << " insertion-fails, over " << indicesInitialSize << " vertices");
 
   // main-step 2: apply the surface-constrain (swap surfaces to enforce there is existing surface in the tetrahedralization for each mesh's triangle)
-  //              and flag tetrahedrons depending on their side (interior or exterior)
 
   const std::size_t Ntriangles = part.m_size / 3;
   std::size_t       NtrianglesResolved = 0;
@@ -1953,244 +1978,110 @@ bool tetrahedralize(const s_modelDataLayout &layout, const s_partInfo &part, std
     if (((indF | indG | indH) == uint(-1)) || ((indF == indG) | (indF == indH) | (indG == indH)))
       continue; // the mesh's triangle cannot be reconstructed. Skip it.
 
-    uint            keyEdgesPrev = 0;
-    bool            surfExists = false;
+    bool edgeExistsFG = false;
+    bool edgeExistsFH = false;
+    bool edgeExistsGH = false;
+    listTetraToProcess.clear();
 
-    while (true) // reconstruction step
+    for (std::size_t iT = 0; iT < listTetra.size(); ++iT)
     {
-      uint           keyEdges = 0; // 0x1: edge FG exists, 0x2: edge FH exists, 0x4: edge GH exists
-      s_tetrahedron *tOnPtF = nullptr;
-      s_tetrahedron *tOnPtG = nullptr;
-
-      for (std::size_t iT = 0; iT < listTetra.size(); ++iT)
+      s_tetrahedron &t = listTetra[iT];
+      TRE_ASSERT(t.valid());
+      const uint key = t.hasPoint(tri.ptF) + t.hasPoint(tri.ptG) + t.hasPoint(tri.ptH);
+      if (key == 3)
       {
-        s_tetrahedron &t = listTetra[iT];
-        TRE_ASSERT(t.valid());
-        const uint key = t.hasPoint(tri.ptF) * 0x1 + t.hasPoint(tri.ptG) * 0x2 + t.hasPoint(tri.ptH) * 0x4;
-        if (key == 0x7)
+        const bool onPtA = tri.hasPoint(t.ptA);
+        const bool onPtB = tri.hasPoint(t.ptB);
+        const bool onPtC = tri.hasPoint(t.ptC);
+        const bool onPtD = tri.hasPoint(t.ptD);
+        TRE_ASSERT(onPtA + onPtB + onPtC + onPtD == 3);
+        if      (!onPtA) s_tetrahedron::flag_fromSurface(&t, t.adjBCD, glm::dot(s_surface(t.ptB, t.ptC, t.ptD, nullptr, *t.ptA).normalOut, tri.normalOut) > 0.f);
+        else if (!onPtB) s_tetrahedron::flag_fromSurface(&t, t.adjACD, glm::dot(s_surface(t.ptA, t.ptC, t.ptD, nullptr, *t.ptB).normalOut, tri.normalOut) > 0.f);
+        else if (!onPtC) s_tetrahedron::flag_fromSurface(&t, t.adjABD, glm::dot(s_surface(t.ptA, t.ptB, t.ptD, nullptr, *t.ptC).normalOut, tri.normalOut) > 0.f);
+        else             s_tetrahedron::flag_fromSurface(&t, t.adjABC, glm::dot(s_surface(t.ptA, t.ptB, t.ptC, nullptr, *t.ptD).normalOut, tri.normalOut) > 0.f);
+        tri.tetraNearby = &t;
+        tri.resolved = true;
+        ++NtrianglesResolved;
+        break;
+      }
+      else if (key == 2)
+      {
+        edgeExistsFG |= t.hasPoint(tri.ptF) && t.hasPoint(tri.ptG);
+        edgeExistsFH |= t.hasPoint(tri.ptF) && t.hasPoint(tri.ptH);
+        edgeExistsGH |= t.hasPoint(tri.ptG) && t.hasPoint(tri.ptH);
+      }
+      if (key != 0)
+      {
+        listTetraToProcess.push_back(&t);
+        if (tri.tetraNearby != nullptr)
         {
-          const bool onPtA = tri.hasPoint(t.ptA);
-          const bool onPtB = tri.hasPoint(t.ptB);
-          const bool onPtC = tri.hasPoint(t.ptC);
-          const bool onPtD = tri.hasPoint(t.ptD);
-          TRE_ASSERT(onPtA + onPtB + onPtC + onPtD == 3);
-          if      (!onPtA) s_tetrahedron::flag_fromSurface(&t, t.adjBCD, glm::dot(s_surface(t.ptB, t.ptC, t.ptD, nullptr, *t.ptA).normalOut, tri.normalOut) > 0.f);
-          else if (!onPtB) s_tetrahedron::flag_fromSurface(&t, t.adjACD, glm::dot(s_surface(t.ptA, t.ptC, t.ptD, nullptr, *t.ptB).normalOut, tri.normalOut) > 0.f);
-          else if (!onPtC) s_tetrahedron::flag_fromSurface(&t, t.adjABD, glm::dot(s_surface(t.ptA, t.ptB, t.ptD, nullptr, *t.ptC).normalOut, tri.normalOut) > 0.f);
-          else             s_tetrahedron::flag_fromSurface(&t, t.adjABC, glm::dot(s_surface(t.ptA, t.ptB, t.ptC, nullptr, *t.ptD).normalOut, tri.normalOut) > 0.f);
-          surfExists = true;
-          break;
+          const uint keyNB = tri.tetraNearby->hasPoint(tri.ptF) + tri.tetraNearby->hasPoint(tri.ptG) + tri.tetraNearby->hasPoint(tri.ptH);
+          if (key > keyNB) tri.tetraNearby = &t;
         }
-        if      (key == 0x3) keyEdges |= 0x1;
-        else if (key == 0x5) keyEdges |= 0x2;
-        else if (key == 0x6) keyEdges |= 0x4;
-        if (key & 0x1) tOnPtF = &t;
-        if (key & 0x2) tOnPtG = &t;
-      }
-
-      if (surfExists) break;
-
-      TRE_ASSERT(tOnPtF != nullptr && tOnPtG != nullptr);
-      tri.tetraNearby = tOnPtF;
-
-      if (((keyEdges     & 0x1) != 0) + ((keyEdges     & 0x2) != 0) + ((keyEdges     & 0x4) != 0) <=
-          ((keyEdgesPrev & 0x1) != 0) + ((keyEdgesPrev & 0x2) != 0) + ((keyEdgesPrev & 0x4) != 0))
-      {
-        exporter.report_Step2_SurfFail({ tOnPtF, tOnPtG }, tri);
-        break; // Failed (maybe the initial mesh has non-manfoiled geometry)
-      }
-
-      keyEdgesPrev = keyEdges;
-
-      if (keyEdges == 0x7)
-      {
-        // All edges exist but without a shared tetra. TODO ... get 3 tetra adjacant each others
-        listTetraToProcess.clear();
-        for (std::size_t iT = 0; iT < listTetra.size(); ++iT)
+        else
         {
-          s_tetrahedron &t = listTetra[iT];
-          TRE_ASSERT(t.valid());
-          const uint key = t.hasPoint(tri.ptF) + t.hasPoint(tri.ptG) + t.hasPoint(tri.ptH);
-          if (key == 2) listTetraToProcess.push_back(&t);
-        }
-        exporter.report_Step2_SurfFail(listTetraToProcess, tri);
-        break; // the mesh's triangle is now reconstructed.
-      }
-
-      // get a non-existing edge (that will be labeled 'PQ')
-      const glm::vec3 *ptEdgeP = tri.ptF;
-      const glm::vec3 *ptEdgeQ = tri.ptG;
-      s_tetrahedron   *tOnPtP = tOnPtF;
-      if ((keyEdges & 0x2) == 0)
-      {
-        ptEdgeP = tri.ptF;
-        ptEdgeQ = tri.ptH;
-        tOnPtP = tOnPtF;
-      }
-      else if ((keyEdges & 0x4) == 0)
-      {
-        ptEdgeP = tri.ptG;
-        ptEdgeQ = tri.ptH;
-        tOnPtP = tOnPtG;
-      }
-
-      // process edge PQ
-      // -> get all tetra around point P
-      listTetraToProcess.clear();
-      listTetraToProcess.push_back(tOnPtP);
-      {
-        std::size_t queueStart = 0;
-        std::size_t queueEnd = listTetraToProcess.size();
-        while (queueStart < queueEnd)
-        {
-          for (std::size_t i = queueStart; i < queueEnd; ++i)
-          {
-            s_tetrahedron &t = *listTetraToProcess[i];
-            s_tetrahedron *tadjABC = t.adjABC;
-            s_tetrahedron *tadjABD = t.adjABD;
-            s_tetrahedron *tadjACD = t.adjACD;
-            s_tetrahedron *tadjBCD = t.adjBCD;
-            for (s_tetrahedron *tbis : listTetraToProcess)
-            {
-              if      (tbis == tadjABC) tadjABC = nullptr;
-              else if (tbis == tadjABD) tadjABD = nullptr;
-              else if (tbis == tadjACD) tadjACD = nullptr;
-              else if (tbis == tadjBCD) tadjBCD = nullptr;
-            }
-            if (tadjABC != nullptr && tadjABC->hasPoint(ptEdgeP)) listTetraToProcess.push_back(tadjABC);
-            if (tadjABD != nullptr && tadjABD->hasPoint(ptEdgeP)) listTetraToProcess.push_back(tadjABD);
-            if (tadjACD != nullptr && tadjACD->hasPoint(ptEdgeP)) listTetraToProcess.push_back(tadjACD);
-            if (tadjBCD != nullptr && tadjBCD->hasPoint(ptEdgeP)) listTetraToProcess.push_back(tadjBCD);
-          }
-          queueStart = queueEnd;
-          queueEnd = listTetraToProcess.size();
+          tri.tetraNearby = &t;
         }
       }
-      // -> get a starting tetra (from the point P)
-      s_tetrahedron *tStart = nullptr;
-      float          tStartBestVol = 0.f;
-      for (s_tetrahedron *t : listTetraToProcess)
-      {
-        // swap point such as ptEdgeP == t->ptA
-        if      (ptEdgeP == t->ptB) t->swapPoints_A_B();
-        else if (ptEdgeP == t->ptC) t->swapPoints_A_C();
-        else if (ptEdgeP == t->ptD) t->swapPoints_A_D();
-        TRE_ASSERT(ptEdgeP == t->ptA);
-        const float volPBC_Q = s_surface(ptEdgeP, t->ptB, t->ptD, nullptr, *t->ptD).volumeSignedWithPoint(*ptEdgeQ);
-        const float volPBD_Q = s_surface(ptEdgeP, t->ptB, t->ptD, nullptr, *t->ptC).volumeSignedWithPoint(*ptEdgeQ);
-        const float volPCD_Q = s_surface(ptEdgeP, t->ptC, t->ptD, nullptr, *t->ptB).volumeSignedWithPoint(*ptEdgeQ);
-        const float volMin = std::min(std::min(volPBC_Q, volPBD_Q), volPCD_Q);
-        const float volMax = std::max(std::max(volPBC_Q, volPBD_Q), volPCD_Q);
-        if (volMin < tStartBestVol && volMax < tetraMinVolume)
-        {
-          tStart = t;
-          tStartBestVol = volMin;
-        }
-      }
-      while (tStart != nullptr)
-      {
-        // -> walk one step toward the point Q
-        s_tetrahedron *tNext = tStart->adjBCD;
-        s_tetrahedron::conformSharedPoints(*tStart, *tNext);
-        const float volPBC_NextPt = s_surface(ptEdgeP, tStart->ptB, tStart->ptD, nullptr, *tStart->ptD).volumeSignedWithPoint(*tNext->ptA);
-        const float volPBD_NextPt = s_surface(ptEdgeP, tStart->ptB, tStart->ptD, nullptr, *tStart->ptC).volumeSignedWithPoint(*tNext->ptA);
-        const float volPCD_NextPt = s_surface(ptEdgeP, tStart->ptC, tStart->ptD, nullptr, *tStart->ptB).volumeSignedWithPoint(*tNext->ptA);
-        const bool isInterior_BC = volPBC_NextPt < -tetraMinVolume;
-        const bool isInterior_BD = volPBD_NextPt < -tetraMinVolume;
-        const bool isInterior_CD = volPCD_NextPt < -tetraMinVolume;
-        const uint isInteriorCount = isInterior_BC + isInterior_BD + isInterior_CD;
-        const glm::vec3 *ptSharedEdge1 = nullptr;
-        const glm::vec3 *ptSharedEdge2 = nullptr;
-        if (isInteriorCount == 3) // The ray from P towards the next-tetra exterme point hits a tetra's surface.
-        {
-          exporter.report_Step2_EdgeFail({tStart, tNext}, *ptEdgeP, *ptEdgeQ, "RayHitsSurface_BeforeSplit");
-          // No, detect the edge to remove. (like when 'isInteriorCount == 2')
-          break; // ?
-        }
-        else if (isInteriorCount == 2) // The ray from P towards the next-tetra exterme point hits an edge
-        {
-          ptSharedEdge1 = isInterior_CD ? tStart->ptB : tStart->ptC;
-          ptSharedEdge2 = isInterior_BC ? tStart->ptD : tStart->ptC;
+    }
 
-          listTetraToProcess.clear();
-          listTetraToProcess.push_back(tStart);
-          _walkTetrahedronOnEdge(listTetraToProcess, ptSharedEdge1, ptSharedEdge2);
+    if (tri.resolved) continue;
 
-          exporter.report_Step2_EdgeFail(listTetraToProcess, *ptEdgeP, *ptEdgeQ, "RayHitsEdge_BeforeSplit");
+    // Try to reconstruct an absent edge with the tetra-split
 
-          // TODO: split all possible surface-adjacant-tetra (split 2 tetras into 3 tetras) in order to obtain only 4 tetras around the edge.
-          // Then flip the edge.
-
-          if (listTetraToProcess.size() > 4)
-          {
-            for (uint it = 0; it < listTetraToProcess.size(); )
-            {
-              s_tetrahedron *t1 = listTetraToProcess[it];
-              s_tetrahedron *t2 = listTetraToProcess[(it + 1) % listTetraToProcess.size()];
-              // check if t1 and t2 can be 'merged' (in regards with the shared edge)
-              s_tetrahedron::conformSharedPoints(*t1, *t2);
-
-              const float volABC = s_surface(t1->ptA, t1->ptB, t1->ptC, nullptr, *t1->ptD).volumeSignedWithPoint(*t2->ptA);
-              const float volABD = s_surface(t1->ptA, t1->ptB, t1->ptD, nullptr, *t1->ptC).volumeSignedWithPoint(*t2->ptA);
-              const float volACD = s_surface(t1->ptA, t1->ptC, t1->ptD, nullptr, *t1->ptB).volumeSignedWithPoint(*t2->ptA);
-
-              if (volABC < -tetraMinVolume && volABD < -tetraMinVolume && volACD < -tetraMinVolume)
-              {
-                listTetra.push_back(s_tetrahedron());
-                s_tetrahedron *tNew = &listTetra[listTetra.size() - 1];
-                s_tetrahedron::split_2tetras_to_3tetras(*t1, *t2, *tNew);
-                listTetraToProcess.erase(listTetraToProcess.begin() + it);
-                if       (t1->hasPoint(ptSharedEdge1) && t1->hasPoint(ptSharedEdge2)) listTetraToProcess[it] = t1;
-                else if  (t2->hasPoint(ptSharedEdge1) && t2->hasPoint(ptSharedEdge2)) listTetraToProcess[it] = t2;
-                else                                                                  listTetraToProcess[it] = tNew;
-                it = 0;
-              }
-              else
-              {
-                ++it;
-              }
-            }
-          }
-
-          if (listTetraToProcess.size() != 4)
-          {
-            exporter.report_Step2_EdgeFail(listTetraToProcess, *ptEdgeP, *ptEdgeQ, "RayHitsEdge_AfterSplit_FAILED");
-            break; // failed to reduce the list. Stop this edge reconstruction.
-          }
-
-          s_tetrahedron::swapEdge_4tetras(*listTetraToProcess[0], *listTetraToProcess[1], *listTetraToProcess[2], *listTetraToProcess[3],
-                                          ptSharedEdge1, ptSharedEdge2,
-                                          tStart->ptA, tStart->ptD);
-
-          exporter.report_Step2_EdgeFail(listTetraToProcess, *ptEdgeP, *ptEdgeQ, "RayHitsEdge_AfterSplit");
-          break; // ?
-        }
-        else // The ray from P towards the next-tetra exterme point hits a vertex
-        {
-          // Aligned points (degenerated geometry). Ignore this edge.
-          exporter.report_Step2_EdgeFail({tStart}, *ptEdgeP, *ptEdgeQ, "RayHitsVertex_AlignedPoints");
-          break;
-        }
-      }
-
-#ifdef TRE_DEBUG // maybe remove that once it's tested !!
-      for (std::size_t iS = 0; iS < listTetra.size(); ++iS)
-      {
-        TRE_ASSERT(listTetra[iS].valid());
-      }
-#endif
-
-    } // while reconstruct edge
-
-    if (surfExists)
+    const glm::vec3 *pt1 = nullptr, *pt2 = nullptr;
+    if (!edgeExistsFG) { pt1 = tri.ptF; pt2 = tri.ptG; }
+    if (!edgeExistsFH) { pt1 = tri.ptF; pt2 = tri.ptH; }
+    if (!edgeExistsGH) { pt1 = tri.ptG; pt2 = tri.ptH; }
+    if (pt1 != nullptr)
     {
-      tri.resolved = true;
-      ++NtrianglesResolved;
-      if (progressNotifier != nullptr) (*progressNotifier)(0.7f + 0.2f * float(NtrianglesResolved) / float(Ntriangles));
+      s_tetrahedron *tSplit1 = nullptr, *tSplit2 = nullptr;
+      for (std::size_t iT = 0; iT < listTetraToProcess.size(); ++iT)
+      {
+        s_tetrahedron &t = *(listTetraToProcess[iT]);
+        if (t.hasPoint(pt2)) std::swap(pt1, pt2);
+        if (t.hasPoint(pt1))
+        {
+          TRE_ASSERT(!t.hasPoint(pt2));
+          if (t.adjBCD != nullptr && t.adjBCD->hasPoint(pt2)) { tSplit1 = &t; tSplit2 = t.adjBCD; break; }
+          if (t.adjACD != nullptr && t.adjACD->hasPoint(pt2)) { tSplit1 = &t; tSplit2 = t.adjACD; break; }
+          if (t.adjABD != nullptr && t.adjABD->hasPoint(pt2)) { tSplit1 = &t; tSplit2 = t.adjABD; break; }
+          if (t.adjABC != nullptr && t.adjABC->hasPoint(pt2)) { tSplit1 = &t; tSplit2 = t.adjABC; break; }
+        }
+      }
+      if (tSplit1 != nullptr)
+      {
+        TRE_ASSERT(tSplit2 != nullptr);
+        // check if splitting would introduce bad tetrahedrons
+        // TODO: allow to split even if the tetrahedrization is no longer "admissible" (the split will introduce an edge inside a surface) ?
+        s_tetrahedron::conformSharedPoints(*tSplit1, *tSplit2);
+        const float vSum = tSplit1->volume + tSplit2->volume;
+        const float vtBC = glm::dot(s_surface(tSplit1->ptA, tSplit1->ptB, tSplit1->ptC, nullptr, *tSplit1->ptD).normalOut, *tSplit2->ptA - *tSplit1->ptA);
+        const float vtCD = glm::dot(s_surface(tSplit1->ptA, tSplit1->ptC, tSplit1->ptD, nullptr, *tSplit1->ptB).normalOut, *tSplit2->ptA - *tSplit1->ptA);
+        const float vtDB = glm::dot(s_surface(tSplit1->ptA, tSplit1->ptD, tSplit1->ptB, nullptr, *tSplit1->ptC).normalOut, *tSplit2->ptA - *tSplit1->ptA);
+        if (vtBC < 1.e-3f * vSum || vtCD < 1.e-3f * vSum || vtDB < 1.e-3f * vSum)
+        {
+          exporter.report_Step2_EdgeFail({tSplit1, tSplit2}, *pt1, *pt2, "DontSplit");
+          tSplit1 = nullptr;
+          tSplit2 = nullptr;
+        }
+      }
+      if (tSplit1 != nullptr)
+      {
+        TRE_ASSERT(tSplit2 != nullptr);
+        exporter.report_Step2_Edge({tSplit1, tSplit2}, *pt1, *pt2);
+        listTetra.push_back(s_tetrahedron());
+        s_tetrahedron::split_2tetras_to_3tetras(*tSplit1, *tSplit2, listTetra[listTetra.size()-1]);
+      }
     }
   }
 
-  TRE_LOG("tetrahedralize: main-step 2: there are " << Ntriangles - NtrianglesResolved << " triangles that do not match with the tetrahedrization, over " << Ntriangles << " triangles.");
+  for (std::size_t iS = 0; iS < listTetra.size(); ++iS)
+  {
+    TRE_ASSERT(listTetra[iS].valid());
+  }
+
+  TRE_LOG("tetrahedralize: main-step 2: there are " << Ntriangles - NtrianglesResolved << " triangles that do not match exactly with the tetrahedrization, over " << Ntriangles << " triangles.");
 
   exporter.report_Step3_Interior_Exterior(listTetra, "AfterBasicDetection");
 
@@ -2200,36 +2091,70 @@ bool tetrahedralize(const s_modelDataLayout &layout, const s_partInfo &part, std
   for (std::size_t jT = 0; jT < Ntriangles; ++jT)
   {
     s_meshTriangle &tri = inTriangles[jT];
-
     if (tri.resolved) continue;
 
-    const glm::vec3 edgeFG = *tri.ptG - *tri.ptF;
-    const glm::vec3 edgeFH = *tri.ptH - *tri.ptF;
-    const glm::vec3 directNormal = glm::normalize(glm::cross(edgeFG, edgeFH));
-    glm::mat3       matUnproject = glm::inverse(glm::mat3(edgeFG, edgeFH, directNormal)); // det(m) == 1.f
-
-    // get nearby tetrahedrons
     if (tri.tetraNearby == nullptr)
     {
-      for (std::size_t iT = 0; iT < listTetra.size(); ++iT)
-      {
-        s_tetrahedron &t = listTetra[iT];
-        if (t.hasPoint(tri.ptF) || t.hasPoint(tri.ptG) || t.hasPoint(tri.ptH))
-        {
-          tri.tetraNearby = &t;
-          break;
-        }
-      }
-    }
-    if (tri.tetraNearby == nullptr)
+      exporter.report_Step3_TriFail({}, tri, "NoNearby");
       continue; // invalid triangle !!
+    }
+
+    // Here, try to fit the triangle with one of the tetrahedron's surface.
+
+    const glm::vec3 edgeFG = (*tri.ptG - *tri.ptF);
+    const glm::vec3 edgeFH = (*tri.ptH - *tri.ptF);
+    const glm::vec3 triOut = glm::cross(edgeFG, edgeFH);
+    const float     triArea = glm::length(triOut);
+    const glm::vec3 triOutNormal = glm::normalize(triOut);
+    if (glm::any(glm::isnan(triOutNormal)))
+    {
+      exporter.report_Step3_TriFail({tri.tetraNearby}, tri, "NormalNaN");
+      continue; // invalid triangle !!
+    }
 
     listTetraToProcess.clear();
     listTetraToProcess.push_back(tri.tetraNearby);
-    {
-      std::size_t queueStart = 0;
-      std::size_t queueEnd = listTetraToProcess.size();
-      while (queueStart < queueEnd)
+    std::size_t queueStart = 0;
+    std::size_t queueEnd = listTetraToProcess.size();
+
+     while(true)
+     {
+      // process
+      for (std::size_t i = queueStart; i < queueEnd; ++i)
+      {
+        s_tetrahedron &t = *listTetraToProcess[i];
+        const float distC = t.volume / triArea;
+        const float ptAn = glm::dot(*t.ptA - *tri.ptF, triOutNormal);
+        const float ptBn = glm::dot(*t.ptB - *tri.ptF, triOutNormal);
+        const float ptCn = glm::dot(*t.ptC - *tri.ptF, triOutNormal);
+        const float ptDn = glm::dot(*t.ptD - *tri.ptF, triOutNormal);
+        const bool  ptAontri = std::abs(ptAn) < 0.1f * distC;
+        const bool  ptBontri = std::abs(ptBn) < 0.1f * distC;
+        const bool  ptContri = std::abs(ptCn) < 0.1f * distC;
+        const bool  ptDontri = std::abs(ptDn) < 0.1f * distC;
+        // TODO: check if the points are not "outside" the triangle (intersection with the triangle would be a single point or a line)
+        const int   ptsontri = ptAontri + ptBontri + ptContri + ptDontri;
+        TRE_ASSERT(ptsontri >= 1);
+        if (ptsontri == 3)
+        {
+          bool side = false;
+          s_tetrahedron *tSide = nullptr;
+          if (!ptAontri) { side = ptAn > 0.f; tSide = t.adjBCD; }
+          if (!ptBontri) { side = ptBn > 0.f; tSide = t.adjACD; }
+          if (!ptContri) { side = ptCn > 0.f; tSide = t.adjABD; }
+          if (!ptDontri) { side = ptDn > 0.f; tSide = t.adjABC; }
+          s_tetrahedron::flag_fromSurface(&t, tSide, !side);
+          tri.tetraNearby = &t;
+          tri.resolved = true;
+          break;
+        }
+        else if (ptsontri == 4)
+        {
+          exporter.report_Step3_TriFail({&t}, tri, "AllPtsOnTriangle");
+        }
+      }
+      if (tri.resolved) break;
+      // advance
       {
         for (std::size_t i = queueStart; i < queueEnd; ++i)
         {
@@ -2252,73 +2177,10 @@ bool tetrahedralize(const s_modelDataLayout &layout, const s_partInfo &part, std
         }
         queueStart = queueEnd;
         queueEnd = listTetraToProcess.size();
+
+        break; // TMP - // if (queueStart == queueEnd) break;
       }
     }
-
-    // TODO: will be improved, by looping on nearby tetras only -> use the "listTetraToProcess"
-
-    for (std::size_t iT = 0; iT < listTetra.size(); ++iT)
-    {
-      s_tetrahedron &t = listTetra[iT];
-
-      // Project the 4 tetra's points on the mesh's triangle
-
-      const glm::vec3 coordsA = matUnproject * (*t.ptA - *tri.ptF);
-      const glm::vec3 coordsB = matUnproject * (*t.ptB - *tri.ptF);
-      const glm::vec3 coordsC = matUnproject * (*t.ptC - *tri.ptF);
-      const glm::vec3 coordsD = matUnproject * (*t.ptD - *tri.ptF);
-
-      const bool isOnTriA = (std::abs(coordsA.z) < 1.e-4f);
-      const bool isOnTriB = (std::abs(coordsB.z) < 1.e-4f);
-      const bool isOnTriC = (std::abs(coordsC.z) < 1.e-4f);
-      const bool isOnTriD = (std::abs(coordsD.z) < 1.e-4f);
-      const unsigned nOnTri = isOnTriA + isOnTriB + isOnTriC + isOnTriD;
-
-      const bool isOnExtA = (!isOnTriA) & (coordsA.z > 0.f);
-      const bool isOnExtB = (!isOnTriB) & (coordsB.z > 0.f);
-      const bool isOnExtC = (!isOnTriC) & (coordsC.z > 0.f);
-      const bool isOnExtD = (!isOnTriD) & (coordsD.z > 0.f);
-      const unsigned nOnExt = isOnExtA + isOnExtB + isOnExtC + isOnExtD;
-
-      if ((nOnTri == 0) && (nOnExt == 0 || nOnExt == 4)) continue; // all points are on a side (interior or exterior) and not to close
-
-      // TRE_ASSERT(t in listTetraToProcess)
-
-      // if 1 pt is on a side, 3 on the other side, compute the tetra's slice on the plane (it's a triangle). And intersect the triangle with the mesh's triangle
-      // if 2 pt is on a side, 2 on the other side, compute the tetra's slice on the plane (it's a quad). And intersect the quad with the mesh's triangle
-
-      // Then compute both the volume of interior and the volume of exterior.
-      TRE_ASSERT("TODO"); // HERE TODO !
-      /*{
-
-        //listTetraToProcess.push_back(&t);
-
-        if (!isOnTriA && (isInTriB + isInTriC + isInTriD) >= 2)
-        {
-          s_tetrahedron::flag_fromSurface(&t, t.adjBCD, glm::dot(s_surface(t.ptB, t.ptC, t.ptD, nullptr, *t.ptA).normalOut, tri.normalOut) > 0.f);
-          tri.resolved = true;
-        }
-        if (!isOnTriB && (isInTriA + isInTriC + isInTriD) >= 2)
-        {
-          s_tetrahedron::flag_fromSurface(&t, t.adjACD, glm::dot(s_surface(t.ptA, t.ptC, t.ptD, nullptr, *t.ptB).normalOut, tri.normalOut) > 0.f);
-          tri.resolved = true;
-        }
-        if (!isOnTriC && (isInTriA + isInTriB + isInTriD) >= 2)
-        {
-          s_tetrahedron::flag_fromSurface(&t, t.adjABD, glm::dot(s_surface(t.ptA, t.ptB, t.ptD, nullptr, *t.ptC).normalOut, tri.normalOut) > 0.f);
-          tri.resolved = true;
-        }
-        if (!isOnTriD && (isInTriA + isInTriB + isInTriC) >= 2)
-        {
-          s_tetrahedron::flag_fromSurface(&t, t.adjABC, glm::dot(s_surface(t.ptA, t.ptB, t.ptC, nullptr, *t.ptD).normalOut, tri.normalOut) > 0.f);
-          tri.resolved = true;
-        }
-      }*/
-
-    }
-
-    //if (!tri.resolved && exporter.stepId < 100)
-    //  exporter.report_Step3_Triangle_Resolution(tri, listTetraToProcess, "FAILED");
 
     if (tri.resolved)
     {
@@ -2329,7 +2191,7 @@ bool tetrahedralize(const s_modelDataLayout &layout, const s_partInfo &part, std
 
   exporter.report_Step3_Interior_Exterior(listTetra, "AfterProjectedDetection");
 
-  TRE_LOG("tetrahedralize: main-step 3: there are " << Ntriangles - NtrianglesResolved << " triangles that are ignored to define the interior volume of the mesh, over " << Ntriangles << " triangles.");
+  TRE_LOG("tetrahedralize: main-step 3: there are " << Ntriangles - NtrianglesResolved << " triangles that will be ignored to define the interior volume of the mesh, over " << Ntriangles << " triangles.");
 
   if (progressNotifier != nullptr) (*progressNotifier)(0.9f);
 
@@ -2363,41 +2225,22 @@ bool tetrahedralize(const s_modelDataLayout &layout, const s_partInfo &part, std
 
   exporter.report_Step3_Interior_Exterior(listTetra, "AfterSpreading");
 
-  // -> get the side (interior or exterior) to delete
-  uint        flagDelete = 0;
-  std::size_t NtetrasRemaining  = 0;
-  for (std::size_t iT = 0; iT < listTetra.size(); ++iT)
-  {
-    const s_tetrahedron &t = listTetra[iT];
-    if ((t.flags & s_tetrahedron::FLAG_SIDEMASK) == 0) ++NtetrasRemaining;
-    const uint iA = _indP(t.ptA);
-    const uint iB = _indP(t.ptB);
-    const uint iC = _indP(t.ptC);
-    const uint iD = _indP(t.ptD);
-    if (!(iA < layout.m_vertexCount && iB < layout.m_vertexCount && iC < layout.m_vertexCount && iD < layout.m_vertexCount))
-      flagDelete |= (t.flags & s_tetrahedron::FLAG_SIDEMASK);
-  }
-  if (NtetrasRemaining != 0 || flagDelete == s_tetrahedron::FLAG_SIDEMASK)
-  {
-    if (NtetrasRemaining != 0)
-    {
-      TRE_LOG("tetrahedralize: main-step 3: there are " << NtetrasRemaining << " un-flaged tetrahedrons. Algo failed.");
-    }
-    if (flagDelete == s_tetrahedron::FLAG_SIDEMASK)
-    {
-      TRE_LOG("tetrahedralize: main-step 3: input mesh does not seem to be closed (the interior volume is not well defined). Algo failed.");
-    }
-    //listTetra.clear(); // clear all :(
-  }
-
   // final-step: compute output tetrahedra-list
+
+  std::size_t NtetrasRemaining  = 0;
+  bool        hasDeletedInterior = false;
 
   listTetrahedrons.reserve(listTetrahedrons.size() + listTetra.size() * 4);
   for (std::size_t iT = 0; iT < listTetra.size(); ++iT)
   {
     const s_tetrahedron &t = listTetra[iT];
-    //if ((t.flags & flagDelete) == 0)
-    if (_indP(t.ptA) < layout.m_vertexCount && _indP(t.ptB) < layout.m_vertexCount && _indP(t.ptC) < layout.m_vertexCount && _indP(t.ptD) < layout.m_vertexCount)
+    if ((t.flags & s_tetrahedron::FLAG_SIDEMASK) == 0) ++NtetrasRemaining;
+    const bool hasValidVertices = _indP(t.ptA) < layout.m_vertexCount &&
+                                  _indP(t.ptB) < layout.m_vertexCount &&
+                                  _indP(t.ptC) < layout.m_vertexCount &&
+                                  _indP(t.ptD) < layout.m_vertexCount;
+    hasDeletedInterior |= !hasValidVertices && (t.flags & s_tetrahedron::FLAG_INTERIOR) != 0;
+    if (hasValidVertices && ((t.flags & s_tetrahedron::FLAG_EXTERIOR) == 0))
     {
       listTetrahedrons.push_back(_indP(t.ptA));
       listTetrahedrons.push_back(_indP(t.ptB));
@@ -2408,6 +2251,17 @@ bool tetrahedralize(const s_modelDataLayout &layout, const s_partInfo &part, std
 
 #undef _indP
 
+  if (NtetrasRemaining != 0)
+  {
+    TRE_LOG("tetrahedralize: final-step: there are " << NtetrasRemaining << " un-flagged tetrahedrons.");
+  }
+  if (hasDeletedInterior)
+  {
+    TRE_LOG("tetrahedralize: final-step: input mesh does not seem to be closed (the interior volume is not well defined).");
+  }
+
+  TRE_LOG("tetrahedralize: final-step: ouputs " << listTetrahedrons.size() / 4 << " tetrahedrons from mesh with " << Ntriangles << " triangles.");
+
   if (progressNotifier != nullptr) (*progressNotifier)(1.f);
 
   return true;
@@ -2415,6 +2269,6 @@ bool tetrahedralize(const s_modelDataLayout &layout, const s_partInfo &part, std
 
 // ============================================================================
 
-} // namespace
+} // namespace modelTools
 
-} // namespace
+} // namespace tre

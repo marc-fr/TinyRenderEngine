@@ -223,7 +223,7 @@ void s_modelDataLayout::copyVertex(std::size_t ivfirst, std::size_t ivcount, std
         if (abs(offset) < long(block.dim))
         {
           TRE_ASSERT(block.dim == data.m_stride);
-          if (offset < 0)
+          if (offset > 0)
           {
             block.src = dataSrc;
             block.dst = dataDst;
@@ -247,77 +247,6 @@ void s_modelDataLayout::copyVertex(std::size_t ivfirst, std::size_t ivcount, std
 }
 
 // ============================================================================
-
-void s_modelDataLayout::collapseVertex(GLuint iVertA, const std::vector<GLuint> &iVertOther, float wVertA, const std::vector<float> wVertOther) const
-{
-  TRE_ASSERT(iVertOther.size() == wVertOther.size());
-
-  // patch indices list (if needed):
-  TRE_ASSERT(m_indexCount == 0 || m_index.m_data != nullptr);
-  for (std::size_t Iind = 0; Iind < m_indexCount; ++Iind)
-  {
-    GLuint & ind = m_index[Iind];
-    for (GLuint iVertB : iVertOther)
-    {
-      if (ind == iVertB) ind  = iVertA;
-    }
-  }
-
-  float wTotal = wVertA;
-  for (float w : wVertOther)
-    wTotal += w;
-  const float wNormalizer = 1.f / wTotal;
-
-  // merge data inot "A"
-  if (m_positions.m_size == 3)
-  {
-    glm::vec3 &pos = m_positions.get<glm::vec3>(iVertA);
-    pos *= wVertA;
-    for (std::size_t i = 0; i < iVertOther.size(); ++i)
-      pos += wVertOther[i] * m_positions.get<glm::vec3>(iVertOther[i]);
-    pos *= wNormalizer;
-  }
-  if (m_normals.m_size == 3)
-  {
-    glm::vec3 &normal = m_normals.get<glm::vec3>(iVertA);
-    normal *= wVertA;
-    for (std::size_t i = 0; i < iVertOther.size(); ++i)
-      normal += wVertOther[i] * m_normals.get<glm::vec3>(iVertOther[i]);
-    normal = glm::normalize(normal);
-  }
-  if (m_colors.m_size == 4)
-  {
-    glm::vec4 &color = m_colors.get<glm::vec4>(iVertA);
-    color *= wVertA;
-    for (std::size_t i = 0; i < iVertOther.size(); ++i)
-      color += wVertOther[i] * m_colors.get<glm::vec4>(iVertOther[i]);
-    color *= wNormalizer;
-  }
-  if (m_uvs.m_size == 2)
-  {
-    glm::vec2 &uv = m_uvs.get<glm::vec2>(iVertA);
-    uv *= wVertA;
-    for (std::size_t i = 0; i < iVertOther.size(); ++i)
-      uv += wVertOther[i] * m_uvs.get<glm::vec2>(iVertOther[i]);
-    uv *= wNormalizer;
-  }
-  if (m_tangents.m_size == 4)
-  {
-    glm::vec4 &tan = m_tangents.get<glm::vec4>(iVertA);
-    tan *= wVertA * tan.w;
-    for (std::size_t i = 0; i < iVertOther.size(); ++i)
-    {
-      glm::vec4 tanLocal = m_tangents.get<glm::vec4>(iVertOther[i]);
-      tanLocal *= wVertOther[i] * tanLocal.w;
-      tan += tanLocal;
-     }
-    tan.w = 0.f;
-    tan = glm::normalize(tan);
-    tan.w = 1.f;
-  }
-}
-
-// ----------------------------------------------------------------------------
 
 #define EPSILON 0.001f
 

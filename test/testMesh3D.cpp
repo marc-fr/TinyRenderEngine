@@ -20,30 +20,24 @@
 
 struct s_taskMeshProcessingContext
 {
-  // main mesh
-  tre::model  *m_mesh = nullptr;  //[input]
-  std::size_t  m_part = 0;        //[input]
-  std::size_t  m_partDecimateLevel1 = 0;
+  // input
+  tre::modelIndexed *m_mesh = nullptr;
+  std::size_t        m_part = 0;
 
-  // 2D-mesh
-  tre::modelRaw2D         *m_mesh2D;  //[input]
-  std::size_t              m_partEnvelop2D = 0;
-
-  // Raw-results
+  // Results
   std::vector<glm::vec2> m_envelop2D;
   std::vector<uint>      m_tetrahedrons;
   glm::vec4              m_centerAndVolume;
-
-  // Debug mesh
-  tre::modelIndexed  *m_meshDebug = nullptr;  //[input]
-  std::size_t         m_partDebug_Slot1 = 0;
-  std::size_t         m_partDebug_Slot2 = 0;
-  std::size_t         m_partDebug_Slot3 = 0;
-  std::size_t         m_partDebug_Lines = 0;
+  std::size_t            m_partDecimateCurv = std::size_t(-1); // note: the "color" contains visualization-data
+  std::size_t            m_partDecimateVoxel = std::size_t(-1); // note: the "color" contains visualization-data
+  std::size_t            m_partEnvelop2D = std::size_t(-1); // rendered with LINES
+  std::size_t            m_partTetrahedrons = std::size_t(-1); // note: the "color" contains visualization-data
+  std::size_t            m_partBBox = std::size_t(-1); // rendered with LINES
 
   // Status
   bool   m_completed = false;
-  double m_timeElapsedDecimateLevel1 = 0.;
+  double m_timeElapsedDecimateCurv = 0.;
+  double m_timeElapsedDecimateVoxel = 0.;
   double m_timeElapsedEnvelop2D = 0.;
   double m_timeElapsedTetrahedrization = 0.;
   double m_timeElapsedDebug = 0.;
@@ -55,37 +49,55 @@ struct s_taskMeshProcessingContext
 
   void run()
   {
-    systemtick frameStartTick = systemclock::now();
+    const systemtick tick0 = systemclock::now();
 
-   m_partDecimateLevel1 = m_mesh->decimatePart(m_part, 0.05f);
+    m_partDecimateCurv = tre::modelTools::decimateCurvature(*m_mesh, m_part, 0.2f);
 
-    systemtick frameStep1Tick = systemclock::now();
+    const systemtick tick1 = systemclock::now();
+
+    m_partDecimateVoxel = tre::modelTools::decimateVoxel(*m_mesh, m_part, 0.2f, true);
+
+     const systemtick tick2 = systemclock::now();
 
     tre::modelTools::computeConvexeEnvelop2D_XY(m_mesh->layout(), m_mesh->partInfo(m_part), glm::mat4(1.f), 1.e-2f, m_envelop2D);
 
-    systemtick frameStep2Tick = systemclock::now();
+    const systemtick tick3 = systemclock::now();
 
     std::function<void(float)> fnNotify = [this](float progress) { this->m_progressTetrahedrization = progress; };
     tre::modelTools::tetrahedralize(m_mesh->layout(), m_mesh->partInfo(m_part), m_tetrahedrons, &fnNotify);
 
-    systemtick frameEndTick = systemclock::now();
-
-    m_centerAndVolume = tre::modelTools::computeBarycenter3D(m_mesh->layout(), m_mesh->partInfo((m_part)));
+    const systemtick tick4 = systemclock::now();
 
     // upload the envelop
-    m_partEnvelop2D = m_mesh2D->createPart(m_envelop2D.size() * 2);
-    const glm::vec4 envColor = glm::vec4(1.f, 0.f, 0.f, 1.f);
-    for (std::size_t ipt = 0; ipt < m_envelop2D.size() - 1; ++ipt)
-      m_mesh2D->fillDataLine(m_partEnvelop2D, ipt * 2, m_envelop2D[ipt], m_envelop2D[ipt + 1], envColor);
-    m_mesh2D->fillDataLine(m_partEnvelop2D, m_envelop2D.size() * 2 - 2, m_envelop2D.back(), m_envelop2D.front(), envColor);
+    if (!m_envelop2D.empty())
+    {
+      std::size_t vOffset = 0;
+      m_partEnvelop2D = m_mesh->createPart(m_envelop2D.size() * 2, m_envelop2D.size(), vOffset);
+      TRE_ASSERT(m_mesh->layout().m_positions.isMatching(3, 10));
+      TRE_ASSERT(m_mesh->layout().m_colors.isMatching(4, 10));
+      TRE_ASSERT(m_mesh->layout().m_normals.isMatching(3, 10));
+      GLfloat * __restrict dataV = m_mesh->layout().m_positions.m_data + 10 * vOffset;
+      GLuint  * __restrict dataI = m_mesh->layout().m_index.m_data + m_mesh->partInfo(m_partEnvelop2D).m_offset;
+      for (std::size_t ip = 0; ip < m_envelop2D.size(); ++ip)
+      {
+        *dataV++ = m_envelop2D[ip].x; *dataV++ = m_envelop2D[ip].y; *dataV++ =0.f; // pos
+        *dataV++ = 1.f; *dataV++ = 1.f; *dataV++ = 1.f; *dataV++ = 1.f; // color
+        *dataV++ = 0.f; *dataV++ = 0.f; *dataV++ = 1.f; // normal
+        *dataI++ = uint(vOffset + ip);
+        *dataI++ = uint(vOffset + (ip == m_envelop2D.size() - 1 ? 0 : ip + 1));
+      }
+    }
 
-    // compute debug mesh
-    m_partDebug_Slot1 = computeMeshDebugDiff(*m_meshDebug, *m_mesh, m_part,               *m_mesh, m_partDecimateLevel1);
-    m_partDebug_Slot2 = computeMeshDebugDiff(*m_meshDebug, *m_mesh, m_partDecimateLevel1, *m_mesh, m_part);
-    m_partDebug_Slot3 = computeMeshDebugTetra(*m_meshDebug, *m_mesh, m_tetrahedrons);
+    // post treatment of decimation
+    if (m_partDecimateVoxel != std::size_t(-1) && m_mesh->layout().m_normals.hasData())
+      tre::modelTools::computeOutNormal(m_mesh->layout(), m_mesh->partInfo(m_partDecimateVoxel), true);
+
+    // upload the tetra mesh
+    m_partTetrahedrons = computeMeshDebugTetra(*m_mesh, m_tetrahedrons);
 
     // show center
     {
+      m_centerAndVolume = tre::modelTools::computeBarycenter3D(m_mesh->layout(), m_mesh->partInfo((m_part)));
       const std::array<uint, 6> indices = { 0, 1, 2, 3, 4, 5};
       const float vertices[] = { m_centerAndVolume.x - 0.1f, m_centerAndVolume.y, m_centerAndVolume.z,
                                  m_centerAndVolume.x + 0.1f, m_centerAndVolume.y, m_centerAndVolume.z,
@@ -93,155 +105,39 @@ struct s_taskMeshProcessingContext
                                  m_centerAndVolume.x, m_centerAndVolume.y + 0.1f, m_centerAndVolume.z,
                                  m_centerAndVolume.x, m_centerAndVolume.y, m_centerAndVolume.z - 0.1f,
                                  m_centerAndVolume.x, m_centerAndVolume.y, m_centerAndVolume.z + 0.1f };
-      m_partDebug_Lines = m_meshDebug->createPartFromIndexes(indices, vertices);
-      m_meshDebug->colorizePart(m_partDebug_Lines, glm::vec4(0.3f, 1.f, 0.3f, 1.f));
+      m_partBBox = m_mesh->createPartFromIndexes(indices, vertices);
     }
 
-    systemtick frameDebug = systemclock::now();
+    _computeVisuData();
+
+    systemtick tickE = systemclock::now();
 
     // end
-    m_timeElapsedDecimateLevel1   = std::chrono::duration<double>(frameStep1Tick - frameStartTick).count();
-    m_timeElapsedEnvelop2D        = std::chrono::duration<double>(frameStep2Tick - frameStep1Tick).count();
-    m_timeElapsedTetrahedrization = std::chrono::duration<double>(frameEndTick - frameStep2Tick).count();
-    m_timeElapsedDebug            = std::chrono::duration<double>(frameDebug - frameEndTick).count();
+    m_timeElapsedDecimateCurv     = std::chrono::duration<double>(tick1 - tick0).count();
+    m_timeElapsedDecimateVoxel    = std::chrono::duration<double>(tick2 - tick1).count();
+    m_timeElapsedEnvelop2D        = std::chrono::duration<double>(tick3 - tick2).count();
+    m_timeElapsedTetrahedrization = std::chrono::duration<double>(tick4 - tick3).count();
+    m_timeElapsedDebug            = std::chrono::duration<double>(tickE - tick4).count();
 
     m_completed = true;
   }
 
-  static std::size_t computeMeshDebugDiff(tre::modelIndexed &meshOut,
-                                          const tre::model &meshIn, const std::size_t partIn,
-                                          const tre::model &meshCompare, const std::size_t partCompare)
-  {
-    const std::size_t meshOriginIndiceStart = meshIn.partInfo(partIn).m_offset;
-    const std::size_t meshOriginIndiceCount = meshIn.partInfo(partIn).m_size;
-
-    const tre::s_modelDataLayout &inputLayout = meshIn.layout();
-
-    // Curvature
-
-    std::vector<float> curvatureNormalizedPerVertex;
-    curvatureNormalizedPerVertex.resize(inputLayout.m_vertexCount, 1.f);
-    {
-      // compute connectivity - copy of "_computeConnectivity_vert2tri" !!
-      std::vector<std::vector<unsigned> > vertexToTriangles;
-      vertexToTriangles.resize(inputLayout.m_vertexCount);
-      const std::size_t istop = meshOriginIndiceStart + meshOriginIndiceCount;
-      for (std::size_t i = meshOriginIndiceStart, iT = 0; i < istop; i+=3, ++iT)
-      {
-        vertexToTriangles[inputLayout.m_index[i + 0]].push_back(iT);
-        vertexToTriangles[inputLayout.m_index[i + 1]].push_back(iT);
-        vertexToTriangles[inputLayout.m_index[i + 2]].push_back(iT);
-      }
-
-      // compute curvature per vertex
-      for (std::size_t iV = 0; iV < inputLayout.m_vertexCount; ++iV)
-      {
-        // get vertice around "iV" + get the normal
-        const std::vector<unsigned> &neighbors = vertexToTriangles[iV];
-        if (neighbors.size() < 2)
-          continue;
-        std::vector<unsigned> neighborsVertice;
-        neighborsVertice.reserve(2 * neighbors.size());
-        for (unsigned iT : neighbors)
-        {
-          const unsigned vertexA = inputLayout.m_index[meshOriginIndiceStart + iT * 3 + 0];
-          if (vertexA != iV)
-            neighborsVertice.push_back(vertexA);
-          const unsigned vertexB = inputLayout.m_index[meshOriginIndiceStart + iT * 3 + 1];
-          if (vertexB != iV)
-            neighborsVertice.push_back(vertexB);
-          const unsigned vertexC = inputLayout.m_index[meshOriginIndiceStart + iT * 3 + 2];
-          if (vertexC != iV)
-            neighborsVertice.push_back(vertexC);
-          tre::sortAndUniqueBull(neighborsVertice);
-        }
-        std::vector<glm::vec3> listPts(neighborsVertice.size());
-        for (std::size_t i = 0; i < neighborsVertice.size(); ++i)
-          listPts[i] = inputLayout.m_positions.get<glm::vec3>(neighborsVertice[i]);
-        glm::vec3 curve1, curve2;
-        tre::surfaceCurvature(inputLayout.m_positions.get<glm::vec3>(iV), inputLayout.m_normals.get<glm::vec3>(iV), listPts, curve1, curve2);
-        const float curvature = glm::length(curve1) + glm::length(curve2);
-        curvatureNormalizedPerVertex[iV] = expf(-1.f * curvature);
-      }
-    }
-
-    // Hausdorff-distance
-
-    std::vector<float> distanceNormalizedPerVertex;
-    distanceNormalizedPerVertex.resize(inputLayout.m_vertexCount, 2.f);
-
-    const std::size_t meshCompareIndiceStart = meshCompare.partInfo(partCompare).m_offset;
-    const std::size_t meshCompareIndiceCount = meshCompare.partInfo(partCompare).m_size;
-    const tre::s_modelDataLayout &compareLayout = meshCompare.layout();
-
-    for (std::size_t i = meshOriginIndiceStart, istop = meshOriginIndiceStart + meshOriginIndiceCount; i < istop; ++i)
-    {
-      const unsigned ivert = inputLayout.m_index[i];
-      if (distanceNormalizedPerVertex[ivert] < 2.f)
-        continue;
-      const glm::vec3 pt  = inputLayout.m_positions.get<glm::vec3>(ivert);
-      const glm::vec3 dir = inputLayout.m_normals.get<glm::vec3>(ivert);
-      float distance = std::numeric_limits<float>::infinity();
-      // naive !!!
-      for (std::size_t ic = meshCompareIndiceStart, icstop = meshCompareIndiceStart + meshCompareIndiceCount; ic < icstop; ic += 3)
-      {
-        const glm::vec3 ptA = compareLayout.m_positions.get<glm::vec3>(compareLayout.m_index[ic + 0]);
-        const glm::vec3 ptB = compareLayout.m_positions.get<glm::vec3>(compareLayout.m_index[ic + 1]);
-        const glm::vec3 ptC = compareLayout.m_positions.get<glm::vec3>(compareLayout.m_index[ic + 2]);
-        distance = std::min(distance, fabsf(tre::triangleProject3D(ptA, ptB, ptC, pt, dir)));
-      }
-      distanceNormalizedPerVertex[ivert] = expf(-1.e2f * distance);
-    }
-
-    const std::size_t partOut = meshOut.createRawPart(meshOriginIndiceCount);
-
-    const std::size_t meshOutIndiceStart = meshOut.layout().m_index[meshOut.partInfo(partOut).m_offset];
-    tre::s_modelDataLayout::s_vertexData::iterator<glm::vec3> posIt = meshOut.layout().m_positions.begin<glm::vec3>(meshOutIndiceStart);
-    tre::s_modelDataLayout::s_vertexData::iterator<glm::vec3> norIt = meshOut.layout().m_normals.begin<glm::vec3>(meshOutIndiceStart);
-    tre::s_modelDataLayout::s_vertexData::iterator<glm::vec4> colIt = meshOut.layout().m_colors.begin<glm::vec4>(meshOutIndiceStart);
-
-    for (std::size_t i = meshOriginIndiceStart, istop = meshOriginIndiceStart + meshOriginIndiceCount; i < istop; i += 3)
-    {
-      const unsigned indA = inputLayout.m_index[i + 0];
-      const unsigned indB = inputLayout.m_index[i + 1];
-      const unsigned indC = inputLayout.m_index[i + 2];
-      const glm::vec3 ptA = inputLayout.m_positions.get<glm::vec3>(indA);
-      const glm::vec3 ptB = inputLayout.m_positions.get<glm::vec3>(indB);
-      const glm::vec3 ptC = inputLayout.m_positions.get<glm::vec3>(indC);
-      float area, quality;
-      tre::triangleQuality(ptA, ptB, ptC, &area, &quality);
-      const float normalizedArea = 1.f - expf(-1.e2f * area);
-      *posIt++ = ptA;
-      *posIt++ = ptB;
-      *posIt++ = ptC;
-      *norIt++ = inputLayout.m_normals.get<glm::vec3>(indA);
-      *norIt++ = inputLayout.m_normals.get<glm::vec3>(indB);
-      *norIt++ = inputLayout.m_normals.get<glm::vec3>(indC);
-      *colIt++ = glm::vec4(normalizedArea, quality, curvatureNormalizedPerVertex[indA], distanceNormalizedPerVertex[indA]);
-      *colIt++ = glm::vec4(normalizedArea, quality, curvatureNormalizedPerVertex[indB], distanceNormalizedPerVertex[indB]);
-      *colIt++ = glm::vec4(normalizedArea, quality, curvatureNormalizedPerVertex[indC], distanceNormalizedPerVertex[indC]);
-    }
-
-    return partOut;
-  }
-
-  static std::size_t computeMeshDebugTetra(tre::modelIndexed &meshOut, const tre::model &meshIn, const std::vector<uint> &listTetra)
+  static std::size_t computeMeshDebugTetra(tre::modelIndexed &mesh, const std::vector<uint> &listTetra)
   {
     TRE_ASSERT(listTetra.size() % 4 == 0);
     const std::size_t inTetraCount = listTetra.size() / 4;
+    if (inTetraCount == 0) return std::size_t(-1);
+
     const std::size_t outVertexCount = inTetraCount * 12;
 
-    const tre::s_modelDataLayout::s_vertexData &inPositions = meshIn.layout().m_positions;
+    const tre::s_modelDataLayout::s_vertexData &inPositions = mesh.layout().m_positions;
 
-    if (inTetraCount == 0)
-      return meshOut.createRawPart(0);
+    const std::size_t partOut = mesh.createRawPart(outVertexCount);
 
-    const std::size_t partOut = meshOut.createRawPart(outVertexCount);
-
-    const std::size_t meshOutIndiceStart = meshOut.layout().m_index[meshOut.partInfo(partOut).m_offset];
-    tre::s_modelDataLayout::s_vertexData::iterator<glm::vec3> posIt = meshOut.layout().m_positions.begin<glm::vec3>(meshOutIndiceStart);
-    tre::s_modelDataLayout::s_vertexData::iterator<glm::vec3> norIt = meshOut.layout().m_normals.begin<glm::vec3>(meshOutIndiceStart);
-    tre::s_modelDataLayout::s_vertexData::iterator<glm::vec4> colIt = meshOut.layout().m_colors.begin<glm::vec4>(meshOutIndiceStart);
+    const std::size_t meshOutIndiceStart = mesh.layout().m_index[mesh.partInfo(partOut).m_offset];
+    tre::s_modelDataLayout::s_vertexData::iterator<glm::vec3> posIt = mesh.layout().m_positions.begin<glm::vec3>(meshOutIndiceStart);
+    tre::s_modelDataLayout::s_vertexData::iterator<glm::vec3> norIt = mesh.layout().m_normals.begin<glm::vec3>(meshOutIndiceStart);
+    tre::s_modelDataLayout::s_vertexData::iterator<glm::vec4> colIt = mesh.layout().m_colors.begin<glm::vec4>(meshOutIndiceStart);
 
     const float fReduct = 0.10f;
     const float fReductComp = 1.f - fReduct;
@@ -315,6 +211,11 @@ struct s_taskMeshProcessingContext
 
     return partOut;
   }
+
+  void _computeVisuData()
+  {
+    // TODO
+  }
 };
 
 int taskMeshOperation(void *arg)
@@ -331,7 +232,7 @@ int main(int argc, char **argv)
   // - Arguments
 
   char meshFile[256] = TESTIMPORTPATH "resources/objects.obj";
-  //char meshFile[256] = TESTIMPORTPATH "resources/test.obj";
+  //char meshFile[256] = TESTIMPORTPATH "resources/bumbedGrid.obj";
 
   if (argc >= 2)
   {
@@ -358,14 +259,31 @@ int main(int argc, char **argv)
 
   // - Upload mesh
 
-  tre::modelSemiDynamic3D meshes(0, tre::modelStaticIndexed3D::VB_POSITION | tre::modelStaticIndexed3D::VB_NORMAL);
-#define TEST_ID 0
-#if TEST_ID == 1
-  meshes.createPartFromPrimitive_box(glm::mat4(1.f), 2.f);
-  //meshes.createPartFromPrimitive_cone(glm::mat4(1.f), 1.f, 1.f, 14);
-  meshes.createPartFromPrimitive_uvtrisphere(glm::mat4(1.f), 1.f, 10, 7);
-#elif TEST_ID == 2 // distorted prisme
+  tre::modelSemiDynamic3D meshes(0, tre::modelStaticIndexed3D::VB_POSITION | tre::modelStaticIndexed3D::VB_NORMAL | tre::modelStaticIndexed3D::VB_COLOR);
+
   {
+#define TEST_ID 0
+#if TEST_ID == 0
+    bool meshesLoadStatus = true;
+    const int meshStrLen = strnlen(meshFile, 256);
+    const bool isOBJ = meshStrLen > 4 && meshFile[meshStrLen - 4] == '.' && meshFile[meshStrLen - 3] == 'o' && meshFile[meshStrLen - 2] == 'b' && meshFile[meshStrLen - 1] == 'j';
+    const bool isGLB = meshStrLen > 4 && meshFile[meshStrLen - 4] == '.' && meshFile[meshStrLen - 3] == 'g' && meshFile[meshStrLen - 2] == 'l' && meshFile[meshStrLen - 1] == 'b';
+    tre::modelImporter::s_modelHierarchy mh;
+    if (isOBJ)      meshesLoadStatus = tre::modelImporter::addFromWavefront(meshes, meshFile);
+    else if (isGLB) meshesLoadStatus = tre::modelImporter::addFromGLTF(meshes, mh, meshFile, true);
+    else            meshesLoadStatus = false;
+    if (!meshesLoadStatus)
+    {
+      TRE_LOG("Fail to load " << meshFile << ". Falls back to simple shapes.");
+      meshes.createPartFromPrimitive_box(glm::mat4(1.f), 2.f);
+      meshes.createPartFromPrimitive_cone(glm::mat4(1.f), 1.f, 1.f, 14);
+      meshes.createPartFromPrimitive_uvtrisphere(glm::mat4(1.f), 1.f, 10, 7);
+    }
+#elif TEST_ID == 1
+    meshes.createPartFromPrimitive_box(glm::mat4(1.f), 2.f);
+    meshes.createPartFromPrimitive_cone(glm::mat4(1.f), 1.f, 1.f, 14);
+    meshes.createPartFromPrimitive_uvtrisphere(glm::mat4(1.f), 1.f, 10, 7);
+#elif TEST_ID == 2 // distorted prisme
     const float     cosA = cosf(2.6f), sinA = sinf(2.6f);
     const GLuint    indices[8 * 3] = { 0,1,2,  3,4,5,  0,2,5,5,3,0, 2,1,4,4,5,2, 1,4,3,3,0,1 };
     const GLfloat   vertices[6 * 3] = { -0.5f,0.f,-1.f,  0.5f,0.f,-1.f,  0.f,0.7f,-1.f,
@@ -377,20 +295,8 @@ int main(int argc, char **argv)
     meshes.layout().m_normals.get<glm::vec3>(3) = -glm::normalize(meshes.layout().m_positions.get<glm::vec3>(3));
     meshes.layout().m_normals.get<glm::vec3>(4) = -glm::normalize(meshes.layout().m_positions.get<glm::vec3>(4));
     meshes.layout().m_normals.get<glm::vec3>(5) = -glm::normalize(meshes.layout().m_positions.get<glm::vec3>(5));
-  }
-#elif TEST_ID == 0
-  if (!tre::modelImporter::addFromWavefront(meshes, meshFile))
-  {
-    TRE_LOG("Fail to load " << meshFile);
-    myWindow.OpenGLQuit();
-    myWindow.SDLQuit();
-    return -3;
-  }
-  else
-  {
-    TRE_LOG("Mesh " << meshFile << "loaded successfully");
-  }
 #endif
+  }
 
   // - Re-scale mesh to [-1,1]
 
@@ -408,15 +314,15 @@ int main(int argc, char **argv)
     meshes.transformPart(iPart, tr);
   }
 
+  // - Randomize vertex color
+  {
+    const tre::s_modelDataLayout &layout = meshes.layout();
+    auto colIt = layout.m_colors.begin<glm::vec4>();
+    for (uint iv = 0; iv < layout.m_vertexCount; ++iv)
+      *colIt++ = glm::vec4(float(rand() & 0xFF)/float(0xFF), float(rand() & 0xFF)/float(0xFF), float(rand() & 0xFF)/float(0xFF), 1.f);
+  }
+
   meshes.loadIntoGPU();
-
-  tre::modelRaw2D mesh2D;
-
-  mesh2D.loadIntoGPU();
-
-  tre::modelSemiDynamic3D meshDebug(0, tre::modelStaticIndexed3D::VB_POSITION | tre::modelStaticIndexed3D::VB_NORMAL | tre::modelStaticIndexed3D::VB_COLOR);
-
-  meshDebug.loadIntoGPU();
 
   // - Create thread context for mesh processing
 
@@ -434,19 +340,15 @@ int main(int argc, char **argv)
   {
     meshPartContext[iPart].m_mesh = &meshes;
     meshPartContext[iPart].m_part = iPart;
-    meshPartContext[iPart].m_mesh2D = &mesh2D;
-    meshPartContext[iPart].m_meshDebug = &meshDebug;
   }
 
   // - Load shaders
 
-  tre::shader shaderRaw3D;
-  shaderRaw3D.loadShader(tre::shader::PRGM_3D, tre::shader::PRGM_COLOR);
+  tre::shader shaderFlat;
+  shaderFlat.loadShader(tre::shader::PRGM_3D, tre::shader::PRGM_UNICOLOR);
 
   tre::shader shaderMainMaterial;
-  shaderMainMaterial.loadShader(tre::shader::PRGM_3D,
-                                tre::shader::PRGM_UNICOLOR |
-                                tre::shader::PRGM_LIGHT_SUN);
+  shaderMainMaterial.loadShader(tre::shader::PRGM_3D, tre::shader::PRGM_UNICOLOR | tre::shader::PRGM_LIGHT_SUN);
 
   tre::shader::s_UBOdata_sunLight sunLight;
   sunLight.direction = glm::normalize(glm::vec3(-0.243f,-0.970f,0.f));
@@ -585,10 +487,19 @@ int main(int argc, char **argv)
 
   tre::shader::updateUBO_sunLight(sunLight);
 
-  tre::shader shaderMesh2D;
-  shaderMesh2D.loadShader(tre::shader::PRGM_2Dto3D, tre::shader::PRGM_COLOR, "envelop2D");
-
   // - load UI
+
+  int shaderMode = 0;
+  const int NshaderMode = 4;
+  tre::shader* listShader[NshaderMode] = { &shaderMainMaterial, &shaderWireframe, &shaderWireframePlain, &shaderDataVisu};
+
+  int visuMode = 0;
+  static const int NvisuMode = 5;
+
+  int showMesh = 0;
+  static const int NshowMesh = 3;
+
+  bool  showContour = true;
 
   tre::font font;
   font.load({ tre::font::loadFromBMPandFNT(TESTIMPORTPATH "resources/font_arial_88") }, true);
@@ -602,46 +513,217 @@ int main(int argc, char **argv)
   wUI_main.set_cellMargin(tre::ui::s_size(3, tre::ui::SIZE_PIXEL));
 
   wUI_main.create_widgetText(0, 0)->set_text("model (left/right):");
-  wUI_main.create_widgetText(0, 1);
+  wUI_main.create_widgetText(0, 1)->wcb_animate = [&meshPartContext, &meshPartSelected](tre::ui::widget *self, float)
+  {
+    const auto &meshContextSelected = meshPartContext[meshPartSelected];
+    static_cast<tre::ui::widgetText*>(self)->set_text(meshContextSelected.m_mesh->partInfo(meshContextSelected.m_part).m_name);
+  };
   wUI_main.create_widgetText(1, 0)->set_text("shader (F2/F3):");
-  wUI_main.create_widgetText(1, 1);
+  wUI_main.create_widgetText(1, 1)->wcb_animate = [&shaderMode, &listShader](tre::ui::widget *self, float)
+  {
+    static_cast<tre::ui::widgetText*>(self)->set_text(listShader[shaderMode]->getName());
+  };
   wUI_main.create_widgetText(2, 0)->set_text("visu (F6/F7):");
-  wUI_main.create_widgetText(2, 1);
-  wUI_main.create_widgetText(3, 0)->set_text("show tetra (F9):");
-  wUI_main.create_widgetText(3, 1);
+  wUI_main.create_widgetText(2, 1)->wcb_animate = [&shaderMode, &visuMode](tre::ui::widget *self, float)
+  {
+    static const char* listDataVisu[NvisuMode] = { "area", "quality", "curvature", "distance", "radom" };
+    if (shaderMode == 3)
+      static_cast<tre::ui::widgetText*>(self)->set_text(listDataVisu[visuMode]);
+    else
+      static_cast<tre::ui::widgetText*>(self)->set_text("");
+  };
+  wUI_main.create_widgetText(3, 0)->set_text("show mesh (F9):");
+  wUI_main.create_widgetText(3, 1)->wcb_animate = [&showMesh](tre::ui::widget *self, float)
+  {
+    static const char* listShowMesh[NshowMesh] = { "decimate curv.", "decimate voxel", "tetra" };
+    static_cast<tre::ui::widgetText*>(self)->set_text(listShowMesh[showMesh]);
+  };
   wUI_main.create_widgetText(4, 0)->set_text("show contour (F10):");
-  wUI_main.create_widgetText(4, 1);
+  wUI_main.create_widgetText(4, 1)->wcb_animate = [&showContour](tre::ui::widget *self, float)
+  {
+    static_cast<tre::ui::widgetText*>(self)->set_text(showContour ? "ON" : "OFF");
+  };
 
   tre::ui::window &wUI_result = *bUI_main.create_window();
   wUI_result.set_layoutGrid(8, 3);
   wUI_result.set_fontSize(tre::ui::s_size(20, tre::ui::SIZE_PIXEL));
   wUI_result.set_color(glm::vec4(0.f, 0.f, 0.f, 0.5f));
   wUI_result.set_cellMargin(tre::ui::s_size(3, tre::ui::SIZE_PIXEL));
-  wUI_result.set_colAlignment(1, tre::ui::ALIGN_MASK_CENTERED);
-  wUI_result.set_colAlignment(2, tre::ui::ALIGN_MASK_CENTERED);
-
+  wUI_result.set_colAlignment(1, tre::ui::ALIGN_MASK_HORIZONTAL_RIGHT);
+  wUI_result.set_colAlignment(2, tre::ui::ALIGN_MASK_HORIZONTAL_RIGHT);
+  wUI_result.set_colWidth(1, tre::ui::s_size(100, tre::ui::SIZE_PIXEL));
+  wUI_result.set_colWidth(2, tre::ui::s_size(100, tre::ui::SIZE_PIXEL));
   wUI_result.create_widgetText(0, 1)->set_text("size");
   wUI_result.create_widgetText(0, 2)->set_text("time");
 
-  wUI_result.create_widgetText(1, 0)->set_text("model original");
-  wUI_result.create_widgetText(1, 1);
-  wUI_result.create_widgetText(1, 2)->set_text("--");
 
-  wUI_result.create_widgetText(2, 0)->set_text("model decimated");
-  wUI_result.create_widgetText(2, 1);
-  wUI_result.create_widgetText(2, 2);
+  uint irow = 0;
 
-  wUI_result.create_widgetText(3, 0)->set_text("model envelop");
-  wUI_result.create_widgetText(3, 1);
-  wUI_result.create_widgetText(3, 2);
+  wUI_result.create_widgetText(++irow, 0)->set_text("model original");
+  wUI_result.create_widgetText(irow, 1)->wcb_animate = [&meshPartContext, &meshPartSelected](tre::ui::widget *self, float)
+  {
+    const auto &meshContextSelected = meshPartContext[meshPartSelected];
+    char txt[64];
+    std::snprintf(txt, 63, "%zd tri", meshContextSelected.m_mesh->partInfo(meshContextSelected.m_part).m_size / 3);
+    static_cast<tre::ui::widgetText*>(self)->set_text(txt);
+  };
 
-  wUI_result.create_widgetText(4, 0)->set_text("model tetra");
-  wUI_result.create_widgetText(4, 1);
-  wUI_result.create_widgetText(4, 2);
+  wUI_result.create_widgetText(++irow, 0)->set_text("model decimated Curv");
+  wUI_result.create_widgetText(irow, 1)->wcb_animate = [&meshPartContext, &meshPartSelected](tre::ui::widget *self, float)
+  {
+    const auto &meshContextSelected = meshPartContext[meshPartSelected];
+    if (meshContextSelected.m_completed && !meshContextSelected.m_ongoing)
+    {
+      if (meshContextSelected.m_partDecimateCurv != std::size_t(-1))
+      {
+        char txt[64];
+        std::snprintf(txt, 63, "%zd tri", meshContextSelected.m_mesh->partInfo(meshContextSelected.m_partDecimateCurv).m_size / 3);
+        static_cast<tre::ui::widgetText*>(self)->set_text(txt);
+      }
+      else
+      {
+        static_cast<tre::ui::widgetText*>(self)->set_text("err.");
+      }
+    }
+    else
+    {
+      static_cast<tre::ui::widgetText*>(self)->set_text("");
+    }
+  };
+  wUI_result.create_widgetText(irow, 2)->wcb_animate = [&meshPartContext, &meshPartSelected](tre::ui::widget *self, float)
+  {
+    const auto &meshContextSelected = meshPartContext[meshPartSelected];
+    if (meshContextSelected.m_completed && !meshContextSelected.m_ongoing)
+    {
+      char txt[64];
+      std::snprintf(txt, 63, "%d ms", int(meshContextSelected.m_timeElapsedDecimateCurv * 1.e3));
+      static_cast<tre::ui::widgetText*>(self)->set_text(txt);
+    }
+    else
+    {
+      static_cast<tre::ui::widgetText*>(self)->set_text("");
+    }
+  };
 
-  wUI_result.create_widgetText(7, 0)->set_text("model debug");
-  wUI_result.create_widgetText(7, 1)->set_text("--");
-  wUI_result.create_widgetText(7, 2);
+  wUI_result.create_widgetText(++irow, 0)->set_text("model decimated Voxel");
+  wUI_result.create_widgetText(irow, 1)->wcb_animate = [&meshPartContext, &meshPartSelected](tre::ui::widget *self, float)
+  {
+    const auto &meshContextSelected = meshPartContext[meshPartSelected];
+    if (meshContextSelected.m_completed && !meshContextSelected.m_ongoing)
+    {
+      if (meshContextSelected.m_partDecimateVoxel != std::size_t(-1))
+      {
+        char txt[64];
+        std::snprintf(txt, 63, "%zd tri", meshContextSelected.m_mesh->partInfo(meshContextSelected.m_partDecimateVoxel).m_size / 3);
+        static_cast<tre::ui::widgetText*>(self)->set_text(txt);
+      }
+      else
+      {
+        static_cast<tre::ui::widgetText*>(self)->set_text("err.");
+      }
+    }
+    else
+    {
+      static_cast<tre::ui::widgetText*>(self)->set_text("");
+    }
+  };
+  wUI_result.create_widgetText(irow, 2)->wcb_animate = [&meshPartContext, &meshPartSelected](tre::ui::widget *self, float)
+  {
+    const auto &meshContextSelected = meshPartContext[meshPartSelected];
+    if (meshContextSelected.m_completed && !meshContextSelected.m_ongoing)
+    {
+      char txt[64];
+      std::snprintf(txt, 63, "%d ms", int(meshContextSelected.m_timeElapsedDecimateVoxel * 1.e3));
+      static_cast<tre::ui::widgetText*>(self)->set_text(txt);
+    }
+    else
+    {
+      static_cast<tre::ui::widgetText*>(self)->set_text("");
+    }
+  };
+
+  wUI_result.create_widgetText(++irow, 0)->set_text("model envelop");
+  wUI_result.create_widgetText(irow, 1)->wcb_animate = [&meshPartContext, &meshPartSelected](tre::ui::widget *self, float)
+  {
+    const auto &meshContextSelected = meshPartContext[meshPartSelected];
+    if (meshContextSelected.m_completed && !meshContextSelected.m_ongoing)
+    {
+      char txt[64];
+      std::snprintf(txt, 63, "%d pts", int(meshContextSelected.m_envelop2D.size()));
+      static_cast<tre::ui::widgetText*>(self)->set_text(txt);
+    }
+    else
+    {
+      static_cast<tre::ui::widgetText*>(self)->set_text("");
+    }
+  };
+  wUI_result.create_widgetText(irow, 2)->wcb_animate = [&meshPartContext, &meshPartSelected](tre::ui::widget *self, float)
+  {
+    const auto &meshContextSelected = meshPartContext[meshPartSelected];
+    if (meshContextSelected.m_completed && !meshContextSelected.m_ongoing)
+    {
+      char txt[64];
+      std::snprintf(txt, 63, "%d ms", int(meshContextSelected.m_timeElapsedEnvelop2D * 1.e3));
+      static_cast<tre::ui::widgetText*>(self)->set_text(txt);
+    }
+    else
+    {
+      static_cast<tre::ui::widgetText*>(self)->set_text("");
+    }
+  };
+
+  wUI_result.create_widgetText(++irow, 0)->set_text("model tetra");
+  wUI_result.create_widgetText(irow, 1)->wcb_animate = [&meshPartContext, &meshPartSelected](tre::ui::widget *self, float)
+  {
+    const auto &meshContextSelected = meshPartContext[meshPartSelected];
+    if (meshContextSelected.m_completed && !meshContextSelected.m_ongoing)
+    {
+      if (!meshContextSelected.m_tetrahedrons.empty())
+      {
+        char txt[64];
+        std::snprintf(txt, 63, "%d tetra", int(meshContextSelected.m_tetrahedrons.size() / 4));
+        static_cast<tre::ui::widgetText*>(self)->set_text(txt);
+      }
+      else
+      {
+        static_cast<tre::ui::widgetText*>(self)->set_text("err.");
+      }
+    }
+    else
+    {
+      static_cast<tre::ui::widgetText*>(self)->set_text("");
+    }
+  };
+  wUI_result.create_widgetText(irow, 2)->wcb_animate = [&meshPartContext, &meshPartSelected](tre::ui::widget *self, float)
+  {
+    const auto &meshContextSelected = meshPartContext[meshPartSelected];
+    if (meshContextSelected.m_completed && !meshContextSelected.m_ongoing)
+    {
+      char txt[64];
+      std::snprintf(txt, 63, "%d ms", int(meshContextSelected.m_timeElapsedTetrahedrization * 1.e3));
+      static_cast<tre::ui::widgetText*>(self)->set_text(txt);
+    }
+    else
+    {
+      static_cast<tre::ui::widgetText*>(self)->set_text("");
+    }
+  };
+
+  wUI_result.create_widgetText(++irow, 0)->set_text("model debug");
+  wUI_result.create_widgetText(irow, 2)->wcb_animate = [&meshPartContext, &meshPartSelected](tre::ui::widget *self, float)
+  {
+    const auto &meshContextSelected = meshPartContext[meshPartSelected];
+    if (meshContextSelected.m_completed && !meshContextSelected.m_ongoing)
+    {
+      char txt[64];
+      std::snprintf(txt, 63, "%d ms", int(meshContextSelected.m_timeElapsedDebug * 1.e3));
+      static_cast<tre::ui::widgetText*>(self)->set_text(txt);
+    }
+    else
+    {
+      static_cast<tre::ui::widgetText*>(self)->set_text("");
+    }
+  };
 
   bUI_main.loadShader();
   bUI_main.loadIntoGPU();
@@ -649,17 +731,6 @@ int main(int argc, char **argv)
   // - scene and event variables
 
   SDL_Event event;
-
-  int shaderMode = 0;
-  const int NshaderMode = 4;
-  tre::shader* listShader[NshaderMode] = { &shaderMainMaterial, &shaderWireframe, &shaderWireframePlain, &shaderDataVisu};
-
-  int visuMode = 0;
-  const int NvisuMode = 5;
-  std::string listDataVisu[NvisuMode] = { "area", "quality", "curvature", "distance" };
-
-  bool  showContour = true;
-  bool  showTetrahedrization = false;
 
   glm::mat4 mView = glm::mat4(1.f);
   mView[0][0] = 2.f; // viewport is on width/2
@@ -698,7 +769,7 @@ int main(int argc, char **argv)
         else if (event.key.keysym.sym == SDLK_F6) { visuMode = visuMode == 0 ? NvisuMode - 1 : visuMode - 1; }
         else if (event.key.keysym.sym == SDLK_F7) { visuMode = visuMode == NvisuMode - 1 ? 0 : visuMode + 1; }
 
-        else if (event.key.keysym.sym == SDLK_F9)  { showTetrahedrization = ! showTetrahedrization; }
+        else if (event.key.keysym.sym == SDLK_F9)  { showMesh = showMesh == NshowMesh - 1 ? 0 : showMesh + 1; }
         else if (event.key.keysym.sym == SDLK_F10) { showContour = ! showContour; }
 
         else if (event.key.keysym.sym == SDLK_o) { myTimings.scenetime = 0.f; }
@@ -707,6 +778,9 @@ int main(int argc, char **argv)
           meshPartSelected = (meshPartSelected == meshPartCount - 1) ? 0 : meshPartSelected + 1;
         else if (event.key.keysym.sym == SDLK_LEFT)
           meshPartSelected = (meshPartSelected == 0) ? meshPartCount - 1 : meshPartSelected - 1;
+
+        if (event.key.keysym.sym == SDLK_LSHIFT) mModelScale *= 1.2f;
+        if (event.key.keysym.sym == SDLK_LCTRL) mModelScale /= 1.2f;
       }
       else if (event.type == SDL_MOUSEBUTTONDOWN && event.button.button == SDL_BUTTON_LEFT)
       {
@@ -725,6 +799,15 @@ int main(int argc, char **argv)
       const glm::vec2 diff = glm::vec2(myControls.m_mouse - myControls.m_mousePrev) * myWindow.m_resolutioncurrentInv;
       mModel = glm::rotate(glm::rotate(glm::mat4(1.f), diff.x, glm::vec3(0.f,1.f,0.f)), diff.y, glm::vec3(1.f,0.f,0.f)) * mModelPrev;
     }
+
+    if (!myControls.m_pause)
+      mModel = glm::rotate(mModel, myTimings.frametime * 6.28f * 0.2f, glm::vec3(0.8f,0.6f,0.f));
+
+    glm::mat4 curModel = mModel;
+    curModel[0] *= mModelScale;
+    curModel[1] *= mModelScale;
+    curModel[2] *= mModelScale;
+    curModel[3] = glm::vec4(0.f,2.0f,0.f,1.0f);
 
     //-> Mesh operations ------------
 
@@ -750,23 +833,13 @@ int main(int argc, char **argv)
         meshContextCurr.m_ongoing = false;
       }
     }
-    if (meshUpdateNeeded)
-    {
-      meshes.updateIntoGPU();
-      meshDebug.updateIntoGPU();
-      mesh2D.updateIntoGPU();
-    }
+    if (meshUpdateNeeded) meshes.updateIntoGPU();
 
     // main render pass -------------
 
-    glBindFramebuffer(GL_FRAMEBUFFER,0);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    // - render mesh
-
-    glEnable(GL_DEPTH_TEST);
-
-    tre::shader & curShader = * listShader[shaderMode];
+    glEnable(GL_CULL_FACE);
 
     const glm::mat4 mPV(myWindow.m_matProjection3D * mView);
     const glm::vec4 ucolorMain(0.7f,0.7f,0.7f,1.f);
@@ -775,73 +848,88 @@ int main(int argc, char **argv)
                                 visuMode == 2 ? 1.f : 0.f,
                                 visuMode == 3 ? 1.f : 0.f);
 
-    glUseProgram(curShader.m_drawProgram);
-
-    if (curShader.layout().hasUNI_uniColor && &curShader != &shaderDataVisu)
-      glUniform4fv(curShader.getUniformLocation(tre::shader::uniColor), 1, glm::value_ptr(ucolorMain));
-
-    if (curShader.layout().hasUNI_uniColor && &curShader == &shaderDataVisu)
-      glUniform4fv(curShader.getUniformLocation(tre::shader::uniColor), 1, glm::value_ptr(uChoiceVisu));
-
-    if (!myControls.m_pause)
-      mModel = glm::rotate(mModel, myTimings.frametime * 6.28f * 0.2f, glm::vec3(0.8f,0.6f,0.f));
-
-    glm::mat4 curModel = mModel;
-    curModel[0] *= mModelScale;
-    curModel[1] *= mModelScale;
-    curModel[2] *= mModelScale;
-    curModel[3] = glm::vec4(0.f,2.0f,0.f,1.0f);
-
-    curShader.setUniformMatrix(mPV * curModel, curModel);
-
-    glViewport(0, 0, myWindow.m_resolutioncurrent.x / 2, myWindow.m_resolutioncurrent.y);
-
-    if (meshContextSelected.m_completed && !meshContextSelected.m_ongoing && &curShader == &shaderDataVisu)
+    // -- render mesh origin (left)
     {
-      meshDebug.drawcall(meshContextSelected.m_partDebug_Slot1, 1, true);
-    }
-    else
-    {
+      glViewport(0, 0, myWindow.m_resolutioncurrent.x / 2, myWindow.m_resolutioncurrent.y);
+
+      int shaderModeOrigin = shaderMode;
+      if ((!meshContextSelected.m_completed || meshContextSelected.m_ongoing) && shaderModeOrigin == 3)
+        shaderModeOrigin = 0;
+      tre::shader & curShader = * listShader[shaderModeOrigin];
+
+      glUseProgram(curShader.m_drawProgram);
+      if (shaderModeOrigin == 3)
+        glUniform4fv(curShader.getUniformLocation(tre::shader::uniColor), 1, glm::value_ptr(uChoiceVisu));
+      else
+        glUniform4fv(curShader.getUniformLocation(tre::shader::uniColor), 1, glm::value_ptr(ucolorMain));
+
+      curShader.setUniformMatrix(mPV * curModel, curModel);
+
+      glEnable(GL_DEPTH_TEST);
       meshes.drawcall(meshContextSelected.m_part, 1, true);
+
+      if (meshContextSelected.m_partBBox != std::size_t(-1))
+      {
+        glUseProgram(shaderFlat.m_drawProgram);
+        const glm::vec4 uContour = glm::vec4(0.f, 1.f, 0.f, 1.f);
+        glUniform4fv(shaderFlat.getUniformLocation(tre::shader::uniColor), 1, glm::value_ptr(uContour));
+        shaderFlat.setUniformMatrix(mPV * curModel, curModel);
+        glDisable(GL_DEPTH_TEST);
+        meshes.drawcall(meshContextSelected.m_partBBox, 1, false, GL_LINES);
+      }
     }
 
-    if (meshContextSelected.m_completed && !meshContextSelected.m_ongoing)
+    glDisable(GL_CULL_FACE);
+
+    // - render mesh transform (right)
     {
       glViewport(myWindow.m_resolutioncurrent.x / 2, 0, myWindow.m_resolutioncurrent.x / 2, myWindow.m_resolutioncurrent.y);
-      if (showTetrahedrization)
-      {
-        meshDebug.drawcall(meshContextSelected.m_partDebug_Slot3, 1, true);
-      }
-      else if (&curShader == &shaderDataVisu)
-      {
-        meshDebug.drawcall(meshContextSelected.m_partDebug_Slot2, 1, false);
-      }
+
+      tre::shader & curShader = * listShader[shaderMode];
+
+      glUseProgram(curShader.m_drawProgram);
+      if (shaderMode == 3)
+        glUniform4fv(curShader.getUniformLocation(tre::shader::uniColor), 1, glm::value_ptr(uChoiceVisu));
       else
+        glUniform4fv(curShader.getUniformLocation(tre::shader::uniColor), 1, glm::value_ptr(ucolorMain));
+
+      curShader.setUniformMatrix(mPV * curModel, curModel);
+
+      glEnable(GL_DEPTH_TEST);
+
+      if (meshContextSelected.m_completed && !meshContextSelected.m_ongoing)
       {
-        meshes.drawcall(meshContextSelected.m_partDecimateLevel1, 1, false);
+        if (showMesh == 0)
+        {
+          if (meshContextSelected.m_partDecimateCurv != std::size_t(-1)) meshes.drawcall(meshContextSelected.m_partDecimateCurv, 1, false);
+        }
+        else if (showMesh == 1)
+        {
+          if (meshContextSelected.m_partDecimateVoxel != std::size_t(-1)) meshes.drawcall(meshContextSelected.m_partDecimateVoxel, 1, false);
+        }
+        else if (showMesh == 2)
+        {
+          if (meshContextSelected.m_partTetrahedrons != std::size_t(-1)) meshes.drawcall(meshContextSelected.m_partTetrahedrons, 1, false);
+        }
+      }
+
+      if (showContour)
+      {
+        glUseProgram(shaderFlat.m_drawProgram);
+        const glm::vec4 uContour = glm::vec4(1.f, 0.f, 0.f, 1.f);
+        glUniform4fv(shaderFlat.getUniformLocation(tre::shader::uniColor), 1, glm::value_ptr(uContour));
+        shaderFlat.setUniformMatrix(mPV * curModel, curModel);
+        glDisable(GL_DEPTH_TEST);
+        meshes.drawcall(meshContextSelected.m_partEnvelop2D, 1, false, GL_LINES);
       }
     }
 
     tre::IsOpenGLok("main render pass - draw meshes");
 
-    // - render Envelop
+    // - render UI
 
     glDisable(GL_DEPTH_TEST);
-
-    if (meshContextSelected.m_completed && !meshContextSelected.m_ongoing && showContour)
-    {
-      glViewport(myWindow.m_resolutioncurrent.x / 2, 0, myWindow.m_resolutioncurrent.x / 2, myWindow.m_resolutioncurrent.y);
-
-      glUseProgram(shaderMesh2D.m_drawProgram);
-      shaderMesh2D.setUniformMatrix(mPV * curModel, curModel);
-      mesh2D.drawcall(meshContextSelected.m_partEnvelop2D, 1, true, GL_LINES);
-
-      glUseProgram(shaderRaw3D.m_drawProgram);
-      shaderRaw3D.setUniformMatrix(mPV * curModel, curModel);
-      meshDebug.drawcall(meshContextSelected.m_partDebug_Lines, 1, true, GL_LINES);
-    }
-
-    // - render UI
+    glDisable(GL_CULL_FACE);
 
     glm::mat3 m2Dhalf = myWindow.m_matProjection2D;
     m2Dhalf[0][0] *= 2.f;
@@ -855,58 +943,7 @@ int main(int argc, char **argv)
       wUI_result.set_mat3(mat);
     }
 
-    wUI_main.get_widgetText(0, 1)->set_text(meshContextSelected.m_mesh->partInfo(meshContextSelected.m_part).m_name); // model
-    wUI_main.get_widgetText(1, 1)->set_text(curShader.getName()); // shader
-    if (&curShader == &shaderDataVisu)
-      wUI_main.get_widgetText(2, 1)->set_text(listDataVisu[visuMode]);
-    else
-      wUI_main.get_widgetText(2, 1)->set_text("");
-    wUI_main.get_widgetText(3, 1)->set_text(showTetrahedrization ? "ON" : "OFF");
-    wUI_main.get_widgetText(4, 1)->set_text(showContour ? "ON" : "OFF");
-
-    char txt[128];
-
-    if (meshContextSelected.m_completed && !meshContextSelected.m_ongoing)
-    {
-      std::snprintf(txt, 127, "%zd tri", meshContextSelected.m_mesh->partInfo(meshContextSelected.m_part).m_size / 3);
-      wUI_result.get_widgetText(1, 1)->set_text(txt);
-
-      std::snprintf(txt, 127, "%zd tri", meshContextSelected.m_mesh->partInfo(meshContextSelected.m_partDecimateLevel1).m_size / 3);
-      wUI_result.get_widgetText(2, 1)->set_text(txt);
-
-      std::snprintf(txt, 127, "%d ms", int(meshContextSelected.m_timeElapsedDecimateLevel1 * 1.e3));
-      wUI_result.get_widgetText(2, 2)->set_text(txt);
-
-      std::snprintf(txt, 127, "%d pts", int(meshContextSelected.m_envelop2D.size()));
-      wUI_result.get_widgetText(3, 1)->set_text(txt);
-
-      std::snprintf(txt, 127, "%d ms", int(meshContextSelected.m_timeElapsedEnvelop2D * 1.e3));
-      wUI_result.get_widgetText(3, 2)->set_text(txt);
-
-      std::snprintf(txt, 127, "%d tetra", int(meshContextSelected.m_tetrahedrons.size() / 4));
-      wUI_result.get_widgetText(4, 1)->set_text(txt);
-
-      std::snprintf(txt, 127, "%d ms", int(meshContextSelected.m_timeElapsedTetrahedrization * 1.e3));
-      wUI_result.get_widgetText(4, 2)->set_text(txt);
-
-      std::snprintf(txt, 127, "%d ms", int(meshContextSelected.m_timeElapsedDebug * 1.e3));
-      wUI_result.get_widgetText(7, 2)->set_text(txt);
-    }
-    else
-    {
-      wUI_result.get_widgetText(1, 1)->set_text("");
-      wUI_result.get_widgetText(2, 1)->set_text("");
-      wUI_result.get_widgetText(2, 2)->set_text("0 ms");
-      wUI_result.get_widgetText(3, 1)->set_text("");
-      wUI_result.get_widgetText(3, 2)->set_text("0 ms");
-
-      std::snprintf(txt, 127, "%d %%", int(meshContextSelected.m_progressTetrahedrization * 100));
-      wUI_result.get_widgetText(4, 1)->set_text(txt);
-
-      wUI_result.get_widgetText(4, 2)->set_text("0 ms");
-      wUI_result.get_widgetText(7, 2)->set_text("0 ms");
-    }
-
+    bUI_main.animate(myTimings.frametime);
     bUI_main.updateIntoGPU();
 
     glViewport(0, 0, myWindow.m_resolutioncurrent.x / 2, myWindow.m_resolutioncurrent.y);
@@ -928,20 +965,15 @@ int main(int argc, char **argv)
     SDL_GL_SwapWindow( myWindow.m_window );
   }
 
-  shaderRaw3D.clearShader();
+  shaderFlat.clearShader();
   shaderMainMaterial.clearShader();
   shaderWireframe.clearShader();
   shaderWireframePlain.clearShader();
-
   shaderDataVisu.clearShader();
 
   tre::shader::clearUBO();
 
-  shaderMesh2D.clearShader();
-
   meshes.clearGPU();
-  meshDebug.clearGPU();
-  mesh2D.clearGPU();
 
   font.clear();
 

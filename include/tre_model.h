@@ -100,7 +100,6 @@ struct s_modelDataLayout
   void     copyIndex(std::size_t ifirst, std::size_t icount, std::size_t dstfirst) const; ///< copy of index-data of "i" to "dst". Warning: src and dst must not alias.
   void     copyVertex(std::size_t ivfirst, std::size_t ivcount, std::size_t dstfirst) const; ///< deep copy of vertex-data of "i" to "dst". Warning: src and dst must not alias.
 
-  void     collapseVertex(GLuint iVertA, const std::vector<GLuint> &iVertOther, float wVertA, const std::vector<float> wVertOther) const; ///< Collapse iVertOthers into iVertA
   std::size_t rayIntersect(std::size_t ifirst, std::size_t icount, const glm::vec3 & pos, const glm::vec3 & vecN) const;
 
   void     clear();
@@ -160,7 +159,6 @@ public:
   void        colorizePart(std::size_t ipart, const glm::vec4 & unicolor) { TRE_ASSERT(ipart<m_partInfo.size()); m_layout.colorize(m_partInfo[ipart].m_offset, m_partInfo[ipart].m_size, unicolor); }
   void        transformPart(std::size_t ipart, const glm::mat4 &transform);
   void        computeBBoxPart(std::size_t ipart); ///< Re-compute the bound-box. Only needed if positions are modified through the "layout.m_position"
-  std::size_t decimatePart(std::size_t ipart, float threshold, const bool lightAlgo = true); ///< Returns the new part id. The original part "ipart" is untouched.
   void        clearPart(std::size_t ipart) { m_partInfo[ipart] = s_partInfo(); }
 
   void        transform(const glm::mat4 &tr);
@@ -183,8 +181,8 @@ public:
   bool writeBase(std::ostream & outbuffer) const;
   virtual bool read(std::istream & inbuffer) = 0;
   virtual bool write(std::ostream & outbuffer) const = 0;
-  inline void  reserveVertex(std::size_t count) { if (count >= m_layout.m_vertexCount) resizeVertex(count); } ///< only grow.
-  inline void  reserveIndex(std::size_t count) { if (count >= m_layout.m_indexCount) resizeIndex(count); } ///< only grow.
+  inline void  reserveVertex(std::size_t count) { if (count >= m_layout.m_vertexCount) resizeVertex(count); } ///< only grow. Use it carefully.
+  inline void  reserveIndex(std::size_t count) { if (count >= m_layout.m_indexCount) resizeIndex(count); } ///< only grow. Use it carefully.
 protected:
   virtual void resizeVertex(std::size_t count) = 0;
   virtual void resizeIndex(std::size_t count) = 0;
@@ -223,6 +221,8 @@ public:
 
   std::size_t createRawPart(std::size_t count); ///< create a part with 1:1 relationship between indice and vertice.
   void        resizeRawPart(std::size_t ipart, std::size_t count); ///< resize the raw-part (may recompute index-buffer)
+
+  void        defragmentVertices(const bool makeVerticesUnique); ///< Re-order and compact the vertices space for each part. "makeVerticesUnique = true" will duplicates vertex that are shared between multiple parts.
 
   // 3D-primitive generator
   std::size_t createPartFromPrimitive_box(const glm::mat4 &transform, const float edgeLength);

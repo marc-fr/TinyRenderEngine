@@ -431,84 +431,6 @@ void model::computeBBoxPart(std::size_t ipart)
   }
 }
 
-std::size_t model::decimatePart(std::size_t ipart, float threshold, const bool lightAlgo)
-{
-  const std::size_t Nind0 = m_layout.m_indexCount;
-  const std::size_t Nver0 = m_layout.m_vertexCount;
-  TRE_ASSERT(Nind0 != 0); // connectivity is needed.
-  TRE_ASSERT(Nver0 != 0); // undefined behavior
-
-  // create new partition
-  TRE_ASSERT(ipart < m_partInfo.size());
-  const std::size_t inewpart = m_partInfo.size();
-  m_partInfo.push_back(s_partInfo());
-  const s_partInfo & srcpart = m_partInfo[ipart];
-  s_partInfo & dstpart = m_partInfo.back();
-
-  dstpart.m_name = "decimate(" + srcpart.m_name + ")";
-  dstpart.m_bbox = srcpart.m_bbox;
-
-  // allocate index-data
-  std::size_t last = 0; // last taken-position
-  for (s_partInfo & p : m_partInfo)
-  {
-    std::size_t lastLocal = p.m_offset + p.m_size;
-    if (lastLocal > last) last = lastLocal;
-  }
-  dstpart.m_offset = last;
-  dstpart.m_size = srcpart.m_size;
-  reserveIndex(dstpart.m_offset + dstpart.m_size);
-
-  // copy index-data
-  m_layout.copyIndex(srcpart.m_offset, srcpart.m_size, dstpart.m_offset);
-
-  // apply decimate algo 1
-  {
-    const std::size_t newPartSize = modelTools::decimateKeepVertex(m_layout, dstpart, threshold);
-    TRE_ASSERT(newPartSize <= dstpart.m_size);
-    dstpart.m_size = newPartSize;
-  }
-
-  if (lightAlgo) return inewpart; // exit here for the "light-algo"
-
-  // prepare copy of vertex-data and patch index values
-  std::size_t vCount = 0;
-  std::vector<std::size_t> vNewToOld;
-  {
-    vNewToOld.reserve(dstpart.m_size);
-    std::vector<int> vertex2index(m_layout.m_vertexCount, -1);
-    for (std::size_t ind = 0; ind < dstpart.m_size; ++ind)
-    {
-      const GLuint curV = m_layout.m_index[dstpart.m_offset + ind];
-      if (vertex2index[curV] == -1)
-      {
-        vertex2index[curV] = Nver0 + vCount++;
-        vNewToOld.push_back(curV);
-      }
-      m_layout.m_index[dstpart.m_offset + ind] = vertex2index[curV];
-    }
-    TRE_ASSERT(vNewToOld.size() == vCount);
-  }
-
-  // allocate and copy vertex-data
-  {
-    reserveVertex(Nver0 + vCount);
-    for (std::size_t iV = 0; iV < vCount; ++iV)
-    {
-      m_layout.copyVertex(vNewToOld[iV], 1, Nver0 + iV);
-    }
-  }
-
-  // apply decimate algo 2
-  {
-    const std::size_t newPartSize = modelTools::decimateChangeVertex(m_layout, dstpart, threshold);
-    TRE_ASSERT(newPartSize <= dstpart.m_size);
-    dstpart.m_size = newPartSize;
-  }
-
-  return inewpart;
-}
-
 void model::transform(const glm::mat4 &tr)
 {
   m_layout.transform(tr);
@@ -738,7 +660,6 @@ void modelIndexed::resizePart(std::size_t ipart, std::size_t count)
 std::size_t modelIndexed::createPart(std::size_t indiceCount, std::size_t vertexCount, std::size_t &firstVertex)
 {
   TRE_ASSERT(indiceCount != 0);
-  TRE_ASSERT(vertexCount != 0);
   const std::size_t Nver0 = get_NextAvailable_vertex();
   // create the part
   const std::size_t newPartId = m_partInfo.size();

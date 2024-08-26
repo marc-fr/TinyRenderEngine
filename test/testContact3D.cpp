@@ -239,7 +239,7 @@ void sceneObjectSkin::loadFromMesh(const tre::modelIndexed &otherModel, std::siz
 
   // compute the skin
 
-  tre::modelTools::computeSkin3D(otherLayout, otherInfo, glm::mat4(1.f), m_ptsTri);
+  tre::modelTools::computeSkin3D(otherLayout, otherInfo, m_ptsTri);
 
   m_ptsTri_transformed.resize(m_ptsTri.size());
 

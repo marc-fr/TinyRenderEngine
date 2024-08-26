@@ -5,8 +5,6 @@
 #include "tre_font.h"
 #include "tre_windowContext.h"
 
-#include <iostream> // std::cout std::endl
-
 #ifndef TESTIMPORTPATH
 #define TESTIMPORTPATH ""
 #endif

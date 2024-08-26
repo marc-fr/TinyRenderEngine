@@ -10,6 +10,7 @@ namespace tre {
 
 struct s_modelDataLayout;
 struct s_partInfo;
+class modelIndexed;
 
 /**
  * @namespace modelTools
@@ -40,28 +41,30 @@ void triangulate(const std::vector<glm::vec2> &envelop, std::vector<uint> &listT
 /// \return the barycenter (xyz) and the volume (w)
 glm::vec4 computeBarycenter3D(const s_modelDataLayout &layout, const s_partInfo &part);
 
-/// @brief computeConvexeSkin3D
+/// @brief computeConvexeSkin3D extracts the triangles (3 clockwised points) of the convex hull of the mesh.
 /// @param threshold
 /// @param outSkinTri
-void computeConvexeSkin3D(const s_modelDataLayout &layout, const s_partInfo &part, const glm::mat4 &transform, const float threshold, std::vector<glm::vec3> &outSkinTri);
+void computeConvexeSkin3D(const s_modelDataLayout &layout, const s_partInfo &part, const float threshold, std::vector<glm::vec3> &outSkinTri);
 
-/// @brief computeSkin3D
+/// @brief computeSkin3D extracts the triangles (3 clockwised points) of the skin. It assumes that the normals are correctly set.
 /// @param outSkinTri
-void computeSkin3D(const s_modelDataLayout &layout, const s_partInfo &part, const glm::mat4 &transform, std::vector<glm::vec3> &outSkinTri);
+void computeSkin3D(const s_modelDataLayout &layout, const s_partInfo &part, std::vector<glm::vec3> &outSkinTri);
 
 /// @brief compute out-normals for a part, with smoothed shading for indexed-mesh, flat shading elsewhere.
-void computeOutNormal(const s_modelDataLayout &layout, const s_partInfo &part);
+void computeOutNormal(const s_modelDataLayout &layout, const s_partInfo &part, const bool clockwisedTriangles);
 
 /// @brief compute tangent-space (tangent over the parametric-coord "u")
 void computeTangentFromUV(const s_modelDataLayout &layout, const s_partInfo &part);
 
-/// @brief decimate mesh. Modify the index-buffer only. Returns the new index-count.
+/// @brief decimate mesh. The algorithm is based on the local surface's curvature.
 /// @param threshold Curvature limit
-std::size_t decimateKeepVertex(const s_modelDataLayout &layout, const s_partInfo &part, const float threshold);
+/// @return the new part. It returns (-1) on failure.
+std::size_t decimateCurvature(modelIndexed &model, const std::size_t ipartIn, const float threshold);
 
-/// @brief decimate mesh. May modify vertex-data (merge vertex, ...). Returns the new index-count.
-/// @param threshold Curvature limit
-std::size_t decimateChangeVertex(const s_modelDataLayout &layout, const s_partInfo &part, const float threshold);
+/// @brief decimate mesh. The algorithm is based on voxels (aka 3d-grid). New vertices may be created, thus additional data (normals, uvs, ...) may be outdated.
+/// @param gridResolution Size of the grid's cells
+/// @return the new part. It returns (-1) on failure.
+std::size_t decimateVoxel(modelIndexed &model, const std::size_t ipartIn, const float gridResolution, const bool keepSharpEdges);
 
 /// @brief tetrahedralize from a 3D surface.
 bool tetrahedralize(const s_modelDataLayout &layout, const s_partInfo &part, std::vector<uint> &listTetrahedrons,
