@@ -381,14 +381,17 @@ bool texture::loadCube(const std::array<SDL_Surface *, 6> &cubeFaces, int modema
 
 //-----------------------------------------------------------------------------
 
-bool texture::load3D(const uint8_t *data, int w, int h, int d, bool formatFloat, int components, int modemask)
+bool texture::load3D(const uint8_t *data, int w, int h, int d, bool formatFloat, uint components, int modemask)
 {
   m_type = TI_3D;
-  m_mask = modemask & (~MMASK_ANISOTROPIC) & (~MMASK_MIPMAP);
+  m_mask = modemask;
   m_w = w;
   m_h = h;
+  m_d = d;
   TRE_ASSERT(m_w >= 4 && (m_w & 0x03) == 0);
   TRE_ASSERT(m_h >= 4 && (m_h & 0x03) == 0);
+  TRE_ASSERT(m_d >= 4 && (m_d & 0x03) == 0);
+  m_components = components;
 
   if (useCompress())
   {
@@ -595,9 +598,10 @@ bool texture::updateArray(SDL_Surface* surface, int depthIndex, const bool freeS
 
 //-----------------------------------------------------------------------------
 
-bool texture::update3D(const uint8_t* data, int w, int h, int d, bool formatFloat, int components, const bool unbind /* = true */)
+bool texture::update3D(const uint8_t* data, int w, int h, int d, bool formatFloat, uint components, const bool unbind /* = true */)
 {
   if (m_handle == 0) return false;
+  if (formatFloat) return false; // no supported yet
 
   TRE_ASSERT(w == m_w);
   TRE_ASSERT(h == m_h);
@@ -847,9 +851,9 @@ bool texture::writeCube(std::ostream &outbuffer, const std::array<SDL_Surface *,
                         (cubeFaces[3] != nullptr) & (cubeFaces[4] != nullptr) & (cubeFaces[5] != nullptr));
 
   uint components = isValid ? cubeFaces[0]->format->BytesPerPixel : 4u /*whatever*/;
-  TRE_ASSERT((modemask & MMASK_ALPHA_ONLY) == 0); // alpha-only modifier not supported for cubemaps
-  TRE_ASSERT((modemask & MMASK_FORCE_NO_ALPHA) == 0); // no-alpha modifier not supported for cubemaps
-  TRE_ASSERT((modemask & MMASK_RG_ONLY) == 0); // 2-chanels modifier not supported for cubemaps
+  TRE_ASSERT((modemask & MMASK_ALPHA_ONLY) == 0); // alpha-only modifier not supported
+  TRE_ASSERT((modemask & MMASK_FORCE_NO_ALPHA) == 0); // no-alpha modifier not supported
+  TRE_ASSERT((modemask & MMASK_RG_ONLY) == 0); // 2-chanels modifier not supported
 
   // header
   uint tinfo[8];
@@ -900,6 +904,39 @@ bool texture::writeCube(std::ostream &outbuffer, const std::array<SDL_Surface *,
   {
     for (auto &s : cubeFaces) { if (s != nullptr) SDL_FreeSurface(s); }
   }
+
+  return true;
+}
+
+//-----------------------------------------------------------------------------
+
+bool texture::write3D(std::ostream &outbuffer, const uint8_t *data, int w, int h, int d, bool formatFloat, uint components, int modemask)
+{
+  const bool isValid = (data != nullptr) && (formatFloat == false) && (components >= 1) && (components <= 4);
+  TRE_ASSERT((modemask & MMASK_ALPHA_ONLY) == 0); // alpha-only modifier not supported
+  TRE_ASSERT((modemask & MMASK_FORCE_NO_ALPHA) == 0); // no-alpha modifier not supported
+  TRE_ASSERT((modemask & MMASK_RG_ONLY) == 0); // 2-chanels modifier not supported
+
+  // header
+  uint tinfo[8];
+  tinfo[0] = isValid ? TI_3D : TI_NONE;
+  tinfo[1] = w;
+  tinfo[2] = h;
+  tinfo[3] = modemask & (~MMASK_COMPRESS);
+  tinfo[4] = k_Config; // internal
+  tinfo[5] = d;
+  tinfo[6] = components;
+  tinfo[7] = TEXTURE_BIN_VERSION;
+
+  outbuffer.write(reinterpret_cast<const char*>(&tinfo), sizeof(tinfo));
+
+  if (!isValid) return false;
+
+  uint pixelData_ByteSize = components * w * h * d; // 1 byte per component
+
+  outbuffer.write(reinterpret_cast<const char*>(&pixelData_ByteSize), sizeof(pixelData_ByteSize));
+
+  outbuffer.write(reinterpret_cast<const char*>(&data), pixelData_ByteSize);
 
   return true;
 }
@@ -1028,8 +1065,13 @@ bool texture::read(std::istream &inbuffer)
   }
   else if (m_type == TI_3D)
   {
-    success = false;
-    TRE_FATAL("texture::read (TI_3D) not implemented. Cannot write a 3D-texture, so this case should not be reached.");
+    readBuffer.resize(dataSize);
+    TRE_ASSERT(readBuffer.size() == dataSize);
+    inbuffer.read(readBuffer.data(), int(dataSize));
+    success &= update3D(reinterpret_cast<const uint8_t*>(readBuffer.data()), m_w, m_h, m_d, false, m_components, false);
+    set_parameters();
+    success &= tre::IsOpenGLok("texture::read (TI_3D) complete texture");
+    glBindTexture(GL_TEXTURE_3D,0);
   }
 
   return success;

@@ -44,11 +44,11 @@ public:
   bool load(SDL_Surface *surface, int modemask, const bool freeSurface); ///< Load from SDL_Surface into GPU as 2D-Texture. Using freeSurface=true allows to apply modifiers in-place to the pixel data.
   bool loadArray(const span<SDL_Surface*> &surfaces, int modemask, const bool freeSurface); ///< Load from multiple SDL_Surface into GPU as 2D-Array-Texture. Using freeSurface=true allows to apply modifiers in-place to the pixel data.
   bool loadCube(const std::array<SDL_Surface *, 6> &cubeFaces, int modemask, const bool freeSurface);  ///< Load from SDL_Surface into GPU as CubeMap-Texture. Textures lost: X+, X-, Y+, Y-, Z+, Z-. Using freeSurface=true allows to apply modifiers in-place to the pixel data.
-  bool load3D(const uint8_t *data, int w, int h, int d, bool formatFloat, int components, int modemask); ///< Load from SDL_Surface into GPU as 3D-Texture. Using modifiers is not allowed. data can be null.
+  bool load3D(const uint8_t *data, int w, int h, int d, bool formatFloat, uint components, int modemask); ///< Load from SDL_Surface into GPU as 3D-Texture. Using modifiers is not allowed. data can be null.
 
   bool update(SDL_Surface *surface, const bool freeSurface, const bool unbind = true); ///< Upload new pixels into a 2D-texture. Using freeSurface=true allows to apply modifiers in-place to the pixel data.
   bool updateArray(SDL_Surface *surface, int depthIndex, const bool freeSurface, const bool unbind = true); ///< Upload new pixels into a 2D-Array-Texture. Using freeSurface=true allows to apply modifiers in-place to the pixel data.
-  bool update3D(const uint8_t* data, int w, int h, int d, bool formatFloat, int components, const bool unbind = true); ///< Upload new pixels into a 3D-Texture. Using modifiers is not allowed.
+  bool update3D(const uint8_t *data, int w, int h, int d, bool formatFloat, uint components, const bool unbind = true); ///< Upload new pixels into a 3D-Texture. Using modifiers is not allowed.
 
   bool loadColor(const uint32_t cARGB); ///< Load a plain-colored texture into GPU as 2D-Texture.
   bool loadWhite() { return loadColor(0xFFFFFFFF); } ///< Load a plain-white texture into GPU as 2D-Texture.
@@ -57,6 +57,7 @@ public:
   static bool write(std::ostream &outbuffer, SDL_Surface *surface, int modemask, const bool freeSurface); ///< Bake and write a surface into binary-format. Using freeSurface=true allows to apply modifiers in-place to the pixel data.
   static bool writeArray(std::ostream &outbuffer, const span<SDL_Surface*> &surfaces, int modemask, const bool freeSurface);
   static bool writeCube(std::ostream &outbuffer, const std::array<SDL_Surface *, 6> &cubeFaces, int modemask, const bool freeSurface); ///< Bake and write a cubemap-surface into binary-format. Using freeSurface=true allows to apply modifiers in-place to the pixel data.
+  static bool write3D(std::ostream &outbuffer, const uint8_t *data, int w, int h, int d, bool formatFloat, uint components, int modemask); ///< Bake and write a 3D-Texture into binary-format. Using modifiers is not allowed.
 
   bool read(std::istream &inbuffer); ///< load texture from binary-file, and load it into GPU.
 
