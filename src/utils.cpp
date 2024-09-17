@@ -138,23 +138,6 @@ s_boundbox s_boundbox::operator+(const s_boundbox &other) const
 
 // ----------------------------------------------------------------------------
 
-s_boundbox & s_boundbox::operator*=(const float scale)
-{
-  m_min *= scale;
-  m_max *= scale;
-  return *this;
-}
-
-// ----------------------------------------------------------------------------
-
-void s_boundbox::addPointInBox(const glm::vec3 &pt)
-{
-  m_min = glm::min(m_min, pt);
-  m_max = glm::max(m_max, pt);
-}
-
-// ----------------------------------------------------------------------------
-
 void s_boundbox::read(std::istream & inbuffer)
 {
   float buf[6];

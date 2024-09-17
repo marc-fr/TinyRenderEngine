@@ -167,8 +167,8 @@ public:
     const chunkVector<_T, chunkSize> &m_self;
     std::size_t                       m_index;
   };
-  iterator begin() const noexcept { return iterator(this, 0); }
-  iterator end() const noexcept { return iterator(this, m_size); }
+  iterator begin() const noexcept { return iterator(*this, 0); }
+  iterator end() const noexcept { return iterator(*this, m_size); }
 };
 
 /**
@@ -276,8 +276,9 @@ struct s_boundbox
   s_boundbox transform(const glm::mat4 &transform) const; ///< transform by the transform matrix
   s_boundbox & operator+=(const s_boundbox &other);
   s_boundbox operator+(const s_boundbox &other) const;
-  s_boundbox & operator*=(const float scale);
-  void addPointInBox(const glm::vec3 &pt);
+  s_boundbox & operator*=(const float scale) { m_min *= scale; m_max *= scale; return *this; }
+
+  void addPointInBox(const glm::vec3 &pt) { m_min = glm::min(m_min, pt); m_max = glm::max(m_max, pt); }
   void addPointInBox(float px, float py, float pz = 0.f) { addPointInBox(glm::vec3(px,py,pz)); }
 
   inline bool valid() const { return glm::all(glm::lessThanEqual(m_min, m_max)); }
