@@ -728,8 +728,6 @@ void shaderGenerator::createShaderSource_Layout(std::string &sourceVertex, std::
     if (m_layout.hasSMP_ShadowSun || m_layout.hasSMP_ShadowPts)
       createShaderFunctions_Shadow(sourceFragment);
   }
-
-  if (m_layout.hasPIP_Geom) sourceFragment.clear(); // currently, we don't handle fully programs with geom-stage
 }
 
 // ----------------------------------------------------------------------------
@@ -903,6 +901,124 @@ void shaderGenerator::createShaderSource_VertexMain(std::string &sourceVertex)
   if (m_layout.hasPIX_UVW) sourceVertex += "  " + prefixOut + "UVW = vertexPosition.xyz;\n";
 
   sourceVertex += "}\n";
+}
+
+// ----------------------------------------------------------------------------
+
+void shaderGenerator::createShaderSource_GeomWireframe(std::string & sourceGeom)
+{
+  sourceGeom.clear();
+
+  TRE_ASSERT(m_layout.hasPIP_Geom);
+
+  // header
+#ifdef TRE_OPENGL_ES
+  TRE_FATAL("Geometry shaders are not supported with OpenGL-ES 3.0");
+  sourceGeom += "#version 300 es\nprecision mediump float;\n";
+#else
+  sourceGeom += "#version 330 core\n";
+#endif
+
+  // geometry definition
+  sourceGeom += "layout(triangles) in;\n"
+                "layout(line_strip, max_vertices = 4) out;\n";
+
+  // layout
+
+#define EMITDECL(tname, varname) sourceGeom += "in " tname "geom" varname ";\n" "out " tname "pixel" varname ";\n"
+
+  if (m_layout.hasBUF_UV)
+  {
+    EMITDECL("vec2", "UV");
+  }
+  if (m_layout.hasBUF_Color)
+  {
+    EMITDECL("vec4", "Color");
+  }
+  if (m_layout.hasBUF_TangentU)
+  {
+    EMITDECL("vec3", "TangU");
+    EMITDECL("vec3", "TangV");
+  }
+  if (m_layout.hasBUF_InstancedAtlasBlend)
+  {
+    EMITDECL("vec4", "AtlasBlend");
+  }
+  if (m_layout.hasPIX_UVW)
+  {
+    EMITDECL("vec3", "UVW");
+  }
+  if (m_layout.hasPIX_Position)
+  {
+    EMITDECL("vec3", "Position");
+  }
+  if (m_layout.hasPIX_Normal)
+  {
+    EMITDECL("vec3", "Normal");
+  }
+  if (m_layout.hasPIX_Position_clipspace)
+  {
+    EMITDECL("vec3", "Position_clipspace");
+  }
+
+#undef EMITDECL
+
+  // emit
+
+  sourceGeom += "void main()\n{\n";
+
+#define EMITVAR(varname) \
+  sourceGeom += "  pixel" varname " = gl_in["; \
+  sourceGeom += ve; \
+  sourceGeom += "].geom" varname ";\n"
+
+  const char vEmit[4] = { '0', '1', '2', '0' };
+  for (const char ve : vEmit)
+  {
+    sourceGeom += "  gl_Position = gl_in[";
+    sourceGeom += ve;
+    sourceGeom += "].gl_Position;\n";
+
+    if (m_layout.hasBUF_UV)
+    {
+      EMITVAR("UV");
+    }
+    if (m_layout.hasBUF_Color)
+    {
+      EMITVAR("Color"); // note: if from instancing, we can do this only once.
+    }
+    if (m_layout.hasBUF_TangentU)
+    {
+      EMITVAR("TangU");
+      EMITVAR("TangV");
+    }
+    if (m_layout.hasBUF_InstancedAtlasBlend)
+    {
+      EMITVAR("AtlasBlend"); // can be done only once
+    }
+    if (m_layout.hasPIX_UVW)
+    {
+      EMITVAR("UVW");
+    }
+    if (m_layout.hasPIX_Position)
+    {
+      EMITVAR("Position");
+    }
+    if (m_layout.hasPIX_Normal)
+    {
+      EMITVAR("Normal");
+    }
+    if (m_layout.hasPIX_Position_clipspace)
+    {
+      EMITVAR("Position_clipspace");
+    }
+
+    sourceGeom +="  EmitVertex();\n";
+  }
+
+#undef EMITVAR
+
+  sourceGeom += "  EndPrimitive();\n}\n";
 }
 
 // ----------------------------------------------------------------------------

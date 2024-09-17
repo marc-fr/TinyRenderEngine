@@ -28,6 +28,8 @@ public:
   /// @{
 public:
   bool loadShader(e_category cat, int flags, const char *pname = nullptr); ///< compile and load a shader into the GPU
+  bool loadShaderWireframe(e_category cat, int flags, const char *pname = nullptr); ///< compile and load a shader that transforms triangles to lines.
+
   bool loadCustomShader(const s_layout & shaderLayout, const char * sourceMainFrag, const char *pname); ///< compile and load a shader, with a custom fragment stage
   bool loadCustomShaderVF(const s_layout & shaderLayout, const char * sourceMainVert, const char * sourceMainFrag, const char *pname); ///< compile and load a shader, with a custom vertex and fragment stages
   bool loadCustomShaderGF(const s_layout & shaderLayout, const char * sourceFullGeom, const char * sourceFullFrag, const char *pname); ///< compile and load a shader, with a custom geometry and fragment stages

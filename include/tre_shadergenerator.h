@@ -166,8 +166,9 @@ protected:
   void createShaderFunction_Light(const int flags, std::string & gatherLights); ///< Part of createShaderSource_FragmentMain
   void createShaderFunction_Transparent(const int flags, std::string &transparentFn); ///< Part of createShaderSource_FragmentMain
 
-  void createShaderSource_Layout(std::string & sourceVertex, std::string & sourceFragment); ///< Create only the shader headers. If withGeom, only the vertex-shader is set.
+  void createShaderSource_Layout(std::string & sourceVertex, std::string & sourceFragment); ///< Create only the shader headers.
   void createShaderSource_VertexMain(std::string & sourceVertex); ///< Create the "main" in the vertex-shader
+  void createShaderSource_GeomWireframe(std::string & sourceGeom); ///< Create the full geometry-shader (expecting triangles as input, outputs lines)
   void createShaderSource_FragmentMain(const int flags, std::string & sourceFragment); ///< Create the "main" in the fragment-shader
 
   s_layout m_layout;

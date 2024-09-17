@@ -39,6 +39,37 @@ bool shader::loadShader(e_category cat, int flags, const char *pname)
 
 // ----------------------------------------------------------------------------
 
+bool shader::loadShaderWireframe(e_category cat, int flags, const char *pname)
+{
+  TRE_ASSERT(m_drawProgram == 0);
+
+  //-- Layout
+
+  m_layout = s_layout(cat, flags);
+  m_layout.hasPIP_Geom = true;
+
+  //-- Create the shader source
+  std::string sourceVert,sourceGeom, sourceFrag;
+  sourceVert.reserve(4096);
+  sourceGeom.reserve(4096);
+  sourceFrag.reserve(4096);
+
+  createShaderSource_Layout(sourceVert, sourceFrag);
+
+  createShaderSource_VertexMain(sourceVert);
+  createShaderSource_GeomWireframe(sourceGeom);
+  createShaderSource_FragmentMain(flags, sourceFrag);
+
+  //-- compile and load it
+
+  compute_name(cat, flags, pname);
+  if (pname == nullptr) m_name += "_Wireframe";
+
+  return linkProgram(sourceVert.data(), sourceGeom.data(), sourceFrag.data());
+}
+
+// ----------------------------------------------------------------------------
+
 bool shader::loadCustomShader(const s_layout & shaderLayout , const char * sourceMainFrag, const char * pname)
 {
   TRE_ASSERT(m_drawProgram == 0);
@@ -174,7 +205,6 @@ bool shader::loadCustomShaderVGF(const s_layout &shaderLayout, const char *sourc
   sourceFrag.reserve(4096);
 
   createShaderSource_Layout(sourceVert, sourceFrag);
-  TRE_ASSERT(sourceFrag.empty());
   sourceFrag.clear();
   TRE_ASSERT(sourceMainVert != nullptr);
   sourceVert += sourceMainVert;
