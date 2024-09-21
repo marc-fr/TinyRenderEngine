@@ -19,10 +19,7 @@ set(SRC_LIST_LIB
   src/font.cpp
   src/gizmo.cpp
   src/model.cpp
-  src/model_base.cpp
-  src/model_generator.cpp
   src/model_importer.cpp
-  src/model_layout.cpp
   src/model_tools2D.cpp
   src/model_tools3D.cpp
   src/profiler.cpp

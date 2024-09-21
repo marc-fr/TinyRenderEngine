@@ -225,17 +225,109 @@ public:
   void        defragmentVertices(const bool makeVerticesUnique); ///< Re-order and compact the vertices space for each part. "makeVerticesUnique = true" will duplicates vertex that are shared between multiple parts.
 
   // 3D-primitive generator
-  std::size_t createPartFromPrimitive_box(const glm::mat4 &transform, const float edgeLength);
-  std::size_t createPartFromPrimitive_box_wireframe(const glm::mat4 &transform, const float edgeLength);
-  std::size_t createPartFromPrimitive_cone(const glm::mat4 &transform, const float radius, const float heigth, const uint subdiv);
-  std::size_t createPartFromPrimitive_disk(const glm::mat4 &transform, const float radiusOut, const float radiusIn, const uint subdiv);
-  std::size_t createPartFromPrimitive_halftorus(const glm::mat4 &transform, const float radiusMain, const float radiusIn, const bool closed, const uint subdiv_main, const uint subdiv_in);
-  std::size_t createPartFromPrimitive_icosphere(const glm::mat4 &transform, const float radius, const uint subdiv);
-  std::size_t createPartFromPrimitive_square(const glm::mat4 &transform, const float edgeLength);
-  std::size_t createPartFromPrimitive_square_wireframe(const glm::mat4 &transform, const float edgeLength);
-  std::size_t createPartFromPrimitive_tube(const glm::mat4 &transform, const float radius, const float heigth, const bool closed, const uint subdiv_r, const uint subdiv_h = 1);
-  std::size_t createPartFromPrimitive_uvtrisphere(const glm::mat4 &transform, const float radius, const uint subdiv_u, const uint subdiv_v);
-  std::size_t createPartFromPrimitive_uvtrisphere_wireframe(const glm::mat4 &transform, const float radius, const uint subdiv_u, const uint subdiv_v);
+
+  static constexpr std::size_t fillDataBox_ISize() { return 36; }
+  static constexpr std::size_t fillDataBox_VSize() { return 24; }
+  void fillDataBox(std::size_t ipart, std::size_t offsetI, std::size_t offsetV, const glm::mat4 &transform, float edgeLength, const glm::vec4 & color);
+  std::size_t createPartFromPrimitive_box(const glm::mat4 &transform, float edgeLength, const glm::vec4 & color = glm::vec4(1.f))
+  {
+    std::size_t offsetV;
+    std::size_t pid = createPart(fillDataBox_ISize(), fillDataBox_VSize(), offsetV);
+    fillDataBox(pid, 0, offsetV, transform, edgeLength, color);
+    return pid;
+  }
+
+  static constexpr std::size_t fillDataBoxWireframe_ISize() { return 48; }
+  static constexpr std::size_t fillDataBoxWireframe_VSize() { return 8; }
+  void fillDataBoxWireframe(std::size_t ipart, std::size_t offsetI, std::size_t offsetV, const glm::mat4 &transform, float edgeLength, const glm::vec4 & color);
+  std::size_t createPartFromPrimitive_box_wireframe(const glm::mat4 &transform, float edgeLength, const glm::vec4 & color = glm::vec4(1.f))
+  {
+    std::size_t offsetV;
+    std::size_t pid = createPart(fillDataBoxWireframe_ISize(), fillDataBoxWireframe_VSize(), offsetV);
+    fillDataBoxWireframe(pid, 0, offsetV, transform, edgeLength, color);
+    return pid;
+  }
+
+  static constexpr std::size_t fillDataCone_ISize(uint subdiv) { return subdiv * 6; }
+  static constexpr std::size_t fillDataCone_VSize(uint subdiv) { return 2 + subdiv; }
+  void fillDataCone(std::size_t ipart, std::size_t offsetI, std::size_t offsetV, const glm::mat4 &transform, float radius, float heigth, uint subdiv, const glm::vec4 & color);
+  std::size_t createPartFromPrimitive_cone(const glm::mat4 &transform, float radius, float heigth, uint subdiv, const glm::vec4 & color = glm::vec4(1.f))
+  {
+    std::size_t offsetV;
+    std::size_t pid = createPart(fillDataCone_ISize(subdiv), fillDataCone_VSize(subdiv), offsetV);
+    fillDataCone(pid, 0, offsetV, transform, radius, heigth, subdiv, color);
+    return pid;
+  }
+
+  static constexpr std::size_t fillDataDisk_ISize(float radiusIn, uint subdiv) { return radiusIn == 0.f ? subdiv * 3 : subdiv * 6;   }
+  static constexpr std::size_t fillDataDisk_VSize(float radiusIn, uint subdiv) { return radiusIn == 0.f ? 1 + subdiv : 2.f * subdiv; }
+  void fillDataDisk(std::size_t ipart, std::size_t offsetI, std::size_t offsetV, const glm::mat4 &transform, float radiusOut, float radiusIn, uint subdiv, const glm::vec4 & color);
+  std::size_t createPartFromPrimitive_disk(const glm::mat4 &transform, float radiusOut, float radiusIn, uint subdiv, const glm::vec4 & color = glm::vec4(1.f))
+  {
+    std::size_t offsetV;
+    std::size_t pid = createPart(fillDataDisk_ISize(radiusIn, subdiv), fillDataDisk_VSize(radiusIn, subdiv), offsetV);
+    fillDataDisk(pid, 0, offsetV, transform, radiusOut, radiusIn, subdiv, color);
+    return pid;
+  }
+
+  static constexpr std::size_t fillDataTorus_ISize(uint subdiv_main, uint subdiv_in) { return subdiv_main * subdiv_in * 6; }
+  static constexpr std::size_t fillDataTorus_VSize(uint subdiv_main, uint subdiv_in) { return subdiv_main * subdiv_in;     }
+  void fillDataTorus(std::size_t ipart, std::size_t offsetI, std::size_t offsetV, const glm::mat4 &transform, float radiusMain, float radiusIn, uint subdiv_main, uint subdiv_in, const glm::vec4 & color);
+  std::size_t createPartFromPrimitive_halftorus(const glm::mat4 &transform, float radiusMain, float radiusIn, uint subdiv_main, uint subdiv_in, const glm::vec4 & color = glm::vec4(1.f))
+  {
+    std::size_t offsetV;
+    std::size_t pid = createPart(fillDataTorus_ISize(subdiv_main, subdiv_in), fillDataTorus_VSize(subdiv_main, subdiv_in), offsetV);
+    fillDataTorus(pid, 0, offsetV, transform, radiusMain, radiusIn, subdiv_main, subdiv_in, color);
+    return pid;
+  }
+
+  //static constexpr std::size_t fillDataIcosphere_ISize(uint ) { return 0; }
+  //static constexpr std::size_t fillDataIcosphere_VSize(uint ) { return 0; }
+  //void fillDataIcosphere(std::size_t ipart, std::size_t offsetI, std::size_t offsetV, const glm::mat4 &transform, float radius, uint subdiv, const glm::vec4 & color);
+
+  static constexpr std::size_t fillDataSquare_ISize() { return 6; }
+  static constexpr std::size_t fillDataSquare_VSize() { return 4; }
+  void fillDataSquare(std::size_t ipart, std::size_t offsetI, std::size_t offsetV, const glm::mat4 &transform, float edgeLength, const glm::vec4 & color);
+  std::size_t createPartFromPrimitive_square(const glm::mat4 &transform, float edgeLength, const glm::vec4 & color = glm::vec4(1.f))
+  {
+    std::size_t offsetV;
+    std::size_t pid = createPart(fillDataSquare_ISize(), fillDataSquare_VSize(), offsetV);
+    fillDataSquare(pid, 0, offsetV, transform, edgeLength, color);
+    return pid;
+  }
+
+  static constexpr std::size_t fillDataSquareWireframe_ISize() { return 8; }
+  static constexpr std::size_t fillDataSquareWireframe_VSize() { return 4; }
+  void fillDataSquareWireframe(std::size_t ipart, std::size_t offsetI, std::size_t offsetV, const glm::mat4 &transform, float edgeLength, const glm::vec4 & color);
+  std::size_t createPartFromPrimitive_square_wireframe(const glm::mat4 &transform, float edgeLength, const glm::vec4 & color = glm::vec4(1.f))
+  {
+    std::size_t offsetV;
+    std::size_t pid = createPart(fillDataSquareWireframe_ISize(), fillDataSquareWireframe_VSize(), offsetV);
+    fillDataSquareWireframe(pid, 0, offsetV, transform, edgeLength, color);
+    return pid;
+  }
+
+  static constexpr std::size_t fillDataTube_ISize(bool       , uint subdiv_r, uint subdiv_h) { return subdiv_r * subdiv_h * 6;                       }
+  static constexpr std::size_t fillDataTube_VSize(bool closed, uint subdiv_r, uint subdiv_h) { return subdiv_r * (subdiv_h + 1) + (closed ? 2 : 0);  }
+  void fillDataTube(std::size_t ipart, std::size_t offsetI, std::size_t offsetV, const glm::mat4 &transform, float radius, float heigth, bool closed, uint subdiv_r, uint subdiv_h, const glm::vec4 & color);
+  std::size_t createPartFromPrimitive_tube(const glm::mat4 &transform, float radius, float heigth, bool closed, uint subdiv_u, uint subdiv_v, const glm::vec4 & color = glm::vec4(1.f))
+  {
+    std::size_t offsetV;
+    std::size_t pid = createPart(fillDataTube_ISize(closed, subdiv_u, subdiv_v), fillDataTube_VSize(closed, subdiv_u, subdiv_v), offsetV);
+    fillDataTube(pid, 0, offsetV, transform, radius, heigth, closed, subdiv_u, subdiv_v, color);
+    return pid;
+  }
+
+  static constexpr std::size_t fillDataUvtrisphere_ISize(uint subdiv_u, uint subdiv_v) { return (subdiv_u & ~0x1) * ((subdiv_v * 2 - 1) * 3 + 3 + 3); }
+  static constexpr std::size_t fillDataUvtrisphere_VSize(uint subdiv_u, uint subdiv_v) { return 2 + (subdiv_v * 2 + 1) * (subdiv_u / 2);              }
+  void fillDataUvtrisphere(std::size_t ipart, std::size_t offsetI, std::size_t offsetV, const glm::mat4 &transform, float radius, uint subdiv_u, uint subdiv_v, const glm::vec4 & color);
+  std::size_t createPartFromPrimitive_uvtrisphere(const glm::mat4 &transform, float radius, uint subdiv_u, uint subdiv_v, const glm::vec4 & color = glm::vec4(1.f))
+  {
+    std::size_t offsetV;
+    std::size_t pid = createPart(fillDataUvtrisphere_ISize(subdiv_u, subdiv_v), fillDataUvtrisphere_VSize(subdiv_u, subdiv_v), offsetV);
+    fillDataUvtrisphere(pid, 0, offsetV, transform, radius, subdiv_u, subdiv_v, color);
+    return pid;
+  }
 
 protected:
   virtual void resizePart(std::size_t ipart, std::size_t count) override; // use it carefully : does not resize the vertex data.

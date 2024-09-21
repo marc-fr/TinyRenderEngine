@@ -1083,14 +1083,14 @@ bool gizmo::loadIntoGPU()
 
     transf = xMatrix;
     transf[3] = transf[1] * m_GeomDesc.m_AxisLength * 0.5f;
-    m_PartAxisTX = m_model.createPartFromPrimitive_tube(transf, m_GeomDesc.m_AxisRadius, m_GeomDesc.m_AxisLength, true, 8);
+    m_PartAxisTX = m_model.createPartFromPrimitive_tube(transf, m_GeomDesc.m_AxisRadius, m_GeomDesc.m_AxisLength, true, 8, 1);
     transf[3] = transf[1] * m_GeomDesc.m_AxisLength;
     const std::size_t px2 = m_model.createPartFromPrimitive_cone(transf, m_GeomDesc.m_ArrowRadius, m_GeomDesc.m_ArrowHeight, 8);
     m_model.mergeParts(m_PartAxisTX, px2);
 
     transf = yMatrix;
     transf[3] = transf[1] * m_GeomDesc.m_AxisLength * 0.5f;
-    const std::size_t py1 = m_model.createPartFromPrimitive_tube(transf, m_GeomDesc.m_AxisRadius, m_GeomDesc.m_AxisLength, true, 8);
+    const std::size_t py1 = m_model.createPartFromPrimitive_tube(transf, m_GeomDesc.m_AxisRadius, m_GeomDesc.m_AxisLength, true, 8, 1);
     transf[3] = transf[1] * m_GeomDesc.m_AxisLength;
     const std::size_t py2 = m_model.createPartFromPrimitive_cone(transf, m_GeomDesc.m_ArrowRadius, m_GeomDesc.m_ArrowHeight, 8);
     m_model.mergeParts(py1, py2);
@@ -1098,7 +1098,7 @@ bool gizmo::loadIntoGPU()
 
     transf = zMatrix;
     transf[3] = transf[1] * m_GeomDesc.m_AxisLength * 0.5f;
-    const std::size_t pz1 = m_model.createPartFromPrimitive_tube(transf, m_GeomDesc.m_AxisRadius, m_GeomDesc.m_AxisLength, true, 8);
+    const std::size_t pz1 = m_model.createPartFromPrimitive_tube(transf, m_GeomDesc.m_AxisRadius, m_GeomDesc.m_AxisLength, true, 8, 1);
     transf[3] = transf[1] * m_GeomDesc.m_AxisLength;
     const std::size_t pz2 = m_model.createPartFromPrimitive_cone(transf, m_GeomDesc.m_ArrowRadius, m_GeomDesc.m_ArrowHeight, 8);
     m_model.mergeParts(pz1, pz2);
@@ -1112,14 +1112,14 @@ bool gizmo::loadIntoGPU()
 
     transf = xMatrix;
     transf[3] = transf[1] * m_GeomDesc.m_AxisLength * 0.5f;
-    m_PartAxisSX = m_model.createPartFromPrimitive_tube(transf, m_GeomDesc.m_AxisRadius, m_GeomDesc.m_AxisLength, true, 8);
+    m_PartAxisSX = m_model.createPartFromPrimitive_tube(transf, m_GeomDesc.m_AxisRadius, m_GeomDesc.m_AxisLength, true, 8, 1);
     transf[3] = transf[1] * (m_GeomDesc.m_AxisLength + m_GeomDesc.m_ArrowRadius * 0.5f);
     const std::size_t px2 = m_model.createPartFromPrimitive_box(transf, m_GeomDesc.m_ArrowRadius * 2.f);
     m_model.mergeParts(m_PartAxisSX, px2);
 
     transf = yMatrix;
     transf[3] = transf[1] * m_GeomDesc.m_AxisLength * 0.5f;
-    const std::size_t py1 = m_model.createPartFromPrimitive_tube(transf, m_GeomDesc.m_AxisRadius, m_GeomDesc.m_AxisLength, true, 8);
+    const std::size_t py1 = m_model.createPartFromPrimitive_tube(transf, m_GeomDesc.m_AxisRadius, m_GeomDesc.m_AxisLength, true, 8, 1);
     transf[3] = transf[1] * (m_GeomDesc.m_AxisLength + m_GeomDesc.m_ArrowRadius * 0.5f);
     const std::size_t py2 = m_model.createPartFromPrimitive_box(transf, m_GeomDesc.m_ArrowRadius * 2.f);
     m_model.mergeParts(py1, py2);
@@ -1127,7 +1127,7 @@ bool gizmo::loadIntoGPU()
 
     transf = zMatrix;
     transf[3] = transf[1] * m_GeomDesc.m_AxisLength * 0.5f;
-    const std::size_t pz1 = m_model.createPartFromPrimitive_tube(transf, m_GeomDesc.m_AxisRadius, m_GeomDesc.m_AxisLength, true, 8);
+    const std::size_t pz1 = m_model.createPartFromPrimitive_tube(transf, m_GeomDesc.m_AxisRadius, m_GeomDesc.m_AxisLength, true, 8, 1);
     transf[3] = transf[1] * (m_GeomDesc.m_AxisLength + m_GeomDesc.m_ArrowRadius * 0.5f);
     const std::size_t pz2 = m_model.createPartFromPrimitive_box(transf, m_GeomDesc.m_ArrowRadius * 2.f);
     m_model.mergeParts(pz1, pz2);
@@ -1141,12 +1141,12 @@ bool gizmo::loadIntoGPU()
     const float diskInnerRadius = m_GeomDesc.m_AxisLength + m_GeomDesc.m_ArrowHeight * 2;
     const float diskOuterRadius = diskInnerRadius + m_GeomDesc.m_AxisRadius * 2.f;
 
-    m_PartRotationX = m_model.createPartFromPrimitive_halftorus(xMatrix, torusRadius, innerRadius, true, 32, 8);
+    m_PartRotationX = m_model.createPartFromPrimitive_halftorus(xMatrix, torusRadius, innerRadius, 32, 8);
 
-    const std::size_t py = m_model.createPartFromPrimitive_halftorus(yMatrix, torusRadius, innerRadius, true, 32, 8);
+    const std::size_t py = m_model.createPartFromPrimitive_halftorus(yMatrix, torusRadius, innerRadius, 32, 8);
     TRE_ASSERT(py == m_PartRotationX + 1);
 
-    const std::size_t pz = m_model.createPartFromPrimitive_halftorus(zMatrix, torusRadius, innerRadius, true, 32, 8);
+    const std::size_t pz = m_model.createPartFromPrimitive_halftorus(zMatrix, torusRadius, innerRadius, 32, 8);
     TRE_ASSERT(pz == m_PartRotationX + 2);
 
     const std::size_t ps = m_model.createPartFromPrimitive_disk(zMatrix, diskOuterRadius, diskInnerRadius, 64);
