@@ -569,21 +569,21 @@ void shaderGenerator::createShaderSource_Layout(std::string &sourceVertex, std::
   {
     sourceVertex += "layout(location = 2) in vec2 vertexUV;\n"
                     "out vec2 " + prefixOut + "UV;\n";
-    sourceFragment += "in vec2 " + prefixOut + "UV;\n"; // implicit
+    sourceFragment += "in vec2 " "pixel" "UV;\n"; // implicit
   }
   if (m_layout.hasBUF_Color)
   {
     sourceVertex += "layout(location = 3) in vec4 vertexColor;\n"
                     "out vec4 " + prefixOut + "Color;\n";
-    sourceFragment += "in vec4 " + prefixOut + "Color;\n"; // implicit
+    sourceFragment += "in vec4 " "pixel" "Color;\n"; // implicit
   }
   if (m_layout.hasBUF_TangentU)
   {
     sourceVertex += "layout(location = 4) in vec4 vertexTangentU;\n"
                     "out vec3 " + prefixOut + "TangU;\n"
                     "out vec3 " + prefixOut + "TangV;\n";
-    sourceFragment += "in vec3 " + prefixOut + "TangU;\n"
-                      "in vec3 " + prefixOut + "TangV;\n"; // implicit
+    sourceFragment += "in vec3 " "pixel" "TangU;\n"
+                      "in vec3 " "pixel" "TangV;\n"; // implicit
   }
   if (m_layout.hasBUF_InstancedPosition)
   {
@@ -595,14 +595,14 @@ void shaderGenerator::createShaderSource_Layout(std::string &sourceVertex, std::
     if (!m_layout.hasBUF_Color)
     {
       sourceVertex += "out vec4 " + prefixOut + "Color;\n";
-      sourceFragment += "in vec4 " + prefixOut + "Color;\n";
+      sourceFragment += "in vec4 " "pixel" "Color;\n";
     }
   }
   if (m_layout.hasBUF_InstancedAtlasBlend)
   {
     sourceVertex += "layout(location = 7) in vec4 instancedAtlasBlend;\n"
                     "out vec4 " + prefixOut + "AtlasBlend;\n";
-    sourceFragment += "in vec4 " + prefixOut + "AtlasBlend;\n";
+    sourceFragment += "in vec4 " "pixel" "AtlasBlend;\n";
   }
   if (m_layout.hasBUF_InstancedOrientation)
   {
@@ -618,22 +618,22 @@ void shaderGenerator::createShaderSource_Layout(std::string &sourceVertex, std::
   if (m_layout.hasPIX_UVW)
   {
     sourceVertex += "out vec3 " + prefixOut + "UVW;\n";
-    sourceFragment += "in vec3 " + prefixOut + "UVW;\n";
+    sourceFragment += "in vec3 " "pixel" "UVW;\n";
   }
   if (m_layout.hasPIX_Position)
   {
     sourceVertex += "out vec3 " + prefixOut + "Position;\n";
-    sourceFragment += "in vec3 " + prefixOut + "Position;\n";
+    sourceFragment += "in vec3 " "pixel" "Position;\n";
   }
   if (m_layout.hasPIX_Normal)
   {
     sourceVertex += "out vec3 " + prefixOut + "Normal;\n";
-    sourceFragment += "in vec3 " + prefixOut + "Normal;\n";
+    sourceFragment += "in vec3 " "pixel" "Normal;\n";
   }
   if (m_layout.hasPIX_Position_clipspace)
   {
     sourceVertex += "out vec3 " + prefixOut + "Position_clipspace;\n";
-    sourceFragment += "in vec3 " + prefixOut + "Position_clipspace;\n";
+    sourceFragment += "in vec3 " "pixel" "Position_clipspace;\n";
   }
 
   // uniform

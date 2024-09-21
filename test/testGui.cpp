@@ -719,7 +719,7 @@ int main(int argc, char **argv)
   }
 
   tre::texture texTest;
-  texTest.load(tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/quad.bmp"), tre::texture::MMASK_MIPMAP, true);
+  texTest.load(tre::texture::loadTextureFromFile(TESTIMPORTPATH "resources/quad.png"), tre::texture::MMASK_MIPMAP, true);
 
   // - create UI
 

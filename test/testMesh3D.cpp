@@ -432,11 +432,7 @@ int main(int argc, char **argv)
     "}\n";
 
     const char *srcFrag_Wireframe =
-    "#version 330 core\n"
-    "layout(location = 0) out vec4 color;\n"
-    "in vec3 pixelNormal;\n"
     "noperspective in vec3 pixelDist;\n"
-    "uniform vec4 uniColor;\n"
     "void main(){\n"
     "  vec4 diffuseColor = uniColor;\n"
     "  float dist = min(min(pixelDist.x, pixelDist.y), pixelDist.z);\n"
@@ -449,6 +445,7 @@ int main(int argc, char **argv)
 
     tre::shader::s_layout shLayout(tre::shader::PRGM_3D);
     shLayout.hasBUF_Normal = true;
+    shLayout.hasPIX_Normal = true;
     shLayout.hasUNI_MPVM = true;
     shLayout.hasUNI_MModel = true;
     shLayout.hasUNI_uniColor = true;
