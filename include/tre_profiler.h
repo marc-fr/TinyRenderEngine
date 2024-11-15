@@ -28,7 +28,7 @@ class profiler
 {
 public:
 
-  profiler() { m_timeOverFrames.fill(0.f);  }
+  profiler() { m_recordsOverFrames.fill(s_frame()); }
   ~profiler() { TRE_ASSERT(m_whiteTexture == nullptr); TRE_ASSERT(m_shader == nullptr); /* clear contexts ... */ }
 
   typedef std::chrono::steady_clock systemclock;
@@ -46,11 +46,11 @@ private:
 
     inline uint length() const { return uint(m_path.size()); }
 
-    bool isSamePath(const recordpath &otherPath, const bool withRoot = true) const
+    bool isSamePath(const recordpath &otherPath) const
     {
       if (length() != otherPath.size())
         return false;
-      for (uint iP = (withRoot ? 0 : 1); iP < length(); ++iP)
+      for (uint iP = 0; iP < length(); ++iP)
       {
         if (m_path[iP] != otherPath[iP]) return false;
       }
@@ -74,8 +74,8 @@ public:
   class scope
   {
   public:
-    scope(const std::string &name = "no-named", const glm::vec4 color = glm::vec4(0.f));
-    scope(profiler *owner, const std::string &name, const glm::vec4 color = glm::vec4(0.f));
+    scope(const std::string &name = "no-named", const glm::vec4 &color = glm::vec4(0.f));
+    scope(profiler *owner, const std::string &name, const glm::vec4 &color = glm::vec4(0.f));
     ~scope();
 
     void attach(profiler *owner);
@@ -101,9 +101,6 @@ public:
   void enable(bool enabled) { m_enabled = enabled; } ///< Enable/Disable the profiler (collecting and drawing)
   bool isEnabled() const { return m_enabled; }
 
-protected:
-  void collect(); ///< Collect the records. Should be called by one thread only. All threads must be synchronized by the caller
-
 private:
   systemtick m_frameStartTick;
 
@@ -114,13 +111,27 @@ private:
     std::vector<s_record> m_records; ///< Records
   };
 
-  s_context m_context;
-  // TODO : each thread will have its context and a pointer to its context
+  s_context m_context; // TODO : each thread will have its context and a pointer to its context
 
   std::vector<s_record>    m_collectedRecords;
   std::vector<s_record>    m_meanvalueRecords; // TODO: keep like this ??
-  std::array<float, 0x100> m_timeOverFrames;
-  uint                 m_frameIndex = 0;
+
+  struct s_frame
+  {
+    struct s_recordFlatten
+    {
+      glm::vec4 m_color;
+      double    m_duration;
+      int       m_threadId;
+      s_recordFlatten() = default;
+      s_recordFlatten(const glm::vec4 color, double duration, int threadId) : m_color(color), m_duration(duration), m_threadId(threadId) {}
+    };
+    std::vector<s_recordFlatten> m_records;
+    float                        m_globalTime = 0.f;
+  };
+  std::array<s_frame, 0x100> m_recordsOverFrames;
+  uint                       m_frameIndex = 0;
+
   bool                     m_enabled = false;
   bool                     m_paused = false;
 
@@ -155,7 +166,6 @@ public:
   void clearShader();
 
 protected:
-  void create_data();
   void compute_data();
 
 private:

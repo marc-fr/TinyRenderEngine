@@ -11,11 +11,8 @@ namespace tre {
 
 // ============================================================================
 
-#define SATURATE_MAX(val, m) (val < 0.f ? 0.f : (val > m ? m : val))
-
-static glm::vec4 _color_Advance_Hue(const glm::vec4 &color, float hue_add /**< hue is in [0,1] range.*/)
+static float _hueFromColor(const glm::vec4 color)
 {
-  // Convert RBG -> HSV
   float vmax = color.r;
   float vmin = color.r;
   uint imax = 0;
@@ -25,8 +22,7 @@ static glm::vec4 _color_Advance_Hue(const glm::vec4 &color, float hue_add /**< h
   if (color.b < vmin) vmin = color.b;
 
   const float delta = vmax - vmin;
-  if (delta < 1.e-4f)
-    return color;
+  if (delta < 1.e-3f) return 0.f;
 
   const float sat = delta / vmax;
 
@@ -35,31 +31,31 @@ static glm::vec4 _color_Advance_Hue(const glm::vec4 &color, float hue_add /**< h
   else if (imax == 1) hueXsat = 2.f * sat + (color.b - color.r);
   else                hueXsat = 4.f * sat + (color.r - color.g);
 
-  // now, offset the hue
-  hueXsat += (1.f + fmodf(hue_add, 1.f)) * 6.f * sat;
-  hueXsat = fmodf(hueXsat, 6.f * sat);
-
-  // Convert HSV -> RBG
-  glm::vec4 newColor( 1.f - SATURATE_MAX(2.f * sat - fabsf(hueXsat - 3.f * sat), sat),
-                      1.f - SATURATE_MAX(fabsf(hueXsat - 2.f * sat) - sat, sat),
-                      1.f - SATURATE_MAX(fabsf(hueXsat - 4.f * sat) - sat, sat),
-                      0.f);
-  newColor *= vmax;
-  newColor.w = 1.f;
-
-  return newColor;
+  return hueXsat / (6.f * sat);
 }
 
-#undef SATURATE_MAX
+// ----------------------------------------------------------------------------
+
+static glm::vec4 _colorFromHS(float hue /**< hue is in [0,1] range.*/, float sat /**< saturation is in [0,1] range */)
+{
+  hue = fmodf(hue, 1.f);
+  TRE_ASSERT(sat > 0.f && sat <= 1.f);
+  const float hueXsat = hue * 6.f * sat;
+  // Convert HSV (hue, sat, value=1) -> RBG
+  return glm::vec4( 1.f - glm::clamp(2.f * sat - fabsf(hueXsat - 3.f * sat), 0.f, sat),
+                    1.f - glm::clamp(fabsf(hueXsat - 2.f * sat) - sat, 0.f, sat),
+                    1.f - glm::clamp(fabsf(hueXsat - 4.f * sat) - sat, 0.f, sat),
+                    1.f);
+}
 
 // ============================================================================
 
-profiler::scope::scope(const std::string &name, const glm::vec4 color) : m_color(color), m_name(name)
+profiler::scope::scope(const std::string &name, const glm::vec4 &color) : m_color(color), m_name(name)
 {
   m_tick_start = systemclock::now();
 }
 
-profiler::scope::scope(profiler *owner, const std::string &name, const glm::vec4 color) : m_color(color), m_name(name)
+profiler::scope::scope(profiler *owner, const std::string &name, const glm::vec4 &color) : m_color(color), m_name(name)
 {
   attach(owner);
   m_tick_start = systemclock::now();
@@ -119,26 +115,15 @@ void profiler::scope::attach(profiler *owner)
   // compute color if needed
   if (m_color.w == 0.f)
   {
-    glm::vec4 directParentColor = m_parent != nullptr ? m_parent->m_color : glm::vec4(0.2f, 0.2f, 1.f, 1.f);
     const std::size_t nLevel = m_path.size() - 1;
-    uint nRecSameParent = 0;
-    {
-      std::size_t iRec = ctx->m_records.size();
-      while (iRec-- > 0)
-      {
-        if (ctx->m_records[iRec].isSamePath(m_path, 1))
-        {
-          m_color = ctx->m_records[iRec].m_color;
-          return; // hard break of the loop
-        }
-        if (ctx->m_records[iRec].isChildOf(m_path, 1))
-        {
-          if (ctx->m_records[iRec].length() == m_path.size())
-            ++nRecSameParent;
-        }
-      }
-    }
-    m_color = _color_Advance_Hue(directParentColor, - 0.07f + nLevel * 0.01f - nRecSameParent * 0.11f);
+    const float       hueOffset = m_parent != nullptr ? _hueFromColor(m_parent->m_color) : 0.f;
+    uint hash = 5381;
+    for (char c : m_name) hash = ((hash << 5) + hash) + c; // DJB Hash Function
+    //for (char c : m_name) hash = c + (hash << 6) + (hash << 16) - hash; // SDBM Hash Function
+    //TRE_LOG("level=" << nLevel << " name=" << m_name << " hash&0x1F=" << (hash & 0x1F));
+    const float hueRange = 1.f / (nLevel + 1.f);
+    const float hue = hueOffset + hueRange * float(hash & 0x1F) / float(0x1F);
+    m_color = _colorFromHS(hue, 0.8f);
   }
 }
 
@@ -164,66 +149,72 @@ void profiler::endframe()
   {
     TRE_ASSERT(m_context.m_scopeCurrent == nullptr);
 
-    // collect ...
     if (!m_paused)
     {
-      collect();
+      m_collectedRecords = m_context.m_records; // copy
 
-      TRE_ASSERT(m_timeOverFrames.size() == 0x100)
-      m_frameIndex = (m_frameIndex + 1) & 0x0FF;
-    }
+      m_hoveredRecord = -1;
 
-    const systemtick tick_end = systemclock::now();
-    m_timeOverFrames[m_frameIndex] = std::chrono::duration<float>(tick_end - m_frameStartTick).count();
-  }
-}
-
-void profiler::collect()
-{
-  m_collectedRecords = m_context.m_records; // TODO : std::move ??
-
-  m_hoveredRecord = -1;
-
-  // collect mean-values
-  if (m_meanvalueRecords.empty())
-  {
-    m_meanvalueRecords = m_collectedRecords;
-
-    // TODO: make unique "path"  entries
-  }
-  else
-  {
-    // treat the collected records
-    for (const s_record & cRec : m_collectedRecords)
-    {
-      // find it in the mean value ...
-      int recordMeanIndex = -1;
-      for (uint iC = 0; iC < m_meanvalueRecords.size(); ++iC)
+      // collect mean-values
+      if (m_meanvalueRecords.empty())
       {
-        if (m_meanvalueRecords[iC].isSamePath(cRec.m_path))
-        {
-          recordMeanIndex = iC;
-          break;
-        }
-      }
+        m_meanvalueRecords = m_collectedRecords;
 
-      if (recordMeanIndex != -1)
-      {
-        // found, add the current value
-        s_record & mRec = m_meanvalueRecords[recordMeanIndex];
-        mRec.m_duration = 0.95f * mRec.m_duration + 0.05f * cRec.m_duration;
-        mRec.m_start    = 0.f; // N/A
+        // TODO: make unique "path"  entries
       }
       else
       {
-        // not found, add new input
-        m_meanvalueRecords.push_back(cRec);
-        m_meanvalueRecords.back().m_start = 0.f;
+        // treat the collected records
+        for (const s_record & cRec : m_collectedRecords)
+        {
+          // find it in the mean value ...
+          int recordMeanIndex = -1;
+          for (uint iC = 0; iC < m_meanvalueRecords.size(); ++iC)
+          {
+            if (m_meanvalueRecords[iC].isSamePath(cRec.m_path))
+            {
+              recordMeanIndex = iC;
+              break;
+            }
+          }
+
+          if (recordMeanIndex != -1)
+          {
+            // found, add the current value
+            s_record & mRec = m_meanvalueRecords[recordMeanIndex];
+            mRec.m_duration = 0.95f * mRec.m_duration + 0.05f * cRec.m_duration;
+            mRec.m_start    = 0.f; // N/A
+          }
+          else
+          {
+            // not found, add new input
+            m_meanvalueRecords.push_back(cRec);
+            m_meanvalueRecords.back().m_start = 0.f;
+          }
+        }
       }
+
+      m_context.m_records.clear();
+    }
+
+    const systemtick tick_end = systemclock::now();
+
+    if (!m_paused)
+    {
+      TRE_ASSERT(m_recordsOverFrames.size() == 0x100)
+      m_frameIndex = (m_frameIndex + 1) & 0x0FF;
+
+      m_recordsOverFrames[m_frameIndex].m_records.clear();
+      for (const auto & rec : m_collectedRecords)
+      {
+        const int depth = rec.m_path.size();
+        TRE_ASSERT(depth >= 2);
+        if (depth > 2) continue;
+        m_recordsOverFrames[m_frameIndex].m_records.emplace_back(rec.m_color, rec.m_duration, 0);
+      }
+      m_recordsOverFrames[m_frameIndex].m_globalTime = std::chrono::duration<float>(tick_end - m_frameStartTick).count();
     }
   }
-
-  m_context.m_records.clear();
 }
 
 // ============================================================================
@@ -332,6 +323,8 @@ void profiler::draw() const
   TRE_ASSERT(m_model.isLoadedGPU());
   TRE_ASSERT(m_shader != nullptr &&  m_shader->layout().category == shader::PRGM_2D);
 
+  glEnable(GL_BLEND);
+
   glUseProgram(m_shader->m_drawProgram);
 
   m_shader->setUniformMatrix(m_PV * m_matModel);
@@ -356,7 +349,6 @@ bool profiler::loadIntoGPU(font *fontToUse)
 
   m_font = fontToUse;
 
-  create_data();
   m_model.loadIntoGPU();
 
   m_whiteTexture = new texture();
@@ -416,13 +408,6 @@ void profiler::clearShader()
   m_shaderOwner = true;
 }
 
-void profiler::create_data()
-{
-  m_partTri = m_model.createPart(1024);
-  m_partLine = m_model.createPart(1024);
-  m_partText = m_model.createPart(1024);
-}
-
 void profiler::compute_data()
 {
   static const glm::vec4 colorGridPrimary = glm::vec4(0.0f, 0.7f, 0.0f, 1.0f);
@@ -434,8 +419,14 @@ void profiler::compute_data()
   const float xEnd = 1000.f;
   const float yEnd = m_yStart + nThread * m_dYthread;
 
-  m_model.resizePart(m_partTri, m_collectedRecords.size() * 6 + ((m_hoveredRecord != -1) ? 6 : 0));
-  m_model.resizePart(m_partLine, (nThread + 1 + nTime + 2 + m_collectedRecords.size() + 3 + m_timeOverFrames.size()) * 2);
+  std::size_t lineCount_recordOverFrame = 0;
+  for (const auto &rec : m_recordsOverFrames) lineCount_recordOverFrame += 2 + 2 * rec.m_records.size();
+
+  m_model.clearParts();
+  m_partTri = m_model.createPart(m_collectedRecords.size() * 6 + ((m_hoveredRecord != -1) ? 6 : 0));
+  m_partLine = m_model.createPart((nThread + 1) * 2 + 2 + (nTime + 1) * 2 + m_collectedRecords.size() * 2 + lineCount_recordOverFrame + 6);
+
+  m_partText = m_model.createPart(1024);
   m_model.colorizePart(m_partText, glm::vec4(0.f));
 
   std::size_t offsetLine = 0;
@@ -457,21 +448,12 @@ void profiler::compute_data()
     }
 
     float maxframetime = 0.f;
-
-    for (uint iF = 0; iF < m_timeOverFrames.size() / 2; ++iF)
+    for (const auto &rec : m_recordsOverFrames)
     {
-      const uint tIndex = (1 + iF + m_frameIndex) & 0x0FF;
-      const float tframe = m_timeOverFrames[tIndex] * 0.5f;
-      if (tframe > maxframetime) maxframetime = tframe;
-    }
-    for (uint iF = m_timeOverFrames.size() / 2; iF < m_timeOverFrames.size(); ++iF)
-    {
-      const uint tIndex = (1 + iF + m_frameIndex) & 0x0FF;
-      const float tframe = m_timeOverFrames[tIndex];
-      if (tframe > maxframetime) maxframetime = tframe;
+      if (maxframetime < rec.m_globalTime) maxframetime = rec.m_globalTime;
     }
 
-    if (fabsf(maxframetime * m_dY * 5.f / 0.020f - 0.6f) > 0.2f)
+    if (std::abs(maxframetime * m_dY * 5.f / 0.020f - 0.6f) > 0.2f)
     {
       m_dY = (0.6f / 5.f * 0.020f / maxframetime);
     }
@@ -544,33 +526,41 @@ void profiler::compute_data()
     textgenerator::generate(txtInfo, &m_model, m_partText, offsetText, nullptr);
     offsetText += textgenerator::geometry_VertexCount(txtInfo.m_text);
   }
+  TRE_ASSERT(offsetText <= 1024);
 
-  // create graph-zone
+  // create time graph-zone
   {
     const float pixelX_scren = 2.f / m_viewportSize.x;
     const float pixelX_model = pixelX_scren / m_PV[0][0] / m_matModel[0][0];
     const float dX = pixelX_model;
 
     const float x0 = m_xStart;
-    const float xN = m_xStart + (m_timeOverFrames.size() - 1) * dX;
+    const float xN = m_xStart + (m_recordsOverFrames.size() - 1) * dX;
     const float y0 = yEnd + m_dYthread;
     const float dY = m_dY * 5.f / 0.020f;
     const float y1ms  = y0 + 0.001f * dY;
     const float y10ms = y0 + 0.010f * dY;
 
-    TRE_ASSERT(m_timeOverFrames.size() == 0x100);
-    for (uint iF = 0; iF < m_timeOverFrames.size(); ++iF)
+    TRE_ASSERT(m_recordsOverFrames.size() == 0x100);
+    for (uint iF = 0; iF < m_recordsOverFrames.size(); ++iF)
     {
       const uint tIndex = (1 + iF + m_frameIndex) & 0x0FF;
       const float xFT = x0 + float(iF) * dX;
-      const float yFT = y0 + m_timeOverFrames[tIndex] * dY;
-      const float green = expf(-m_timeOverFrames[tIndex] * 100.f);
-      const float blue = expf(-m_timeOverFrames[tIndex] * 600.f);
-      m_model.fillDataLine(m_partLine, offsetLine + iF * 2, xFT, y0, xFT, yFT, glm::vec4(1.f, green, blue, 1.f));
+      float accT = 0.f;
+      for (const auto &rec: m_recordsOverFrames[tIndex].m_records)
+      {
+        const float yA = y0 + accT * dY;
+        const float yB = yA + rec.m_duration * dY;
+        m_model.fillDataLine(m_partLine, offsetLine, xFT, yA, xFT, yB, rec.m_color);
+        offsetLine += 2;
+        accT += rec.m_duration;
+      }
+      const float yFT = y0 + m_recordsOverFrames[tIndex].m_globalTime * dY;
+      const float green = expf(-m_recordsOverFrames[tIndex].m_globalTime * 100.f);
+      const float blue = expf(-m_recordsOverFrames[tIndex].m_globalTime * 600.f);
+      m_model.fillDataLine(m_partLine, offsetLine, xFT, y0, xFT, yFT, glm::vec4(1.f, green, blue, 0.4f));
+      offsetLine += 2;
     }
-    offsetLine += 2 * m_timeOverFrames.size();
-
-
     m_model.fillDataLine(m_partLine, offsetLine + 0, x0, y0, xN, y0, glm::vec4(0.f, 0.f, 1.f, 0.8f));
     m_model.fillDataLine(m_partLine, offsetLine + 2, x0, y1ms, xN, y1ms, glm::vec4(1.f, expf(-0.1f), expf(-0.6f), 0.6f));
     m_model.fillDataLine(m_partLine, offsetLine + 4, x0, y10ms, xN, y10ms, glm::vec4(1.f, expf(-1.0f), expf(-6.0f), 0.4f));
@@ -594,7 +584,7 @@ void profiler::compute_data()
   // create tooltip
   if (m_hoveredRecord != -1)
   {
-    TRE_ASSERT(m_hoveredRecord >= 0 && m_hoveredRecord < m_collectedRecords.size());
+    TRE_ASSERT(m_hoveredRecord >= 0 && m_hoveredRecord < int(m_collectedRecords.size()));
     const s_record &hrec = m_collectedRecords[m_hoveredRecord];
 
     const s_record *mrec = nullptr;
@@ -628,7 +618,7 @@ void profiler::compute_data()
 
     textgenerator::generate(txtInfo, &m_model, m_partText, offsetText, nullptr);
     offsetText += textgenerator::geometry_VertexCount(txtInfo.m_text);
-
+    TRE_ASSERT(offsetText <= 1024);
 
     const glm::vec4 AABB(m_mousePosition.x, m_mousePosition.y,
                          m_mousePosition.x + txtInfoOut.m_maxboxsize.x, m_mousePosition.y + txtInfoOut.m_maxboxsize.y);
