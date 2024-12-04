@@ -481,7 +481,7 @@ protected:
   virtual void acceptEvent(s_eventIntern &event) override;
   virtual void animate(float dt) override;
   void clear();
-  virtual bool getIsOverPosition(const glm::vec3 & position) const;
+  virtual bool getIsOverPosition(const glm::vec3 & position) const override;
 private:
   void compute_adressPlage(); ///< set adress-plage, and resize the parts in the m_model
   void compute_layout(); ///< compute and set zone of widgets

@@ -1,5 +1,9 @@
 #include "tre_windowContext.h"
 
+#ifdef TRE_EMSCRIPTEN
+#include <emscripten/html5.h>
+#endif
+
 #include <iostream>
 
 namespace tre {
@@ -339,7 +343,7 @@ bool windowContext::s_controls::treatSDLEvent(const SDL_Event & event)
     return true;
   case SDL_MOUSEMOTION:
     if (SDL_GetRelativeMouseMode() == SDL_TRUE) { m_mouse.x += event.motion.xrel; m_mouse.y += event.motion.yrel; }
-    else                                        { m_mouse.x  = event.button.x;    m_mouse.y  = event.button.y;    }
+    else                                        { m_mouse.x  = event.motion.x;    m_mouse.y  = event.motion.y;    }
     return true;
   case SDL_MOUSEWHEEL:
     m_mouse.z = - event.wheel.y;
@@ -404,10 +408,44 @@ void windowContext::s_view2D::treatControlEvent(const s_controls &control, const
   const glm::vec2 mouseCurr_clipSpace = glm::vec2(-1.f + 2.f * float(control.m_mouse.x) / float(m_parentWindow->m_resolutioncurrent.x),
                                                    1.f - 2.f * float(control.m_mouse.y) / float(m_parentWindow->m_resolutioncurrent.y));
 
+#ifdef TRE_EMSCRIPTEN
+  if (m_mouseBound)
+  {
+    bool isPointerLocked = false;
+    EmscriptenPointerlockChangeEvent e;
+    if (emscripten_get_pointerlock_status(&e) == EMSCRIPTEN_RESULT_SUCCESS) isPointerLocked = e.isActive;
+    if (isPointerLocked == true && m_mouseLockStatus == 0)
+    {
+      TRE_LOG("[EMSCRIPTEN] mouse locked.");
+      m_mouseLockStatus = 1;
+    }
+    if (isPointerLocked == false && m_mouseLockStatus == 1)
+    {
+      TRE_LOG("[EMSCRIPTEN] mouse lock lost.");
+      m_mouseLockStatus = 2;
+      SDL_SetRelativeMouseMode(SDL_FALSE);
+      m_mouseBound = false;
+    }
+  }
+  else
+  {
+    m_mouseLockStatus = 0;
+  }
+#endif
+
   if (m_mouseBound)
   {
     const glm::vec2 deltaMouse = mouseCurr_clipSpace - m_mousePrev;
     m_matView[2] = m_matViewPrev[2] + glm::vec3(- deltaMouse, 0.f);
+
+#ifdef TRE_EMSCRIPTEN
+    if (SDL_GetMouseFocus() == m_parentWindow->m_window)
+    {
+      TRE_LOG("Mouse is unbound because the pointer-lock is not confirmed (or lost) from the web-browser");
+      SDL_SetRelativeMouseMode(SDL_FALSE);
+      m_mouseBound = false;
+    }
+#endif
   }
   else
   {
@@ -472,11 +510,45 @@ void windowContext::s_view3D::treatControlEvent(const s_controls &control, const
   const glm::vec2 mouseCurr_clipSpace = glm::vec2(-1.f + 2.f * float(control.m_mouse.x) / float(m_parentWindow->m_resolutioncurrent.x),
                                                    1.f - 2.f * float(control.m_mouse.y) / float(m_parentWindow->m_resolutioncurrent.y));
 
+#ifdef TRE_EMSCRIPTEN
+  if (m_mouseBound)
+  {
+    bool isPointerLocked = false;
+    EmscriptenPointerlockChangeEvent e;
+    if (emscripten_get_pointerlock_status(&e) == EMSCRIPTEN_RESULT_SUCCESS) isPointerLocked = e.isActive;
+    if (isPointerLocked == true && m_mouseLockStatus == 0)
+    {
+      TRE_LOG("[EMSCRIPTEN] mouse locked.");
+      m_mouseLockStatus = 1;
+    }
+    if (isPointerLocked == false && m_mouseLockStatus == 1)
+    {
+      TRE_LOG("[EMSCRIPTEN] mouse lock lost.");
+      m_mouseLockStatus = 2;
+      SDL_SetRelativeMouseMode(SDL_FALSE);
+      m_mouseBound = false;
+    }
+  }
+  else
+  {
+    m_mouseLockStatus = 0;
+  }
+#endif
+
   if (m_mouseBound)
   {
     const glm::vec2 deltaMouse = mouseCurr_clipSpace - m_mousePrev;
     m_matView = glm::rotate(glm::mat4(1.f), deltaMouse.x, glm::vec3(m_matViewPrev[1])) * m_matViewPrev;
     m_matView = glm::rotate(glm::mat4(1.f), deltaMouse.y, glm::vec3(-1.f,0.f,0.f)) * m_matView;
+
+#ifdef TRE_EMSCRIPTEN
+    if (SDL_GetMouseFocus() != m_parentWindow->m_window)
+    {
+      TRE_LOG("Mouse is unbound because the pointer-lock is not confirmed (or lost) from the web-browser");
+      SDL_SetRelativeMouseMode(SDL_FALSE);
+      m_mouseBound = false;
+    }
+#endif
   }
   else
   {

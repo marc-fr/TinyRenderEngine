@@ -150,7 +150,6 @@ static tre::font         font;
 static tre::baseUI2D     baseUI;
 static tre::ui::window   *windowMain = nullptr;
 
-static bool withGUI = true;
 static bool withAudio = true;
 
 static const std::string                nameClick = "music-click.wav";
@@ -228,8 +227,8 @@ static int app_init()
 
   if (!font.load({ tre::font::loadFromBMPandFNT(TESTIMPORTPATH "resources/font_arial_88") }, true))
   {
-    TRE_LOG("Fail to load the font. Cannot have the GUI.");
-    withGUI = false;
+    TRE_LOG("Fail to load the font \"font_arial_88\". Fallback to intern font");
+    font.loadProceduralLed(2, 0);
   }
 
   // - Init Audio
@@ -306,7 +305,6 @@ static int app_init()
 
    windowMain = baseUI.create_window();
 
-  if (withGUI)
   {
     baseUI.set_defaultFont(&font);
     baseUI.updateCameraInfo(myWindow.m_matProjection2D, myWindow.m_resolutioncurrent);
@@ -327,7 +325,7 @@ static int app_init()
     windowMain->create_widgetText(0,7)->set_text("Waveform")->set_color(glm::vec4(1.f,1.f,0.f,1.f));
   }
 
-  if (withAudio && withGUI)
+  if (withAudio)
   {
     unsigned iRaw = 1;
 
@@ -567,7 +565,6 @@ static int app_init()
     }
   }
 
-  if (withGUI)
   {
     baseUI.loadShader();
     baseUI.loadIntoGPU();
@@ -612,7 +609,6 @@ static void app_update()
   glViewport(0, 0, myWindow.m_resolutioncurrent.x,myWindow.m_resolutioncurrent.y);
   glClear(GL_COLOR_BUFFER_BIT);
 
-  if (withGUI)
   {
     baseUI.animate(myTimings.frametime);
     baseUI.updateIntoGPU();

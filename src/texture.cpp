@@ -186,6 +186,9 @@ bool texture::load(SDL_Surface *surface, int modemask, const bool freeSurface)
 #ifdef TRE_OPENGL_ES
   if (useMipmap() && useGammeCorreciton() && m_components == 3) m_components = 4;
 #endif
+#ifdef TRE_EMSCRIPTEN // WebGL does not support texture swizzle.
+  if (m_components == 1) m_components = 4;
+#endif
 
   glGenTextures(1,&m_handle);
 
@@ -331,7 +334,7 @@ bool texture::loadCube(const std::array<SDL_Surface *, 6> &cubeFaces, int modema
   for (int iface = 0; iface < 6; ++iface)
   {
     SDL_Surface *surface = cubeFaces[iface];
-    if (m_w != uint(surface->w) || m_h != uint(surface->h))
+    if (m_w != surface->w || m_h != surface->h)
     {
       TRE_LOG("Mismatching-dimension for cubemap face " << iface);
       success = false;
@@ -435,17 +438,14 @@ bool texture::update(SDL_Surface *surface, const bool freeSurface, const bool un
   if (m_components == 1 && surface->format->BytesPerPixel != 1)
   {
     if (!freeSurface) surfLocal.copyToOwnBuffer();
-    // WebGL does not support texture swizzle.
-#ifdef TRE_EMSCRIPTEN
-    TRE_ASSERT(surfLocal.pxByteSize == 4);
-    const int npixels = surfLocal.w * surfLocal.h;
-    uint * pixels = reinterpret_cast<uint*>(surfLocal.pixels);
-    for (uint ip=0;ip<npixels;++ip) pixels[ip] |= 0x00FFFFFF;
-    m_components = 4;
-#else
     _rawPack_A8(surfLocal);
     externalformat = GL_RED;
-#endif
+  }
+  if (m_components == 2 && surface->format->BytesPerPixel != 2)
+  {
+    if (!freeSurface) surfLocal.copyToOwnBuffer();
+    _rawPack_RG8(surfLocal);
+    externalformat = GL_RG;
   }
   if (m_components == 3 && surface->format->BytesPerPixel != 3)
   {
@@ -460,17 +460,19 @@ bool texture::update(SDL_Surface *surface, const bool freeSurface, const bool un
     TRE_ASSERT(externalformat == GL_BGR || externalformat == GL_RGB);
     externalformat = (externalformat == GL_BGR) ? GL_BGRA : GL_RGBA;
   }
+  if (m_components == 4 && surface->format->BytesPerPixel == 4 && (m_mask & MMASK_ALPHA_ONLY) != 0)
+  {
+    if (!freeSurface) surfLocal.copyToOwnBuffer();
+    const int npixels = surfLocal.w * surfLocal.h;
+    uint * pixels = reinterpret_cast<uint*>(surfLocal.pixels);
+    for (int ip=0;ip<npixels;++ip) pixels[ip] |= 0x00FFFFFF;
+  }
+
   if (externalformat == GL_BGR || externalformat == GL_BGRA)
   {
     if (!freeSurface) surfLocal.copyToOwnBuffer();
     _rawConvert_BRG_to_RGB(surfLocal);
     externalformat = (externalformat == GL_BGR) ? GL_RGB : GL_RGBA;
-  }
-  if (m_components == 2 && surface->format->BytesPerPixel != 2)
-  {
-    if (!freeSurface) surfLocal.copyToOwnBuffer();
-    _rawPack_RG8(surfLocal);
-    externalformat = GL_RG;
   }
 
   // upload
@@ -526,17 +528,14 @@ bool texture::updateArray(SDL_Surface* surface, int depthIndex, const bool freeS
   if (m_components == 1 && surface->format->BytesPerPixel != 1)
   {
     if (!freeSurface) surfLocal.copyToOwnBuffer();
-    // WebGL does not support texture swizzle.
-#ifdef TRE_EMSCRIPTEN
-    TRE_ASSERT(surfLocal.pxByteSize == 4);
-    const int npixels = surfLocal.w * surfLocal.h;
-    uint * pixels = reinterpret_cast<uint*>(surfLocal.pixels);
-    for (uint ip=0;ip<npixels;++ip) pixels[ip] |= 0x00FFFFFF;
-    m_components = 4;
-#else
     _rawPack_A8(surfLocal);
     externalformat = GL_RED;
-#endif
+  }
+  if (m_components == 2 && surface->format->BytesPerPixel != 2)
+  {
+    if (!freeSurface) surfLocal.copyToOwnBuffer();
+    _rawPack_RG8(surfLocal);
+    externalformat = GL_RG;
   }
   if (m_components == 3 && surface->format->BytesPerPixel != 3)
   {
@@ -551,17 +550,19 @@ bool texture::updateArray(SDL_Surface* surface, int depthIndex, const bool freeS
     TRE_ASSERT(externalformat == GL_BGR || externalformat == GL_RGB);
     externalformat = (externalformat == GL_BGR) ? GL_BGRA : GL_RGBA;
   }
+  if (m_components == 4 && surface->format->BytesPerPixel == 4 && (m_mask & MMASK_ALPHA_ONLY) != 0)
+  {
+    if (!freeSurface) surfLocal.copyToOwnBuffer();
+    const int npixels = surfLocal.w * surfLocal.h;
+    uint * pixels = reinterpret_cast<uint*>(surfLocal.pixels);
+    for (int ip=0;ip<npixels;++ip) pixels[ip] |= 0x00FFFFFF;
+  }
+
   if (externalformat == GL_BGR || externalformat == GL_BGRA)
   {
     if (!freeSurface) surfLocal.copyToOwnBuffer();
     _rawConvert_BRG_to_RGB(surfLocal);
     externalformat = (externalformat == GL_BGR) ? GL_RGB : GL_RGBA;
-  }
-  if (m_components == 2 && surface->format->BytesPerPixel != 2)
-  {
-    if (!freeSurface) surfLocal.copyToOwnBuffer();
-    _rawPack_RG8(surfLocal);
-    externalformat = GL_RG;
   }
 
   // upload

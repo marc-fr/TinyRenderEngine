@@ -141,6 +141,10 @@ public:
 
     glm::vec2   m_mousePrev = glm::vec2(0.f); ///< (x,y)_viewSpace
 
+#ifdef TRE_EMSCRIPTEN
+    int m_mouseLockStatus = 0;
+#endif
+
     s_view2D(windowContext *parentWindow) : m_parentWindow(parentWindow) { TRE_ASSERT(m_parentWindow != nullptr); }
 
     void setKeyBinding(bool withKeyboard) { m_keyBound = withKeyboard; }
@@ -167,6 +171,10 @@ public:
     glm::vec4   m_mouseSensitivity = glm::vec4(4.f, 4.f, 4.f, 12.f); ///< motion (x,y,z) + wheel
 
     glm::vec2   m_mousePrev = glm::vec2(0.f); ///< (x,y)_clipSpace
+
+#ifdef TRE_EMSCRIPTEN
+    int m_mouseLockStatus = 0;
+#endif
 
     s_view3D(windowContext *parentWindow) : m_parentWindow(parentWindow) { TRE_ASSERT(m_parentWindow != nullptr); }
 

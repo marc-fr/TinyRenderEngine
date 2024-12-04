@@ -221,7 +221,7 @@ static int app_init()
 #endif
 
 #ifdef TEST_WITH_FPS
-  font.load({ tre::font::loadFromBMPandFNT(TESTIMPORTPATH "resources/font_arial_88") }, true);
+  if (!font.load({ tre::font::loadFromBMPandFNT(TESTIMPORTPATH "resources/font_arial_88") }, true)) font.loadProceduralLed(2, 0);
   meshFps.createPart(128);
 #endif
 
