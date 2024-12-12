@@ -2071,50 +2071,25 @@ void modelRaw2D::fillDataRectangle(std::size_t ipart, std::size_t offset, const 
   const std::size_t first = part.m_offset + offset;
   TRE_ASSERT(offset + 6 <= part.m_size);
 
-  TRE_ASSERT(m_layout.m_positions.m_size == 2);
-  {
-    m_layout.m_positions[first    ][0] = AxAyBxBy.x;
-    m_layout.m_positions[first    ][1] = AxAyBxBy.y;
-    m_layout.m_positions[first + 1][0] = AxAyBxBy.z;
-    m_layout.m_positions[first + 1][1] = AxAyBxBy.y;
-    m_layout.m_positions[first + 2][0] = AxAyBxBy.z;
-    m_layout.m_positions[first + 2][1] = AxAyBxBy.w;
+  TRE_ASSERT(m_layout.m_positions.isMatching(2, 8));
+  TRE_ASSERT(m_layout.m_uvs.isMatching(2, 8));
+  TRE_ASSERT(m_layout.m_colors.isMatching(4, 8));
 
-    m_layout.m_positions[first + 3][0] = AxAyBxBy.x;
-    m_layout.m_positions[first + 3][1] = AxAyBxBy.y;
-    m_layout.m_positions[first + 4][0] = AxAyBxBy.z;
-    m_layout.m_positions[first + 4][1] = AxAyBxBy.w;
-    m_layout.m_positions[first + 5][0] = AxAyBxBy.x;
-    m_layout.m_positions[first + 5][1] = AxAyBxBy.w;
-  }
+  float * __restrict vdata = m_layout.m_positions.m_data + 8 * first;
 
-  TRE_ASSERT(m_layout.m_uvs.m_size == 0 || m_layout.m_uvs.m_size == 2);
-  if (m_layout.m_uvs.m_size == 2)
-  {
-    m_layout.m_uvs[first    ][0] = AuAvBuBv.x;
-    m_layout.m_uvs[first    ][1] = AuAvBuBv.y;
-    m_layout.m_uvs[first + 1][0] = AuAvBuBv.z;
-    m_layout.m_uvs[first + 1][1] = AuAvBuBv.y;
-    m_layout.m_uvs[first + 2][0] = AuAvBuBv.z;
-    m_layout.m_uvs[first + 2][1] = AuAvBuBv.w;
+  *vdata++ = AxAyBxBy.x; *vdata++ = AxAyBxBy.y; *vdata++ = AuAvBuBv.x; *vdata++ = AuAvBuBv.y;
+  memcpy(vdata, glm::value_ptr(color), 4 * 4); vdata += 4;
+  *vdata++ = AxAyBxBy.z; *vdata++ = AxAyBxBy.y; *vdata++ = AuAvBuBv.z; *vdata++ = AuAvBuBv.y;
+  memcpy(vdata, glm::value_ptr(color), 4 * 4); vdata += 4;
+  *vdata++ = AxAyBxBy.z; *vdata++ = AxAyBxBy.w; *vdata++ = AuAvBuBv.z; *vdata++ = AuAvBuBv.w;
+  memcpy(vdata, glm::value_ptr(color), 4 * 4); vdata += 4;
 
-    m_layout.m_uvs[first + 3][0] = AuAvBuBv.x;
-    m_layout.m_uvs[first + 3][1] = AuAvBuBv.y;
-    m_layout.m_uvs[first + 4][0] = AuAvBuBv.z;
-    m_layout.m_uvs[first + 4][1] = AuAvBuBv.w;
-    m_layout.m_uvs[first + 5][0] = AuAvBuBv.x;
-    m_layout.m_uvs[first + 5][1] = AuAvBuBv.w;
-  }
-
-  TRE_ASSERT(m_layout.m_colors.m_size == 4);
-  {
-    m_layout.m_colors.get<glm::vec4>(first    ) = color;
-    m_layout.m_colors.get<glm::vec4>(first + 1) = color;
-    m_layout.m_colors.get<glm::vec4>(first + 2) = color;
-    m_layout.m_colors.get<glm::vec4>(first + 3) = color;
-    m_layout.m_colors.get<glm::vec4>(first + 4) = color;
-    m_layout.m_colors.get<glm::vec4>(first + 5) = color;
-  }
+  *vdata++ = AxAyBxBy.x; *vdata++ = AxAyBxBy.y; *vdata++ = AuAvBuBv.x; *vdata++ = AuAvBuBv.y;
+  memcpy(vdata, glm::value_ptr(color), 4 * 4); vdata += 4;
+  *vdata++ = AxAyBxBy.z; *vdata++ = AxAyBxBy.w; *vdata++ = AuAvBuBv.z; *vdata++ = AuAvBuBv.w;
+  memcpy(vdata, glm::value_ptr(color), 4 * 4); vdata += 4;
+  *vdata++ = AxAyBxBy.x; *vdata++ = AxAyBxBy.w; *vdata++ = AuAvBuBv.x; *vdata++ = AuAvBuBv.w;
+  memcpy(vdata, glm::value_ptr(color), 4 * 4); vdata += 4;
 
   // update bounds
   s_boundbox & box = part.m_bbox;
@@ -2136,28 +2111,16 @@ void modelRaw2D::fillDataLine(std::size_t ipart, std::size_t offset, float Ax, f
   const std::size_t first = part.m_offset + offset;
   TRE_ASSERT(offset + 2 <= part.m_size);
 
-  TRE_ASSERT(m_layout.m_positions.m_size == 2);
-  {
-    m_layout.m_positions[first    ][0] = Ax;
-    m_layout.m_positions[first    ][1] = Ay;
-    m_layout.m_positions[first + 1][0] = Bx;
-    m_layout.m_positions[first + 1][1] = By;
-  }
+  TRE_ASSERT(m_layout.m_positions.isMatching(2, 8));
+  TRE_ASSERT(m_layout.m_uvs.isMatching(2, 8));
+  TRE_ASSERT(m_layout.m_colors.isMatching(4, 8));
 
-  TRE_ASSERT(m_layout.m_uvs.m_size == 0 || m_layout.m_uvs.m_size == 2);
-  if (m_layout.m_uvs.m_size == 2)
-  {
-    m_layout.m_uvs[first    ][0] = 0.f;
-    m_layout.m_uvs[first    ][1] = 0.f;
-    m_layout.m_uvs[first + 1][0] = 0.f;
-    m_layout.m_uvs[first + 1][1] = 0.f;
-  }
+  float * __restrict vdata = m_layout.m_positions.m_data + 8 * first;
 
-  TRE_ASSERT(m_layout.m_colors.m_size == 4);
-  {
-    m_layout.m_colors.get<glm::vec4>(first    ) = color;
-    m_layout.m_colors.get<glm::vec4>(first + 1) = color;
-  }
+  *vdata++ = Ax; *vdata++ = Ay; *vdata++ = 0.f; *vdata++ = 0.f;
+  memcpy(vdata, glm::value_ptr(color), 4 * 4); vdata += 4;
+  *vdata++ = Bx; *vdata++ = By; *vdata++ = 0.f; *vdata++ = 0.f;
+  memcpy(vdata, glm::value_ptr(color), 4 * 4); vdata += 4;
 
   // update bounds
   s_boundbox & box = part.m_bbox;
