@@ -2,6 +2,7 @@
 #include <iostream>
 #include <sstream>
 #include <array>
+#include <random>
 
 #include "tre_windowContext.h"
 #include "tre_ui.h"
@@ -17,6 +18,107 @@
 #ifndef TESTIMPORTPATH
 #define TESTIMPORTPATH ""
 #endif
+
+// =============================================================================
+
+class soundProceduralNoise : public tre::soundInterface
+{
+public:
+  bool  m_isPlaying = false;
+  bool  m_requestReset = false;
+  float m_requestGain = 0.5f;
+  float m_playedLevelPeak = 0.f;
+  float m_playedLevelRMS  = 0.f;
+
+protected:
+  bool  ac_isPlaying = false;
+  float ac_gain = 0.f;
+  float ac_gainTarget = 0.f;
+  float ac_playedLevelPeak = 0.f;
+  float ac_playedLevelRMS  = 0.f;
+
+protected:
+  float                            g_lastSample = 0.f;
+  std::mt19937                     g_randEngine;
+  std::normal_distribution<float>  g_randDistGaussian;
+
+public:
+
+  enum class e_noiseColor
+  {
+    NOISE_BROWN,
+    NOISE_WHITE,
+  };
+  e_noiseColor m_noiseColor;
+
+  soundProceduralNoise(e_noiseColor nc)
+  {
+    m_noiseColor = nc;
+    g_randEngine.seed(0);
+    g_randDistGaussian = std::normal_distribution<float>(0.f, 1.f);
+  }
+
+  virtual void sync()
+  {
+    // send
+    ac_isPlaying = m_isPlaying;
+    if (m_requestReset)
+    {
+      g_randEngine.seed(0);
+      m_requestReset = false;
+    }
+    ac_gainTarget = m_requestGain;
+    // receive
+    m_playedLevelPeak = ac_playedLevelPeak;
+    m_playedLevelRMS  = ac_playedLevelRMS ;
+  }
+
+  virtual void sample(float* __restrict outBufferAdd, unsigned sampleCount, int sampleFreq)
+  {
+    ac_playedLevelPeak = 0.f;
+    ac_playedLevelRMS  = 0.f;
+    if (!ac_isPlaying) return;
+
+    const float dt = 1.f / float(sampleFreq);
+    const float kGainFade = -float(sampleCount) / 0.1f;
+    float sAbsMax = 0.f;
+    float sRMS = 0.f;
+
+    switch (m_noiseColor)
+    {
+      case e_noiseColor::NOISE_BROWN:
+        for (unsigned isample = 0; isample < sampleCount; ++isample)
+        {
+          const float g = ac_gainTarget + (ac_gain - ac_gainTarget) * std::exp(kGainFade * dt);
+          const float rd = g_randDistGaussian(g_randEngine);
+          g_lastSample = 0.99f * g_lastSample + 0.04f * rd; // leak integrator of gaussian noise
+          const float v = g * g_lastSample;
+          outBufferAdd[0] += v;
+          outBufferAdd[1] += v;
+          outBufferAdd += 2;
+          sAbsMax = std::max(sAbsMax, std::abs(v));
+          sRMS += v * v;
+        }
+        break;
+      case e_noiseColor::NOISE_WHITE:
+        for (unsigned isample = 0; isample < sampleCount; ++isample)
+        {
+          const float g = ac_gainTarget + (ac_gain - ac_gainTarget) * std::exp(kGainFade * dt);
+          const float v = g * 0.45f * g_randDistGaussian(g_randEngine);
+          outBufferAdd[0] += v;
+          outBufferAdd[1] += v;
+          outBufferAdd += 2;
+          sAbsMax = std::max(sAbsMax, std::abs(v));
+          sRMS += v * v;
+        }
+        break;
+    }
+
+    ac_gain = ac_gainTarget + (ac_gain - ac_gainTarget) * std::exp(kGainFade * dt);
+    ac_playedLevelPeak = sAbsMax;
+    ac_playedLevelRMS  = std::sqrt(sRMS / sampleCount);
+  }
+};
 
 // =============================================================================
 
@@ -188,6 +290,9 @@ struct s_music
 static std::array<s_music, 4> listSound = { s_music("click", &audioDataRaw[0]), s_music("sin440Hz", &audioDataRaw[1]), s_music("piano.opus", &audioDataOpus[0]), s_music("strings.opus", &audioDataOpus[1]) }; // only the first track is used here.
 static std::array<s_music, 4> listMusic = { s_music("origin", 0U), s_music("compression 64kb", 64000U), s_music("compression 32kb", 32000U), s_music("compression 16kb", 16000U) };
 
+static std::array<soundProceduralNoise, 2> trackProceduralNoises = { soundProceduralNoise(soundProceduralNoise::e_noiseColor::NOISE_BROWN),
+                                                                     soundProceduralNoise(soundProceduralNoise::e_noiseColor::NOISE_WHITE) };
+
 static tre::audioContext audioCtx;
 
 static tre::texture textureWaveforms;
@@ -298,6 +403,11 @@ static int app_init()
       {
         audioCtx.addSound(&listMusic[k].m_tracks[i]);
       }
+    }
+
+    for (std::size_t k = 0; k < trackProceduralNoises.size(); ++k)
+    {
+      audioCtx.addSound(&trackProceduralNoises[k]);
     }
   }
 
@@ -525,6 +635,56 @@ static int app_init()
         ++iRaw;
         ++itrack;
       }
+    }
+
+    for (std::size_t k = 0; k < trackProceduralNoises.size(); ++k)
+    {
+      windowMain->create_widgetText(iRaw, 0)->set_text("procedural noise");
+
+      windowMain->create_widgetBoxCheck(iRaw, 1)->set_value(false)->set_isactive(true)->set_iseditable(true)
+                ->wcb_modified_finished = [k](tre::ui::widget *w)
+      {
+        tre::ui::widgetBoxCheck *wBox = static_cast<tre::ui::widgetBoxCheck*>(w);
+        trackProceduralNoises[k].m_isPlaying = wBox->get_value();
+      };
+      trackProceduralNoises[k].m_isPlaying = false;
+
+      windowMain->create_widgetBoxCheck(iRaw, 4)->set_value(false)->set_isactive(true)->set_iseditable(true);
+      windowMain->create_widgetBar(iRaw, 5)->set_value(0.5f)->set_isactive(true)->set_iseditable(true);
+
+      auto *widMute = windowMain->get_widgetBoxCheck(iRaw, 4);
+      auto *widBar = windowMain->get_widgetBar(iRaw, 5);
+
+      widMute->wcb_modified_finished = [widBar, k](tre::ui::widget *w)
+      {
+        tre::ui::widgetBoxCheck *wMute = static_cast<tre::ui::widgetBoxCheck*>(w);
+        trackProceduralNoises[k].m_requestGain = !wMute->get_value() ? widBar->get_value() : 0.f;
+      };
+
+      widBar->wcb_modified_ongoing = [widMute, k](tre::ui::widget *w)
+      {
+        tre::ui::widgetBar *wBar = static_cast<tre::ui::widgetBar*>(w);
+        trackProceduralNoises[k].m_requestGain = !widMute->get_value() ? wBar->get_value() : 0.f;
+      };
+
+      auto     *wUVmeter = new widgetUVmeter();
+      unsigned localCountdown = 10;
+      wUVmeter->wcb_animate = [localCountdown, k](tre::ui::widget *w, float dt) mutable
+      {
+        widgetUVmeter *wM = static_cast<widgetUVmeter*>(w);
+        if (--localCountdown != 0) return;
+        localCountdown = 10;
+        const float valuePeak = (std::max(20.f * std::log(trackProceduralNoises[k].m_playedLevelPeak / 1.f), -80.f) + 80.f) / 80.f; // dB scale, clamped between [-80, 0]
+        const float valueRMS  = (std::max(20.f * std::log(trackProceduralNoises[k].m_playedLevelRMS  / 1.f), -80.f) + 80.f) / 80.f; // dB scale, clamped between [-80, 0]
+        const float aP = (valuePeak> wM->wvalue.m_peak) ? 1.f : 1.f - expf(-dt/0.020f);
+        const float aR = (valueRMS > wM->wvalue.m_RMS ) ? 1.f : 1.f - expf(-dt/0.100f);
+        wM->wvalue.m_peak = (1.f - aP) * wM->wvalue.m_peak + aP * valuePeak;
+        wM->wvalue.m_RMS  = (1.f - aR) * wM->wvalue.m_RMS  + aR * valueRMS ;
+        wM->setValueModified();
+      };
+      windowMain->set_widget(wUVmeter, iRaw, 6);
+
+      ++iRaw;
     }
 
     {
