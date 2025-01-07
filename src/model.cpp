@@ -86,7 +86,7 @@ void model::movePart(std::size_t ipart, std::size_t dstIndex)
     std::swap(m_partInfo[ipart], m_partInfo[dstIndex]);
 }
 
-void model::mergeParts(std::size_t ipart, std::size_t jpart)
+void model::mergeParts(std::size_t ipart, std::size_t jpart, const bool keepEmpty_jpart)
 {
   TRE_ASSERT(ipart < m_partInfo.size());
   TRE_ASSERT(jpart < m_partInfo.size());
@@ -96,19 +96,17 @@ void model::mergeParts(std::size_t ipart, std::size_t jpart)
   const std::size_t jpartBeg = m_partInfo[jpart].m_offset;
   const std::size_t jpartEnd = jpartBeg + m_partInfo[jpart].m_size;
 
-  s_partInfo &partOUT = m_partInfo[ipart];
-
-  partOUT.m_bbox = m_partInfo[ipart].m_bbox + m_partInfo[jpart].m_bbox;
-  partOUT.m_name = "(" + m_partInfo[ipart].m_name + " + " + m_partInfo[jpart].m_name + ")";
+  m_partInfo[ipart].m_bbox = m_partInfo[ipart].m_bbox + m_partInfo[jpart].m_bbox;
+  m_partInfo[ipart].m_name = "(" + m_partInfo[ipart].m_name + " + " + m_partInfo[jpart].m_name + ")";
 
   if (ipartEnd == jpartBeg || m_partInfo[jpart].m_size == 0) // case without moving data
   {
-    partOUT.m_size += m_partInfo[jpart].m_size;
+    m_partInfo[ipart].m_size += m_partInfo[jpart].m_size;
   }
   else if (jpartEnd == ipartBeg || m_partInfo[ipart].m_size == 0) // case without moving data
   {
-    partOUT.m_size += m_partInfo[jpart].m_size;
-    partOUT.m_offset = m_partInfo[jpart].m_offset;
+    m_partInfo[ipart].m_size += m_partInfo[jpart].m_size;
+    m_partInfo[ipart].m_offset = m_partInfo[jpart].m_offset;
   }
   else // case with moving data
   {
@@ -119,24 +117,21 @@ void model::mergeParts(std::size_t ipart, std::size_t jpart)
 
     // choose a part to grow
     const bool keepI = ipartCanGrow && (!jpartCanGrow || m_partInfo[ipart].m_size > m_partInfo[jpart].m_size);
-    const std::size_t partKeep = keepI ? ipart : jpart;
-    const std::size_t partKeep_prevSize = m_partInfo[partKeep].m_size;
-    resizePart(partKeep, m_partInfo[ipart].m_size + m_partInfo[jpart].m_size);
+    if (!keepI) std::swap(m_partInfo[ipart], m_partInfo[jpart]);
+
+    const std::size_t partKeep_prevSize = m_partInfo[ipart].m_size;
+    resizePart(ipart, m_partInfo[ipart].m_size + m_partInfo[jpart].m_size);
 
     // move the other part
-    const std::size_t partMove = keepI ? jpart : ipart;
     if (m_layout.m_indexCount == 0)
-      m_layout.copyVertex(m_partInfo[partMove].m_offset, m_partInfo[partMove].m_size, m_partInfo[partKeep].m_offset + partKeep_prevSize);
+      m_layout.copyVertex(m_partInfo[jpart].m_offset, m_partInfo[jpart].m_size, m_partInfo[ipart].m_offset + partKeep_prevSize);
     else
-      m_layout.copyIndex(m_partInfo[partMove].m_offset, m_partInfo[partMove].m_size, m_partInfo[partKeep].m_offset + partKeep_prevSize);
-
-    // save new location
-    partOUT.m_offset = m_partInfo[partKeep].m_offset;
-    partOUT.m_size = m_partInfo[partKeep].m_size;
+      m_layout.copyIndex(m_partInfo[jpart].m_offset, m_partInfo[jpart].m_size, m_partInfo[ipart].m_offset + partKeep_prevSize);
   }
 
-  // remove old part
-  m_partInfo.erase( m_partInfo.begin() + jpart);
+  // clear/remove old part
+  if (keepEmpty_jpart) m_partInfo[jpart] = s_partInfo();
+  else                 m_partInfo.erase(m_partInfo.begin() + jpart);
 }
 
 void model::mergeAllParts()
