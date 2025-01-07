@@ -192,6 +192,7 @@ public:
 
   void processBlur(GLuint inputTextureHandle, const bool withFinalCombine = true);
   GLuint get_blurTextureUnit(const std::size_t pass = 0) const { return m_renderDownsample[pass].colorHandle(); }
+  const tre::renderTarget &get_blurRenderTarget(const std::size_t pass = 0) const { return m_renderDownsample[pass]; }
 
   void set_brightAlpha(const float alpha) { m_brightAlpha = alpha; }
   void set_brightOffset(const float offset) { m_brightOffset = offset; }

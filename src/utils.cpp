@@ -32,6 +32,7 @@ void debugPrint_Win32(const char *msg)
 bool IsOpenGLok(const char * msg)
 {
   bool status = true;
+#ifdef TRE_DEBUG
   GLenum myglerror;
   while ( (myglerror = glGetError()) != GL_NO_ERROR )
   {
@@ -49,6 +50,7 @@ bool IsOpenGLok(const char * msg)
 #endif
     status = false;
   }
+#endif
   return status;
 }
 
