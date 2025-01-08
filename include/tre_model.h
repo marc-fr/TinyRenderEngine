@@ -260,7 +260,7 @@ public:
   }
 
   static constexpr std::size_t fillDataDisk_ISize(float radiusIn, uint subdiv) { return radiusIn == 0.f ? subdiv * 3 : subdiv * 6;   }
-  static constexpr std::size_t fillDataDisk_VSize(float radiusIn, uint subdiv) { return radiusIn == 0.f ? 1 + subdiv : 2.f * subdiv; }
+  static constexpr std::size_t fillDataDisk_VSize(float radiusIn, uint subdiv) { return radiusIn == 0.f ? 1 + subdiv : 2 * subdiv; }
   void fillDataDisk(std::size_t ipart, std::size_t offsetI, std::size_t offsetV, const glm::mat4 &transform, float radiusOut, float radiusIn, uint subdiv, const glm::vec4 & color);
   std::size_t createPartFromPrimitive_disk(const glm::mat4 &transform, float radiusOut, float radiusIn, uint subdiv, const glm::vec4 & color = glm::vec4(1.f))
   {
