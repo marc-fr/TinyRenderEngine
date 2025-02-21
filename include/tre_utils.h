@@ -192,6 +192,9 @@ public:
   void        resize(std::size_t size);
   void        push_back(const _T& element);
   void        push_back(_T&& element);
+  const _T   &pop_back() noexcept;
+  const _T   &back() const noexcept { return (m_sizeCounted != 0) ? this->operator[](m_sizeCounted-1) : this->operator[](0); }
+  _T         &back()       noexcept { return (m_sizeCounted != 0) ? this->operator[](m_sizeCounted-1) : this->operator[](0); }
 
   typename std::array<_T, capacity>::iterator end() noexcept { return std::array<_T, capacity>::begin() + m_sizeCounted; } // this overwrites the std::array<>::end()
   typename std::array<_T, capacity>::const_iterator end() const noexcept { return std::array<_T, capacity>::begin() + m_sizeCounted; } // this overwrites the std::array<>::end()

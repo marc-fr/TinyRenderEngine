@@ -74,6 +74,15 @@ void arrayCounted<_T, capacity>::push_back(_T&& element)
   this->operator[](m_sizeCounted - 1) = std::move(element);
 }
 
+// ----------------------------------------------------------------------------
+
+template<typename _T, std::size_t capacity>
+const _T& arrayCounted<_T, capacity>::pop_back() noexcept
+{
+  m_sizeCounted = (m_sizeCounted != 0) ? m_sizeCounted - 1 : 0;
+  return this->operator[](m_sizeCounted);
+}
+
 // ============================================================================
 
 template<class _T> void sortInsertion(tre::span<_T> array)
