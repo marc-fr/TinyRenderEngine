@@ -292,7 +292,7 @@ bool modelImporter::addFromWavefront(modelIndexed &outModel, const std::string &
   const bool hasMatColor = !colorMap.empty() && (outLayout.m_colors.m_size == 4);
   if (outLayout.m_normals.m_size == 3 && totalNormalIn == 0)
   {
-    TRE_LOG("Warning in model::loadfromWavefront: the model asks for normals, but the file does not contain normal data. The reader will fill normals with zeros.");
+    TRE_LOG("Warning in model::loadfromWavefront: the model asks for normals, but the file does not contain normal data. The reader will fill normals with zeros."); // TODO: compute the normal (oriented triangle assumed)
   }
   if (outLayout.m_uvs.m_size == 2 && totalUVIn == 0)
   {
@@ -971,7 +971,7 @@ bool modelImporter::addFromGLTF(modelIndexed &outModel, s_modelHierarchy &outHie
     }
     if (bufferNor == nullptr && outLayout.m_normals.hasData())
     {
-      TRE_LOG("model::loadfromGLTF: no normal-buffer found for mesh \"" << curPartInfo.m_name << "\" but the model has normal-data. Zeros will be written.");
+      TRE_LOG("model::loadfromGLTF: no normal-buffer found for mesh \"" << curPartInfo.m_name << "\" but the model has normal-data. Zeros will be written."); // TODO: compute the normal (oriented triangle assumed)
     }
 
     if (curPartRead.m_bufferViewId_uv < readBufferViews->m_list.size())
@@ -1003,7 +1003,7 @@ bool modelImporter::addFromGLTF(modelIndexed &outModel, s_modelHierarchy &outHie
     }
 
     const bool fillNor = (bufferNor != nullptr && outLayout.m_normals.hasData());
-    const bool fillNor_zero = (bufferNor == nullptr && outLayout.m_normals.hasData());
+    const bool fillNor_geom = (bufferNor == nullptr && outLayout.m_normals.hasData());
     const bool fillUV = (bufferUV != nullptr && outLayout.m_uvs.hasData());
     const bool fillUV_zero = (bufferUV == nullptr && outLayout.m_uvs.hasData());
 
@@ -1016,7 +1016,7 @@ bool modelImporter::addFromGLTF(modelIndexed &outModel, s_modelHierarchy &outHie
       const_cast<s_partInfo&>(curPartInfo).m_bbox.addPointInBox(pos);
 
       if (fillNor) outLayout.m_normals.get<glm::vec3>(vertexOffset + iv) = *bufferNor++;
-      else if (fillNor_zero) outLayout.m_normals.get<glm::vec3>(vertexOffset + iv) = glm::vec3(0.f);
+      else if (fillNor_geom) outLayout.m_normals.get<glm::vec3>(vertexOffset + iv) = glm::vec3(0.f);
 
       if (fillUV) outLayout.m_uvs.get<glm::vec2>(vertexOffset + iv) = *bufferUV++;
       else if (fillUV_zero) outLayout.m_uvs.get<glm::vec2>(vertexOffset + iv) = glm::vec2(0.f);
@@ -1032,6 +1032,12 @@ bool modelImporter::addFromGLTF(modelIndexed &outModel, s_modelHierarchy &outHie
     {
       for (std::size_t ii = 0; ii < curPartInfo.m_size; ++ii)
         outLayout.m_index[curPartInfo.m_offset + ii] = vertexOffset + (uint32_t(*bufferInd16++) & 0x0000FFFF);
+    }
+
+    if (fillNor_geom)
+    {
+      // Get the weigthed normal of each triangle, and accumulate on vertices
+      // Loop on vertices, and normalize
     }
   }
 

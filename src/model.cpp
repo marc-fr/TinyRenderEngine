@@ -1552,8 +1552,24 @@ void modelIndexed::fillDataSquare(std::size_t ipart, std::size_t offsetI, std::s
     m_layout.m_normals.get<glm::vec3>(offsetV + 3) = outNormal;
   }
 
-  TRE_ASSERT(m_layout.m_uvs.m_size == 0); // we dont handle UVs generation.
-  TRE_ASSERT(m_layout.m_tangents.m_size == 0); // we dont handle tangents generation.
+  if (m_layout.m_tangents.m_size != 0)
+  {
+    TRE_ASSERT(m_layout.m_tangents.m_size == 4);
+    const glm::vec4 outTangent = glm::vec4(glm::normalize(glm::vec3(transform[0])), 1.f);
+    m_layout.m_normals.get<glm::vec4>(offsetV + 0) = outTangent;
+    m_layout.m_normals.get<glm::vec4>(offsetV + 1) = outTangent;
+    m_layout.m_normals.get<glm::vec4>(offsetV + 2) = outTangent;
+    m_layout.m_normals.get<glm::vec4>(offsetV + 3) = outTangent;
+  }
+
+  if (m_layout.m_uvs.m_size != 0)
+  {
+    TRE_ASSERT(m_layout.m_uvs.m_size == 2);
+    m_layout.m_uvs.get<glm::vec2>(offsetV + 0) = glm::vec2(0.f, 1.f);
+    m_layout.m_uvs.get<glm::vec2>(offsetV + 1) = glm::vec2(0.f, 0.f);
+    m_layout.m_uvs.get<glm::vec2>(offsetV + 2) = glm::vec2(1.f, 0.f);
+    m_layout.m_uvs.get<glm::vec2>(offsetV + 3) = glm::vec2(1.f, 1.f);
+  }
 
   if (m_layout.m_colors.m_size != 0)
   {
