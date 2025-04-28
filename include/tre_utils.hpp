@@ -52,7 +52,7 @@ void chunkVector<_T, chunkSize>::push_back(_T &&element)
 template<typename _T, std::size_t capacity>
 void arrayCounted<_T, capacity>::resize(std::size_t size)
 {
-  TRE_ASSERT(size < capacity);
+  TRE_ASSERT(size <= capacity);
   m_sizeCounted = size;
 }
 
