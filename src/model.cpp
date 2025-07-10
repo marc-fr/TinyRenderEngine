@@ -1254,9 +1254,11 @@ void modelIndexed::fillDataBoxWireframe(std::size_t ipart, std::size_t offsetI, 
   m_layout.m_positions.get<glm::vec3>(offsetV +  6) = pt110;
   m_layout.m_positions.get<glm::vec3>(offsetV +  7) = pt111;
 
-  TRE_ASSERT(m_layout.m_normals.m_size == 0);
-  TRE_ASSERT(m_layout.m_uvs.m_size == 0);
-  TRE_ASSERT(m_layout.m_tangents.m_size == 0);
+  if (m_layout.m_normals.m_size != 0)
+  {
+    for (std::size_t v = 0; v < fillDataBoxWireframe_VSize(); ++v)
+      m_layout.m_normals.get<glm::vec3>(offsetV + v) = glm::vec3(0.f);
+  }
 
   if (m_layout.m_colors.m_size != 0)
   {
@@ -1556,10 +1558,10 @@ void modelIndexed::fillDataSquare(std::size_t ipart, std::size_t offsetI, std::s
   {
     TRE_ASSERT(m_layout.m_tangents.m_size == 4);
     const glm::vec4 outTangent = glm::vec4(glm::normalize(glm::vec3(transform[0])), 1.f);
-    m_layout.m_normals.get<glm::vec4>(offsetV + 0) = outTangent;
-    m_layout.m_normals.get<glm::vec4>(offsetV + 1) = outTangent;
-    m_layout.m_normals.get<glm::vec4>(offsetV + 2) = outTangent;
-    m_layout.m_normals.get<glm::vec4>(offsetV + 3) = outTangent;
+    m_layout.m_tangents.get<glm::vec4>(offsetV + 0) = outTangent;
+    m_layout.m_tangents.get<glm::vec4>(offsetV + 1) = outTangent;
+    m_layout.m_tangents.get<glm::vec4>(offsetV + 2) = outTangent;
+    m_layout.m_tangents.get<glm::vec4>(offsetV + 3) = outTangent;
   }
 
   if (m_layout.m_uvs.m_size != 0)

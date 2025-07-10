@@ -138,7 +138,7 @@ private:
   std::size_t                 m_size; ///< nbr of elements
 
 public:
-  chunkVector() { TRE_ASSERT((chunkSize != 0) && (chunkSize & (chunkSize - 1)) == 0); }
+  chunkVector() { static_assert((chunkSize != 0) && (chunkSize & (chunkSize - 1)) == 0, "chunkVector requires a power-of-two chunk-size."); }
   ~chunkVector() { clean(); }
 
   _T &operator[](std::size_t i) const noexcept { return (*m_chunks[i / chunkSize])[i & (chunkSize - 1)]; }
