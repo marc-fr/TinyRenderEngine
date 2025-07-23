@@ -3,8 +3,6 @@
 #include "tre_model.h"
 #include "tre_shader.h"
 
-#include <glm/gtx/extended_min_max.hpp>
-
 namespace tre {
 
 // ============================================================================

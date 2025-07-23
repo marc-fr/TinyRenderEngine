@@ -2,8 +2,6 @@
 
 #include "tre_model.h"
 
-#include <glm/gtx/extended_min_max.hpp>
-
 //#define MESH_DEBUG // Mesh debugging
 #ifdef MESH_DEBUG
 #include <fstream>

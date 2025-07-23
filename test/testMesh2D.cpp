@@ -11,7 +11,6 @@
 #include <chrono>
 
 #include <glm/gtc/matrix_transform.hpp> // glm::translate, glm::rotate, glm::scale
-#include <glm/gtx/component_wise.hpp>
 
 #ifndef TESTIMPORTPATH
 #define TESTIMPORTPATH ""

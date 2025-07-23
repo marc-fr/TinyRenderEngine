@@ -3,9 +3,6 @@
 #include "tre_model.h"
 #include "tre_contact_3D.h"
 
-#include <glm/gtx/component_wise.hpp>
-#include <glm/gtx/norm.hpp> // for glm::length2()
-
 //#define MESH_DEBUG // Mesh debugging
 #ifdef MESH_DEBUG
 #include <fstream>
@@ -1682,7 +1679,7 @@ bool tetrahedralize(const s_modelDataLayout &layout, const s_partInfo &part, std
       for (std::size_t iP = 0; iP < indices.size(); ++iP)
       {
         const glm::vec3 *p = &inPos.get<glm::vec3>(indices[iP]);
-        const float     d2 = glm::length2(tetraCenter - *p);
+        const float     d2 = glm::dot(tetraCenter - *p, tetraCenter - *p);
         const bool      isBetter = (d2 < d2Best);
         if (tHasPoint && !isBetter) continue;
         const glm::vec3 coordUVW = transfInv * (*p - *tBest->ptA);
