@@ -506,7 +506,7 @@ int main(int argc, char **argv)
   tre::ui::window &wUI_main = *bUI_main.create_window();
   wUI_main.set_layoutGrid(5, 2);
   wUI_main.set_fontSize(tre::ui::s_size(20, tre::ui::SIZE_PIXEL));
-  wUI_main.set_color(glm::vec4(0.f, 0.f, 0.f, 0.5f));
+  wUI_main.set_colormask(glm::vec4(1.f, 1.f, 1.f, 0.6f));
   wUI_main.set_cellMargin(tre::ui::s_size(3, tre::ui::SIZE_PIXEL));
 
   wUI_main.create_widgetText(0, 0)->set_text("model (left/right):");
@@ -544,7 +544,7 @@ int main(int argc, char **argv)
   tre::ui::window &wUI_result = *bUI_main.create_window();
   wUI_result.set_layoutGrid(8, 3);
   wUI_result.set_fontSize(tre::ui::s_size(20, tre::ui::SIZE_PIXEL));
-  wUI_result.set_color(glm::vec4(0.f, 0.f, 0.f, 0.5f));
+  wUI_result.set_colormask(glm::vec4(1.f, 1.f, 1.f, 0.6f));
   wUI_result.set_cellMargin(tre::ui::s_size(3, tre::ui::SIZE_PIXEL));
   wUI_result.set_colAlignment(1, tre::ui::ALIGN_MASK_HORIZONTAL_RIGHT);
   wUI_result.set_colAlignment(2, tre::ui::ALIGN_MASK_HORIZONTAL_RIGHT);
@@ -944,13 +944,13 @@ int main(int argc, char **argv)
     bUI_main.updateIntoGPU();
 
     glViewport(0, 0, myWindow.m_resolutioncurrent.x / 2, myWindow.m_resolutioncurrent.y);
-    wUI_main.set_visible(true);
-    wUI_result.set_visible(false);
+    wUI_main.set_isvisible(true);
+    wUI_result.set_isvisible(false);
     bUI_main.draw();
 
     glViewport(myWindow.m_resolutioncurrent.x / 2, 0, myWindow.m_resolutioncurrent.x / 2, myWindow.m_resolutioncurrent.y);
-    wUI_main.set_visible(false);
-    wUI_result.set_visible(true);
+    wUI_main.set_isvisible(false);
+    wUI_result.set_isvisible(true);
     bUI_main.draw();
 
     tre::IsOpenGLok("UI render pass");

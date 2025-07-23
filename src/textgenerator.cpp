@@ -14,16 +14,8 @@ void generate(const s_textInfo &info, modelRaw2D *outMesh, unsigned outPartId, u
   TRE_ASSERT(info.m_font != nullptr);
   TRE_ASSERT(info.m_text != nullptr);
 
-  if (outMesh == nullptr && outInfo == nullptr) return;
-
-  const s_modelDataLayout *layout = (outMesh != nullptr) ? &outMesh ->layout() : nullptr;
-  TRE_ASSERT(layout == nullptr || layout->m_positions.m_size == 2);
-  TRE_ASSERT(layout == nullptr || layout->m_uvs.m_size == 2);
-  TRE_ASSERT(layout == nullptr || layout->m_colors.m_size == 4);
-  const s_partInfo         *part = (outMesh != nullptr) ? &outMesh->partInfo(outPartId) : nullptr;
-  const uint               vertexOffset = (part != nullptr) ? part->m_offset + outOffset : 0;
-  const uint               maxVertexCount = geometry_VertexCount(info.m_text);
-  TRE_ASSERT(part == nullptr || outOffset + maxVertexCount <= part->m_size)
+  const uint maxVertexCount = geometry_VertexCount(info.m_text);
+  TRE_ASSERT(outMesh == nullptr || outOffset + maxVertexCount <= outMesh->partInfo(outPartId).m_size)
 
   const bool isBoxValid = (info.m_zone.x < info.m_zone.z) && (info.m_zone.y < info.m_zone.w);
   const bool isPixelSizeValid = (info.m_pixelSize.x > 0.f) && (info.m_pixelSize.y > 0.f);
@@ -41,7 +33,7 @@ void generate(const s_textInfo &info, modelRaw2D *outMesh, unsigned outPartId, u
   maxboxsize.y = fontsize;
   float posx = info.m_zone.x;
   float posy = info.m_zone.w;
-  uint vidx = vertexOffset;
+  uint vidx = outOffset;
   for (std::size_t ich = 0, iLen = std::strlen(info.m_text); ich < iLen; ++ich)
   {
     unsigned char idchar = info.m_text[ich];
@@ -104,50 +96,19 @@ void generate(const s_textInfo &info, modelRaw2D *outMesh, unsigned outPartId, u
       quadUV.z = quadUV.x + (quadUV.z - quadUV.x) * (info.m_zone.z - quadPos.x) / (quadPos.z - quadPos.x);
       quadPos.z = info.m_zone.z;
     }
-    if (layout != nullptr)
+    if (outMesh != nullptr)
     {
-      // tri-A
-      layout->m_positions[vidx + 0][0] = quadPos.x;
-      layout->m_positions[vidx + 0][1] = quadPos.y;
-      layout->m_positions[vidx + 1][0] = quadPos.x;
-      layout->m_positions[vidx + 1][1] = quadPos.w;
-      layout->m_positions[vidx + 2][0] = quadPos.z;
-      layout->m_positions[vidx + 2][1] = quadPos.w;
-      layout->m_uvs[vidx + 0][0] = quadUV.x;
-      layout->m_uvs[vidx + 0][1] = quadUV.w;
-      layout->m_uvs[vidx + 1][0] = quadUV.x;
-      layout->m_uvs[vidx + 1][1] = quadUV.y;
-      layout->m_uvs[vidx + 2][0] = quadUV.z;
-      layout->m_uvs[vidx + 2][1] = quadUV.y;
-      layout->m_colors.get<glm::vec4>(vidx + 0) = info.m_color;
-      layout->m_colors.get<glm::vec4>(vidx + 1) = info.m_color;
-      layout->m_colors.get<glm::vec4>(vidx + 2) = info.m_color;
-      // tri-B
-      layout->m_positions[vidx + 3][0] = quadPos.z;
-      layout->m_positions[vidx + 3][1] = quadPos.w;
-      layout->m_positions[vidx + 4][0] = quadPos.z;
-      layout->m_positions[vidx + 4][1] = quadPos.y;
-      layout->m_positions[vidx + 5][0] = quadPos.x;
-      layout->m_positions[vidx + 5][1] = quadPos.y;
-      layout->m_uvs[vidx + 3][0] = quadUV.z;
-      layout->m_uvs[vidx + 3][1] = quadUV.y;
-      layout->m_uvs[vidx + 4][0] = quadUV.z;
-      layout->m_uvs[vidx + 4][1] = quadUV.w;
-      layout->m_uvs[vidx + 5][0] = quadUV.x;
-      layout->m_uvs[vidx + 5][1] = quadUV.w;
-      layout->m_colors.get<glm::vec4>(vidx + 3) = info.m_color;
-      layout->m_colors.get<glm::vec4>(vidx + 4) = info.m_color;
-      layout->m_colors.get<glm::vec4>(vidx + 5) = info.m_color;
+      const glm::vec4 quadUVflip = glm::vec4(quadUV.x, quadUV.w, quadUV.z, quadUV.y); // flip Y
+      outMesh->fillDataRectangle(outPartId, vidx, quadPos, info.m_color, quadUVflip);
     }
     // end
     vidx += 6;
   }
 
-  if (layout != nullptr)
+  if (outMesh != nullptr)
   {
-    const uint vertexStop = vertexOffset + maxVertexCount;
-    for (; vidx < vertexStop; ++vidx)
-      layout->m_colors.get<glm::vec4>(vidx) = glm::vec4(0.f);
+    for (uint stop = outOffset + maxVertexCount; vidx < stop; ++vidx)
+      outMesh->fillDataRectangle(outPartId, vidx, glm::vec4(0.f), glm::vec4(0.f), glm::vec4(0.f));
   }
 
   if (outInfo != nullptr)
@@ -155,7 +116,6 @@ void generate(const s_textInfo &info, modelRaw2D *outMesh, unsigned outPartId, u
     outInfo->m_maxboxsize = maxboxsize;
     outInfo->m_choosenFontSizePixel = fontMap.m_fsize;
   }
-
 }
 
 // ============================================================================

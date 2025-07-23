@@ -132,17 +132,22 @@ public:
   };
   s_value wvalue;
 
-  virtual uint get_vcountSolid() const override { return 18; }
+  virtual s_drawElementCount get_drawElementCount() const
+  {
+    s_drawElementCount res;
+    res.m_vcountSolid = 18;
+    return res;
+  }
 
   virtual glm::vec2 get_zoneSizeDefault() const override
   {
-    const float h = get_parentWindow()->resolve_sizeH(get_parentWindow()->get_fontSize());
+    const float h = m_parentWindow->resolve_sizeH(m_parentWindow->get_fontSize());
     return glm::vec2(5.f * h, h);
   }
 
   void compute_data() override
   {
-    auto & objsolid = get_parentUI()->getDrawModel();
+    auto & objsolid = m_parentWindow->get_parentUI()->getDrawModel();
 
     objsolid.fillDataRectangle(m_adSolid.part, m_adSolid.offset + 0, m_zone, glm::vec4(0.f), glm::vec4(0.f));
 
@@ -169,7 +174,7 @@ public:
     objsolid.layout().m_colors.get<glm::vec4>(m_adSolid.offset + 12 + 5) = glm::vec4(0.f, 1.f, 0.f, 1.f);
   }
 
-  void setValueModified() { m_isUpdateNeededData = true; }
+  void setValueModified() { setUpdateNeededData(); }
 };
 
 // =============================================================================
@@ -177,19 +182,25 @@ public:
 class widgetWaveform : public tre::ui::widgetPicture
 {
 public:
-  virtual uint get_vcountLine() const override { return tre::ui::widgetPicture::get_vcountLine() + 2; }
+
+  virtual s_drawElementCount get_drawElementCount() const
+  {
+    s_drawElementCount res = tre::ui::widgetPicture::get_drawElementCount();
+    res.m_vcountLine += 2;
+    return res;
+  }
 
   float wcursor = 0.f;
 
-  void setCursor(float c) { m_isUpdateNeededData |= (c != wcursor); wcursor = c; }
+  void setCursor(float c) { if (c != wcursor) { wcursor = c; setUpdateNeededData(); } }
 
   virtual void compute_data() override
   {
     tre::ui::widgetPicture::compute_data();
 
-    auto & objsolid = get_parentUI()->getDrawModel();
+    auto & objsolid = m_parentWindow->get_parentUI()->getDrawModel();
     const uint adPart = m_adrLine.part;
-    const uint adOffset = m_adrLine.offset + tre::ui::widgetPicture::get_vcountLine();
+    const uint adOffset = m_adrLine.offset + tre::ui::widgetPicture::get_drawElementCount().m_vcountLine;
 
     const float xC = m_zone.x + (m_zone.z - m_zone.x) * wcursor;
     const glm::vec2 pA = glm::vec2(xC, m_zone.y);
@@ -421,11 +432,9 @@ static int app_init()
 
     windowMain->set_fontSize(tre::ui::s_size(20,tre::ui::SIZE_PIXEL));
     windowMain->set_alignMask(tre::ui::ALIGN_MASK_CENTERED);
-    windowMain->set_color(glm::vec4(0.f));
     windowMain->set_mat3(glm::mat3(1.f));
     windowMain->set_layoutGrid(64,8);
     windowMain->set_cellMargin(tre::ui::s_size(2,tre::ui::SIZE_PIXEL));
-    windowMain->set_visible(true);
     windowMain->create_widgetText(0,0)->set_text("name")->set_color(glm::vec4(1.f,1.f,0.f,1.f));
     windowMain->create_widgetText(0,1)->set_text("play")->set_color(glm::vec4(1.f,1.f,0.f,1.f));
     windowMain->create_widgetText(0,3)->set_text("repeat")->set_color(glm::vec4(1.f,1.f,0.f,1.f));
@@ -581,7 +590,7 @@ static int app_init()
       {
         windowMain->create_widgetText(iRaw, 0)->set_text("- track " + nameTracks[itrack])->set_color(glm::vec4(0.6f, 0.6f, 0.8f, 1.f));
 
-        windowMain->create_widgetBoxCheck(iRaw, 4)->set_value(false)->set_isactive(true)->set_iseditable(true)->set_color(glm::vec4(0.6f, 0.6f, 0.8f, 1.f));
+        windowMain->create_widgetBoxCheck(iRaw, 4)->set_value(false)->set_isactive(true)->set_iseditable(true)->set_color(glm::vec4(0.6f, 0.6f, 0.8f, 0.4f));
         windowMain->create_widgetBar(iRaw, 5)->set_value(0.5f)->set_isactive(true)->set_iseditable(true)->set_color(glm::vec4(0.6f, 0.6f, 0.8f, 1.f));
 
         auto *widMute = windowMain->get_widgetBoxCheck(iRaw, 4);

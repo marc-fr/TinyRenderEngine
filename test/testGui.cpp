@@ -23,11 +23,11 @@ struct s_sceneOption
 {
   float m_ui_alpha = 0.8f;     // main window's transparency
   float m_ui_backalpha = 0.5f; // main window's background transparency
-  float m_ui_size = 0.95f;     // main window's font-size
-  float m_ui_saturation = 0.f; // main window's color saturation (color masking)
+  int   m_ui_sizePixel = 12;   // main window's font-size (in pixels)
   int   m_ui_cellMargin = 1;   // main window's cells margin
   int   m_ui_col0Spacing = 0;  // main window's spacing between column 0 and 1
-  uint  m_ui_language = 0;     // main window's language
+  uint  m_ui_colorTheme = 0;   // (all) windows' color theme
+  uint  m_ui_language = 0;     // (all) windows' language
 };
 
 // =============================================================================
@@ -37,13 +37,13 @@ class widgetTextAndReport : public tre::ui::widgetText
 public:
   unsigned get_resolvedFontSizePixel() const
   {
-    return unsigned( get_parentWindow()->resolve_sizeH(get_parentWindow()->get_fontSize()) / get_parentWindow()->resolve_sizeH(tre::ui::s_size::ONE_PIXEL) );
+    return unsigned( m_parentWindow->resolve_sizeH(m_parentWindow->get_fontSize()) / m_parentWindow->resolve_sizeH(tre::ui::s_size::ONE_PIXEL) );
   }
   unsigned get_pickedFontSizePixel() const
   {
     tre::textgenerator::s_textInfo tInfo;
-    tInfo.setupBasic(get_parentUI()->get_defaultFont(), get_parentWindow()->resolve_sizeH(get_parentWindow()->get_fontSize()), ".");
-    tInfo.m_pixelSize = get_parentWindow()->resolve_sizeWH(tre::ui::s_size::ONE_PIXEL);
+    tInfo.setupBasic(m_parentWindow->get_parentUI()->get_defaultFont(), m_parentWindow->resolve_sizeH(m_parentWindow->get_fontSize()), ".");
+    tInfo.m_pixelSize = m_parentWindow->resolve_sizeWH(tre::ui::s_size::ONE_PIXEL);
 
     tre::textgenerator::s_textInfoOut tOut;
 
@@ -61,18 +61,21 @@ public:
   widgetColor() : widget() {}
   virtual ~widgetColor() override {}
 
-  virtual uint get_vcountSolid() const override
+  virtual s_drawElementCount get_drawElementCount() const
   {
-    return 6;
+    s_drawElementCount res;
+    res.m_vcountSolid = 6;
+    return res;
   }
+
   virtual glm::vec2 get_zoneSizeDefault() const override
   {
-    const float h = get_parentWindow()->resolve_sizeH(get_parentWindow()->get_fontSize());
+    const float h = m_parentWindow->resolve_sizeH(m_parentWindow->get_fontSize());
     return glm::vec2(3.f * h, h);
   }
   virtual void compute_data() override
   {
-    auto & objsolid = get_parentUI()->getDrawModel();
+    auto & objsolid = m_parentWindow->get_parentUI()->getDrawModel();
 
     objsolid.fillDataRectangle(m_adSolid.part, m_adSolid.offset, m_zone, wcolor, glm::vec4(0.f));
   }
@@ -86,22 +89,28 @@ public:
   widgetCheckPixelSnap() : widget() {}
   virtual ~widgetCheckPixelSnap() override {}
 
-  virtual uint get_vcountSolid() const override { return 6; }
-  virtual uint get_vcountLine() const override { return 20; }
+  virtual s_drawElementCount get_drawElementCount() const
+  {
+    s_drawElementCount res;
+    res.m_vcountSolid = 6;
+    res.m_vcountLine = 20;
+    return res;
+  }
+
   virtual glm::vec2 get_zoneSizeDefault() const override
   {
-    const float h = get_parentWindow()->resolve_sizeH(get_parentWindow()->get_fontSize());
+    const float h = m_parentWindow->resolve_sizeH(m_parentWindow->get_fontSize());
     return glm::vec2(3.f * h, h);
   }
   virtual void compute_data() override
   {
-    auto & objsolid = get_parentUI()->getDrawModel();
+    auto & objsolid = m_parentWindow->get_parentUI()->getDrawModel();
 
     objsolid.fillDataRectangle(m_adSolid.part, m_adSolid.offset, m_zone, glm::vec4(0.f, 0.f, 0.f, 1.f), glm::vec4(0.f));
 
-    const glm::vec2 pxSize2 = get_parentWindow()->resolve_sizeWH(tre::ui::s_size(2, tre::ui::SIZE_PIXEL));
+    const glm::vec2 pxSize2 = m_parentWindow->resolve_sizeWH(tre::ui::s_size(2, tre::ui::SIZE_PIXEL));
 
-    glm::vec2 pxOffset = get_parentWindow()->resolve_pixelOffset();
+    glm::vec2 pxOffset = m_parentWindow->resolve_pixelOffset();
     pxOffset.x += m_zone.x;
     pxOffset.y += m_zone.w;
 
@@ -122,7 +131,7 @@ public:
     objsolid.fillDataLine(m_adrLine.part, m_adrLine.offset + 16, glm::vec2(m_zone.x, pxOffset.y -  pxSize2.y * 3), glm::vec2(m_zone.z, pxOffset.y - pxSize2.y * 3), glm::vec4(1.f));
     objsolid.fillDataLine(m_adrLine.part, m_adrLine.offset + 18, glm::vec2(m_zone.x, pxOffset.y -  pxSize2.y * 4), glm::vec2(m_zone.z, pxOffset.y - pxSize2.y * 4), glm::vec4(1.f));
 
-    m_isUpdateNeededData = true; // hack, always update
+    setUpdateNeededData(); // hack, always update
   }
 };
 
@@ -156,6 +165,7 @@ struct s_uiManager
   s_uiManager(s_sceneOption &sceneOption, tre::gizmo &gizmo) : m_sceneOption(sceneOption), m_cubeGizmo(gizmo) {}
 
   bool load(const s_loadArgs &args);
+  void applySceneOptions();
   void updateCameraInfo(const glm::ivec2 &screenSize, const glm::mat3 &matProj2D, const glm::mat4 &matProj3D, const glm::mat4 &matView3D);
   bool acceptEvent(const SDL_Event &event);
   void animate(float dt);
@@ -174,29 +184,24 @@ bool s_uiManager::load(const s_loadArgs &args)
     menuWmain = menu.create_window();
     TRE_ASSERT(menuWmain != nullptr);
 
-    menuWmain->set_fontSize(0.05f);
-
-    menuWmain->set_color(glm::vec4(0.2f,0.2f,0.2f,m_sceneOption.m_ui_backalpha));
-    menuWmain->set_colormask(glm::vec4(0.8f,1.0f,0.95f,m_sceneOption.m_ui_alpha));
     menuWmain->set_alignMask(tre::ui::ALIGN_MASK_HORIZONTAL_CENTERED | tre::ui::ALIGN_MASK_VERTICAL_TOP);
 
     float localTime = 0.f;
-    menuWmain->wcb_animate = [this, localTime](tre::ui::widget *self, float dt) mutable
+    menuWmain->wcb_animate = [localTime](tre::ui::window *self, float dt) mutable
     {
       glm::mat3 m(1.f);
-      m[0][0] = this->m_sceneOption.m_ui_size;
-      m[1][1] = this->m_sceneOption.m_ui_size;
+      const float localSpaceSlace = 1.f + 0.4f * std::cos(localTime * (3.141592f * 2.f * 3.f / 15.f)); // this windows has the font-size with PIXEL units, so it shouldn't scale on screen.
+      m[0][0] = localSpaceSlace;
+      m[1][1] = localSpaceSlace;
       m[2][1] = (localTime < 2.f) ? 0.1f * (2.f - localTime) + 0.99f : 0.99f;
 
-      tre::ui::window *selfW = static_cast<tre::ui::window*>(self);
-      selfW->set_mat3(m);
+      self->set_mat3(m);
 
       localTime += dt;
       if (localTime > 15.f) localTime = 0.f;
     };
 
     menuWmain->set_layoutGrid(12,5);
-    menuWmain->set_cellMargin(tre::ui::s_size(float(m_sceneOption.m_ui_cellMargin), tre::ui::SIZE_PIXEL));
 
     const std::size_t pic1_Slot = menu.addTexture(args.picture1);
 
@@ -236,13 +241,13 @@ bool s_uiManager::load(const s_loadArgs &args)
     menuWmain->create_widgetBoxCheck(6,3)->set_isactive(true)->set_iseditable(true);
 
     menuWmain->create_widgetText(7,0)->set_text("- widget Text:");
-    menuWmain->create_widgetText(7,1)->set_text("info");
-    menuWmain->create_widgetText(7,2)->set_text("click")->set_isactive(true);
+    menuWmain->create_widgetText(7,1)->set_text("Message");
+    menuWmain->create_widgetText(7,2)->set_text("Click!")->set_isactive(true);
     menuWmain->create_widgetTextEdit(7,3)->set_allowMultiLines(true)->set_text("edit me !");
 
     menuWmain->create_widgetText(8,0)->set_text("- widget Text fill:");
-    menuWmain->create_widgetText(8,1)->set_text("info")->set_withbackground(true)->set_withborder(true);
-    menuWmain->create_widgetText(8,2)->set_text("click")->set_withbackground(true)->set_withborder(true)->set_isactive(true);
+    menuWmain->create_widgetText(8,1)->set_text("Message")->set_withborder(true);
+    menuWmain->create_widgetText(8,2)->set_text("Click!")->set_withborder(true)->set_isactive(true);
 
     const std::array<std::string, TRE_UI_NLANGUAGES> trTxt = {"I'm translating myself!", "Je me traduis moi-même !"};
     menuWmain->create_widgetTextTranslatate(9,0, 1,99)->set_texts(trTxt);
@@ -267,175 +272,53 @@ bool s_uiManager::load(const s_loadArgs &args)
     };
   }
 
-  if (args.withOption)
+    if (args.with3D)
   {
-    menuWoption = menu.create_window();
-    TRE_ASSERT(menuWoption != nullptr);
+    hud.set_defaultFont(args.font);
 
-    menuWoption->set_topbar("OPTION", true, false);
-    menuWoption->set_color(glm::vec4(0.f,0.f,0.f,m_sceneOption.m_ui_backalpha));
-    menuWoption->set_transparency(0.2f+0.8f*m_sceneOption.m_ui_alpha);
-    menuWoption->set_alignMask(tre::ui::ALIGN_MASK_HORIZONTAL_LEFT | tre::ui::ALIGN_MASK_VERTICAL_CENTERED);
+    hudWmain = hud.create_window();
+    TRE_ASSERT(hudWmain != nullptr);
 
-    menuWoption->set_fontSize(tre::ui::s_size(16, tre::ui::SIZE_PIXEL));
-    menuWoption->set_cellMargin(tre::ui::s_size(3, tre::ui::SIZE_PIXEL));
-
+    hudWmain->set_colormask(glm::vec4(0.3f,1.f,0.3f,0.7f));
+    hudWmain->set_topbar("3D interface", true, true);
     {
-      glm::mat3 m(1.f);
-      m[2][0] = -10.f; // the "resizeEvent" will move the window inside the screen.
-      menuWoption->set_mat3(m);
+      glm::mat4 m(1.f);
+      m = glm::rotate(m, -0.6f, glm::vec3(0.f,1.f,0.f));
+      m[3] = glm::vec4(3.f,1.f,0.f,1.f); // position in world-space.
+      hudWmain->set_mat4(m);
     }
 
-    menuWoption->set_layoutGrid(20,2);
-    menuWoption->set_colAlignment(1, tre::ui::ALIGN_MASK_CENTERED);
+    hudWmain->set_fontSize(0.5f);
 
-    menuWoption->create_widgetText(0,0, 1,2)->set_text("Main window controls")->set_fontsizeModifier(1.1f)->set_color(glm::vec4(1.f, 0.f, 1.f, 1.f));
+    hudWmain->set_layoutGrid(3,2);
 
-    menuWoption->create_widgetText(1,0)->set_text("transparency");
-    tre::ui::widget *wAlpha = menuWoption->create_widgetBar(1,1)->set_value(m_sceneOption.m_ui_alpha)->set_isactive(true)->set_iseditable(true);
-    wAlpha->wcb_modified_ongoing = [this] (tre::ui::widget *self)
+    hudWmain->create_widgetText(0, 0)->set_text("Control bar");
+    hudWmain->create_widgetBar(0,1)->set_value(0.2f)->set_valuethreshold(0.3f)->set_withthreshold(true)->set_iseditable(true)->set_isactive(true);
+
+    hudWmain->create_widgetText(1, 0)->set_text("Control slider");
+    hudWmain->create_widgetSlider(1,1)->set_value(0.4f)->set_valuemin(-0.8f)->set_iseditable(true)->set_isactive(true);
+
+    hudWfixedSize = hud.create_window();
+    TRE_ASSERT(hudWfixedSize != nullptr);
+
+    hudWfixedSize->set_colormask(glm::vec4(0.3f,1.f,0.3f,0.7f));
+    hudWfixedSize->set_topbar("3D interface (fixed size)", true, true);
     {
-      this->m_sceneOption.m_ui_alpha = static_cast<tre::ui::widgetBar*>(self)->get_value();
-      if (this->menuWmain != nullptr) this->menuWmain->set_transparency(m_sceneOption.m_ui_alpha);
-      if (this->hudWmain != nullptr) this->hudWmain->set_transparency(m_sceneOption.m_ui_alpha);
-      if (this->hudWfixedSize != nullptr) this->hudWfixedSize->set_transparency(m_sceneOption.m_ui_alpha);
-    };
+      glm::mat4 m(1.f);
+      m = glm::rotate(m, -0.5f, glm::vec3(0.f,1.f,0.f));
+      m[3] = glm::vec4(3.f,2.f,0.f,1.f); // position in world-space.
+      hudWfixedSize->set_mat4(m);
+    }
 
-    menuWoption->create_widgetText(2,0)->set_text("background");
-    tre::ui::widget *wBackalpha = menuWoption->create_widgetBar(2,1)->set_value(m_sceneOption.m_ui_backalpha)->set_isactive(true)->set_iseditable(true);
-    wBackalpha->wcb_modified_ongoing = [this] (tre::ui::widget *self)
-    {
-      this->m_sceneOption.m_ui_backalpha = static_cast<tre::ui::widgetBar*>(self)->get_value();
-      const glm::vec4 bgColor = glm::vec4(0.2f,0.2f,0.2f,m_sceneOption.m_ui_backalpha);
-      if (this->menuWmain != nullptr) this->menuWmain->set_color(bgColor);
-    };
+    hudWfixedSize->set_fontSize(tre::ui::s_size(14, tre::ui::SIZE_PIXEL));
 
-    menuWoption->create_widgetText(3,0)->set_text("size");
-    tre::ui::widget *wSize = menuWoption->create_widgetBar(3,1)->set_value(m_sceneOption.m_ui_size)->set_valuemin(0.1f)->set_valuemax(2.f)->set_isactive(true)->set_iseditable(true);
-    wSize->wcb_modified_ongoing = [this] (tre::ui::widget *self)
-    {
-      this->m_sceneOption.m_ui_size = static_cast<tre::ui::widgetBar*>(self)->get_value();
-    };
+    hudWfixedSize->set_layoutGrid(3,2);
 
-    menuWoption->create_widgetText(4,0)->set_text("color saturation");
-    tre::ui::widget *wSatur = menuWoption->create_widgetBar(4,1)->set_value(m_sceneOption.m_ui_saturation)->set_isactive(true)->set_iseditable(true);
-    wSatur->wcb_modified_ongoing = [this] (tre::ui::widget *self)
-    {
-      this->m_sceneOption.m_ui_saturation = static_cast<tre::ui::widgetBar*>(self)->get_value();
-      const float r = 0.80f - 0.80f * this->m_sceneOption.m_ui_saturation;
-      const float g = 1.00f;
-      const float b = 0.95f - 0.80f * this->m_sceneOption.m_ui_saturation;
-      if (this->menuWmain != nullptr) this->menuWmain->set_colormask(glm::vec4(r,g,b,this->m_sceneOption.m_ui_alpha));
-    };
+    hudWfixedSize->create_widgetText(0, 0)->set_text("Control bar");
+    hudWfixedSize->create_widgetBar(0,1)->set_value(0.2f)->set_valuethreshold(0.3f)->set_withthreshold(true)->set_iseditable(true)->set_isactive(true);
 
-    menuWoption->create_widgetText(5,0)->set_text("cell margin (in Pixel)");
-    tre::ui::widget *wCellMargin = menuWoption->create_widgetSliderInt(5,1)->set_value(m_sceneOption.m_ui_cellMargin)->set_valuemin(0)->set_valuemax(16)->set_isactive(true)->set_iseditable(true);
-    wCellMargin->wcb_modified_ongoing = [this] (tre::ui::widget *self)
-    {
-      this->m_sceneOption.m_ui_cellMargin = static_cast<tre::ui::widgetSliderInt*>(self)->get_value();
-      if (this->menuWmain != nullptr) this->menuWmain->set_cellMargin(tre::ui::s_size(float(this->m_sceneOption.m_ui_cellMargin), tre::ui::SIZE_PIXEL));
-      if (this->hudWmain != nullptr) this->hudWmain->set_cellMargin(tre::ui::s_size(float(this->m_sceneOption.m_ui_cellMargin), tre::ui::SIZE_PIXEL));
-      if (this->hudWfixedSize != nullptr) this->hudWfixedSize->set_cellMargin(tre::ui::s_size(float(this->m_sceneOption.m_ui_cellMargin), tre::ui::SIZE_PIXEL));
-    };
-
-    menuWoption->create_widgetText(6,0)->set_text("col-0 spacing (in Pixel)");
-    tre::ui::widget *wCol0Spacing = menuWoption->create_widgetSliderInt(6,1)->set_value(m_sceneOption.m_ui_col0Spacing)->set_valuemin(0)->set_valuemax(16)->set_isactive(true)->set_iseditable(true);
-    wCol0Spacing->wcb_modified_ongoing = [this] (tre::ui::widget *self)
-    {
-      this->m_sceneOption.m_ui_col0Spacing = static_cast<tre::ui::widgetSliderInt*>(self)->get_value();
-      if (this->menuWmain != nullptr) this->menuWmain->set_colSpacement(0, tre::ui::s_size(float(this->m_sceneOption.m_ui_col0Spacing), tre::ui::SIZE_PIXEL), false);
-    };
-
-    menuWoption->create_widgetText(7,0, 1,2)->set_text("Scene controls")->set_fontsizeModifier(1.1f)->set_color(glm::vec4(1.f, 0.f, 1.f, 1.f));
-
-    menuWoption->create_widgetText(8,0)->set_text("gizmo local");
-    tre::ui::widget *wGizmoLocal = menuWoption->create_widgetBoxCheck(8,1)->set_value(true)->set_isactive(true)->set_iseditable(true);
-    wGizmoLocal->wcb_modified_finished = [this] (tre::ui::widget *self)
-    {
-      this->m_cubeGizmo.SetLocalFrame(static_cast<tre::ui::widgetBoxCheck*>(self)->get_value());
-    };
-
-    menuWoption->create_widgetText(9,0)->set_text("gizmo size");
-    tre::ui::widget *wGizmoSize = menuWoption->create_widgetBar(9,1)->set_value(0.13f)->set_valuemin(0.01f)->set_valuemax(0.5f)
-                                  ->set_isactive(true)->set_iseditable(true);
-    wGizmoSize->wcb_modified_ongoing = [this] (tre::ui::widget *self)
-    {
-      this->m_cubeGizmo.GizmoSelfScale() = static_cast<tre::ui::widgetBar*>(self)->get_value();
-    };
-
-    tre::ui::widget *wFeedBackFontSize = new widgetTextAndReport;
-    menuWoption->set_widget(wFeedBackFontSize, 10,0, 1,55);
-    wFeedBackFontSize->wcb_animate = [](tre::ui::widget *self, float)
-    {
-      widgetTextAndReport* selfTx = static_cast<widgetTextAndReport*>(self);
-
-      const unsigned fontSizePixel = selfTx->get_resolvedFontSizePixel();
-      const unsigned pickedSizePixel = selfTx->get_pickedFontSizePixel();
-
-      char outT[128];
-      std::snprintf(outT, 128, "resolved font size %d (font look-up %d)", fontSizePixel, pickedSizePixel);
-      outT[127] = 0;
-
-      selfTx->set_text(outT);
-    };
-
-    menuWoption->create_widgetText(12,0, 1,2)->set_text("Window controls")->set_fontsizeModifier(1.1f)->set_color(glm::vec4(1.f, 0.f, 1.f, 1.f));
-
-    menuWoption->create_widgetText(13,0)->set_text("show main");
-    tre::ui::widget *wShowMain = menuWoption->create_widgetBoxCheck(13,1)->set_value(true)->set_isactive(true)->set_iseditable(true);
-    wShowMain->wcb_modified_finished = [this] (tre::ui::widget *self)
-    {
-      if (menuWmain != nullptr) menuWmain->set_visible(static_cast<tre::ui::widgetBoxCheck*>(self)->get_value());
-    };
-    wShowMain->wcb_animate = [this] (tre::ui::widget *self, float )
-    {
-      if (menuWmain != nullptr) static_cast<tre::ui::widgetBoxCheck*>(self)->set_value(menuWmain->get_visible());
-      else                      static_cast<tre::ui::widgetBoxCheck*>(self)->set_value(false)->set_isactive(false);
-    };
-
-    menuWoption->create_widgetText(14,0)->set_text("show color");
-    tre::ui::widget *wShowColor = menuWoption->create_widgetBoxCheck(14,1)->set_value(true)->set_isactive(true)->set_iseditable(true);
-    wShowColor->wcb_modified_finished = [this] (tre::ui::widget *self)
-    {
-      menuWcolor->set_visible(static_cast<tre::ui::widgetBoxCheck*>(self)->get_value());
-    };
-    wShowColor->wcb_animate = [this] (tre::ui::widget *self, float )
-    {
-      if (menuWcolor != nullptr) static_cast<tre::ui::widgetBoxCheck*>(self)->set_value(menuWcolor->get_visible());
-      else                       static_cast<tre::ui::widgetBoxCheck*>(self)->set_value(false)->set_isactive(false);
-    };
-
-    menuWoption->create_widgetText(15,0)->set_text("show 3D-fixed");
-    tre::ui::widget *wShow3DFixed = menuWoption->create_widgetBoxCheck(15,1)->set_value(true)->set_isactive(true)->set_iseditable(true);
-    wShow3DFixed->wcb_modified_finished = [this] (tre::ui::widget *self)
-    {
-      hudWfixedSize->set_visible(static_cast<tre::ui::widgetBoxCheck*>(self)->get_value());
-    };
-    wShow3DFixed->wcb_animate = [this] (tre::ui::widget *self, float )
-    {
-      if (hudWfixedSize != nullptr) static_cast<tre::ui::widgetBoxCheck*>(self)->set_value(hudWfixedSize->get_visible());
-      else                          static_cast<tre::ui::widgetBoxCheck*>(self)->set_value(false)->set_isactive(false);
-    };
-
-    menuWoption->create_widgetText(16,0)->set_text("show 3D-varying");
-    tre::ui::widget *wShow3DVarying = menuWoption->create_widgetBoxCheck(16,1)->set_value(true)->set_isactive(true)->set_iseditable(true);
-    wShow3DVarying->wcb_modified_finished = [this] (tre::ui::widget *self)
-    {
-      hudWmain->set_visible(static_cast<tre::ui::widgetBoxCheck*>(self)->get_value());
-    };
-    wShow3DVarying->wcb_animate = [this] (tre::ui::widget *self, float )
-    {
-      if (hudWmain != nullptr) static_cast<tre::ui::widgetBoxCheck*>(self)->set_value(hudWmain->get_visible());
-      else                     static_cast<tre::ui::widgetBoxCheck*>(self)->set_value(false)->set_isactive(false);
-    };
-
-    menuWoption->create_widgetText(19,0)->set_text("language");
-    static const std::array<std::string, TRE_UI_NLANGUAGES> kLanguages = {"English", "Français"};
-    tre::ui::widget *wLanguage = menuWoption->create_widgetLineChoice(19,1)->set_values(kLanguages)->set_cyclic(true)->set_isactive(true)->set_iseditable(true);
-    wLanguage->wcb_modified_finished = [this] (tre::ui::widget *self)
-    {
-      menu.set_language(static_cast<tre::ui::widgetLineChoice*>(self)->get_selectedIndex());
-    };
+    hudWfixedSize->create_widgetText(1, 0)->set_text("Control slider");
+    hudWfixedSize->create_widgetSlider(1,1)->set_value(0.4f)->set_valuemin(-0.8f)->set_iseditable(true)->set_isactive(true);
   }
 
   if (args.withColor)
@@ -501,7 +384,7 @@ bool s_uiManager::load(const s_loadArgs &args)
     widgetColor *wHueInv = new widgetColor;
     menuWcolor->set_widget(wHueInv, 13, 3);
 
-    menuWcolor->wcb_animate = [=](tre::ui::widget *, float) // gore-way (the values are re-computed each frames)
+    menuWcolor->wcb_animate = [=](tre::ui::window *, float) // gore-way (the values are re-computed each frames)
     {
       const glm::vec4 baseColor = glm::vec4(wBaseR->get_value(), wBaseG->get_value(), wBaseB->get_value(), wBaseA->get_value());
       const glm::vec4 backColor = glm::vec4(wBackR->get_value(), wBackG->get_value(), wBackB->get_value(), wBackA->get_value());
@@ -520,64 +403,224 @@ bool s_uiManager::load(const s_loadArgs &args)
     };
   }
 
+  if (args.withOption)
+  {
+    menuWoption = menu.create_window();
+    TRE_ASSERT(menuWoption != nullptr);
+
+    menuWoption->set_topbar("OPTION", true, false);
+    menuWoption->set_alignMask(tre::ui::ALIGN_MASK_HORIZONTAL_LEFT | tre::ui::ALIGN_MASK_VERTICAL_CENTERED);
+
+    menuWoption->set_fontSize(tre::ui::s_size(16, tre::ui::SIZE_PIXEL));
+    menuWoption->set_cellMargin(tre::ui::s_size(3, tre::ui::SIZE_PIXEL));
+
+    {
+      glm::mat3 m(1.f);
+      m[2][0] = -10.f; // the "resizeEvent" will move the window inside the screen.
+      menuWoption->set_mat3(m);
+    }
+
+    menuWoption->set_layoutGrid(20,2);
+    menuWoption->set_colAlignment(1, tre::ui::ALIGN_MASK_CENTERED);
+
+    menuWoption->create_widgetText(0,0, 1,2)->set_text("Main window controls")->set_fontsizeModifier(1.1f)->set_color(glm::vec4(1.f, 0.f, 1.f, 1.f));
+
+    menuWoption->create_widgetText(1,0)->set_text("transparency");
+    tre::ui::widget *wAlpha = menuWoption->create_widgetBar(1,1)->set_value(m_sceneOption.m_ui_alpha)->set_isactive(true)->set_iseditable(true);
+    wAlpha->wcb_modified_ongoing = [this] (tre::ui::widget *self)
+    {
+      this->m_sceneOption.m_ui_alpha = static_cast<tre::ui::widgetBar*>(self)->get_value();
+      this->applySceneOptions();
+    };
+
+    menuWoption->create_widgetText(2,0)->set_text("background");
+    tre::ui::widget *wBackalpha = menuWoption->create_widgetBar(2,1)->set_value(m_sceneOption.m_ui_backalpha)->set_isactive(true)->set_iseditable(true);
+    wBackalpha->wcb_modified_ongoing = [this] (tre::ui::widget *self)
+    {
+      this->m_sceneOption.m_ui_backalpha = static_cast<tre::ui::widgetBar*>(self)->get_value();
+      this->applySceneOptions();
+    };
+
+    menuWoption->create_widgetText(3,0)->set_text("size (in Pixel)");
+    tre::ui::widget *wSize = menuWoption->create_widgetBar(3,1)->set_value(m_sceneOption.m_ui_sizePixel)->set_valuemin(4.f)->set_valuemax(30.f)->set_snapInterval(1.f)->set_withtext(true)->set_isactive(true)->set_iseditable(true);
+    wSize->wcb_modified_ongoing = [this] (tre::ui::widget *self)
+    {
+      this->m_sceneOption.m_ui_sizePixel = int(static_cast<tre::ui::widgetBar*>(self)->get_value());
+      this->applySceneOptions();
+    };
+
+    menuWoption->create_widgetText(4,0)->set_text("cell margin (in Pixel)");
+    tre::ui::widget *wCellMargin = menuWoption->create_widgetSliderInt(4,1)->set_value(m_sceneOption.m_ui_cellMargin)->set_valuemin(0)->set_valuemax(16)->set_isactive(true)->set_iseditable(true);
+    wCellMargin->wcb_modified_ongoing = [this] (tre::ui::widget *self)
+    {
+      this->m_sceneOption.m_ui_cellMargin = static_cast<tre::ui::widgetSliderInt*>(self)->get_value();
+      this->applySceneOptions();
+    };
+
+    menuWoption->create_widgetText(6,0)->set_text("col-0 spacing (in Pixel)");
+    tre::ui::widget *wCol0Spacing = menuWoption->create_widgetSliderInt(6,1)->set_value(m_sceneOption.m_ui_col0Spacing)->set_valuemin(0)->set_valuemax(16)->set_isactive(true)->set_iseditable(true);
+    wCol0Spacing->wcb_modified_ongoing = [this] (tre::ui::widget *self)
+    {
+      this->m_sceneOption.m_ui_col0Spacing = static_cast<tre::ui::widgetSliderInt*>(self)->get_value();
+      this->applySceneOptions();
+    };
+
+    menuWoption->create_widgetText(7,0, 1,2)->set_text("Scene controls")->set_fontsizeModifier(1.1f)->set_color(glm::vec4(1.f, 0.f, 1.f, 1.f));
+
+    menuWoption->create_widgetText(8,0)->set_text("gizmo local");
+    tre::ui::widget *wGizmoLocal = menuWoption->create_widgetBoxCheck(8,1)->set_value(true)->set_isactive(true)->set_iseditable(true);
+    wGizmoLocal->wcb_modified_finished = [this] (tre::ui::widget *self)
+    {
+      this->m_cubeGizmo.SetLocalFrame(static_cast<tre::ui::widgetBoxCheck*>(self)->get_value());
+    };
+
+    menuWoption->create_widgetText(9,0)->set_text("gizmo size");
+    tre::ui::widget *wGizmoSize = menuWoption->create_widgetBar(9,1)->set_value(0.13f)->set_valuemin(0.01f)->set_valuemax(0.5f)
+                                  ->set_isactive(true)->set_iseditable(true);
+    wGizmoSize->wcb_modified_ongoing = [this] (tre::ui::widget *self)
+    {
+      this->m_cubeGizmo.GizmoSelfScale() = static_cast<tre::ui::widgetBar*>(self)->get_value();
+    };
+
+    tre::ui::widget *wFeedBackFontSize = new widgetTextAndReport;
+    menuWoption->set_widget(wFeedBackFontSize, 10,0, 1,55);
+    wFeedBackFontSize->wcb_animate = [](tre::ui::widget *self, float)
+    {
+      widgetTextAndReport* selfTx = static_cast<widgetTextAndReport*>(self);
+
+      const unsigned fontSizePixel = selfTx->get_resolvedFontSizePixel();
+      const unsigned pickedSizePixel = selfTx->get_pickedFontSizePixel();
+
+      char outT[128];
+      std::snprintf(outT, 128, "resolved font size %d (font look-up %d)", fontSizePixel, pickedSizePixel);
+      outT[127] = 0;
+
+      selfTx->set_text(outT);
+    };
+
+    menuWoption->create_widgetText(12,0, 1,2)->set_text("Window controls")->set_fontsizeModifier(1.1f)->set_color(glm::vec4(1.f, 0.f, 1.f, 1.f));
+
+    menuWoption->create_widgetText(13,0)->set_text("show main");
+    tre::ui::widget *wShowMain = menuWoption->create_widgetBoxCheck(13,1)->set_value(true)->set_isactive(true)->set_iseditable(true);
+    wShowMain->wcb_modified_finished = [this] (tre::ui::widget *self)
+    {
+      if (menuWmain != nullptr) menuWmain->set_isvisible(static_cast<tre::ui::widgetBoxCheck*>(self)->get_value());
+    };
+    wShowMain->wcb_animate = [this] (tre::ui::widget *self, float )
+    {
+      if (menuWmain != nullptr) static_cast<tre::ui::widgetBoxCheck*>(self)->set_value(menuWmain->get_isvisible());
+      else                      static_cast<tre::ui::widgetBoxCheck*>(self)->set_value(false)->set_isactive(false);
+    };
+
+    menuWoption->create_widgetText(14,0)->set_text("show color");
+    tre::ui::widget *wShowColor = menuWoption->create_widgetBoxCheck(14,1)->set_value(true)->set_isactive(true)->set_iseditable(true);
+    wShowColor->wcb_modified_finished = [this] (tre::ui::widget *self)
+    {
+      menuWcolor->set_isvisible(static_cast<tre::ui::widgetBoxCheck*>(self)->get_value());
+    };
+    wShowColor->wcb_animate = [this] (tre::ui::widget *self, float )
+    {
+      if (menuWcolor != nullptr) static_cast<tre::ui::widgetBoxCheck*>(self)->set_value(menuWcolor->get_isvisible());
+      else                       static_cast<tre::ui::widgetBoxCheck*>(self)->set_value(false)->set_isactive(false);
+    };
+
+    menuWoption->create_widgetText(15,0)->set_text("show 3D-fixed");
+    tre::ui::widget *wShow3DFixed = menuWoption->create_widgetBoxCheck(15,1)->set_value(true)->set_isactive(true)->set_iseditable(true);
+    wShow3DFixed->wcb_modified_finished = [this] (tre::ui::widget *self)
+    {
+      hudWfixedSize->set_isvisible(static_cast<tre::ui::widgetBoxCheck*>(self)->get_value());
+    };
+    wShow3DFixed->wcb_animate = [this] (tre::ui::widget *self, float )
+    {
+      if (hudWfixedSize != nullptr) static_cast<tre::ui::widgetBoxCheck*>(self)->set_value(hudWfixedSize->get_isvisible());
+      else                          static_cast<tre::ui::widgetBoxCheck*>(self)->set_value(false)->set_isactive(false);
+    };
+
+    menuWoption->create_widgetText(16,0)->set_text("show 3D-varying");
+    tre::ui::widget *wShow3DVarying = menuWoption->create_widgetBoxCheck(16,1)->set_value(true)->set_isactive(true)->set_iseditable(true);
+    wShow3DVarying->wcb_modified_finished = [this] (tre::ui::widget *self)
+    {
+      hudWmain->set_isvisible(static_cast<tre::ui::widgetBoxCheck*>(self)->get_value());
+    };
+    wShow3DVarying->wcb_animate = [this] (tre::ui::widget *self, float )
+    {
+      if (hudWmain != nullptr) static_cast<tre::ui::widgetBoxCheck*>(self)->set_value(hudWmain->get_isvisible());
+      else                     static_cast<tre::ui::widgetBoxCheck*>(self)->set_value(false)->set_isactive(false);
+    };
+
+    menuWoption->create_widgetText(18,0)->set_text("color theme");
+    static const std::array<std::string, 3> kColorThemes = { "Dark", "Blue", "Light" };
+    tre::ui::widget *wColorTheme = menuWoption->create_widgetLineChoice(18,1)->set_values(kColorThemes)->set_cyclic(true)->set_isactive(true)->set_iseditable(true);
+    wColorTheme->wcb_modified_finished = [this] (tre::ui::widget *self)
+    {
+      this->m_sceneOption.m_ui_colorTheme = static_cast<tre::ui::widgetLineChoice*>(self)->get_selectedIndex();
+      this->applySceneOptions();
+    };
+
+
+    menuWoption->create_widgetText(19,0)->set_text("language");
+    static const std::array<std::string, TRE_UI_NLANGUAGES> kLanguages = {"English", "Français"};
+    tre::ui::widget *wLanguage = menuWoption->create_widgetLineChoice(19,1)->set_values(kLanguages)->set_cyclic(true)->set_isactive(true)->set_iseditable(true);
+    wLanguage->wcb_modified_finished = [this] (tre::ui::widget *self)
+    {
+      menu.set_language(static_cast<tre::ui::widgetLineChoice*>(self)->get_selectedIndex());
+      // dynamic.
+    };
+  }
+
+  applySceneOptions();
+
   menu.loadIntoGPU();
   menu.loadShader();
-
-  if (args.with3D)
-  {
-    hud.set_defaultFont(args.font);
-
-    hudWmain = hud.create_window();
-    TRE_ASSERT(hudWmain != nullptr);
-
-    hudWmain->set_color(glm::vec4(0.5f,0.5f,0.5f,0.9f));
-    hudWmain->set_colormask(glm::vec4(0.3f,1.f,0.3f,0.7f));
-    hudWmain->set_topbar("3D interface", true, true);
-    {
-      glm::mat4 m(1.f);
-      m = glm::rotate(m, -0.6f, glm::vec3(0.f,1.f,0.f));
-      m[3] = glm::vec4(3.f,1.f,0.f,1.f); // position in world-space.
-      hudWmain->set_mat4(m);
-    }
-
-    hudWmain->set_fontSize(0.5f);
-
-    hudWmain->set_layoutGrid(3,2);
-
-    hudWmain->create_widgetText(0, 0)->set_text("Control bar");
-    hudWmain->create_widgetBar(0,1)->set_value(0.2f)->set_valuethreshold(0.3f)->set_withthreshold(true)->set_iseditable(true)->set_isactive(true);
-
-    hudWmain->create_widgetText(1, 0)->set_text("Control slider");
-    hudWmain->create_widgetSlider(1,1)->set_value(0.4f)->set_valuemin(-0.8f)->set_iseditable(true)->set_isactive(true);
-
-    hudWfixedSize = hud.create_window();
-    TRE_ASSERT(hudWfixedSize != nullptr);
-
-    hudWfixedSize->set_color(glm::vec4(0.5f,0.5f,0.5f,0.9f));
-    hudWfixedSize->set_colormask(glm::vec4(0.3f,1.f,0.3f,0.7f));
-    hudWfixedSize->set_topbar("3D interface (fixed size)", true, true);
-    {
-      glm::mat4 m(1.f);
-      m = glm::rotate(m, -0.5f, glm::vec3(0.f,1.f,0.f));
-      m[3] = glm::vec4(3.f,2.f,0.f,1.f); // position in world-space.
-      hudWfixedSize->set_mat4(m);
-    }
-
-    hudWfixedSize->set_fontSize(tre::ui::s_size(14, tre::ui::SIZE_PIXEL));
-
-    hudWfixedSize->set_layoutGrid(3,2);
-
-    hudWfixedSize->create_widgetText(0, 0)->set_text("Control bar");
-    hudWfixedSize->create_widgetBar(0,1)->set_value(0.2f)->set_valuethreshold(0.3f)->set_withthreshold(true)->set_iseditable(true)->set_isactive(true);
-
-    hudWfixedSize->create_widgetText(1, 0)->set_text("Control slider");
-    hudWfixedSize->create_widgetSlider(1,1)->set_value(0.4f)->set_valuemin(-0.8f)->set_iseditable(true)->set_isactive(true);
-  }
 
   hud.loadIntoGPU();
   hud.loadShader();
 
   return true;
+}
+
+// ----------------------------------------------------------------------------
+
+void s_uiManager::applySceneOptions()
+{
+
+  if (menuWmain != nullptr) menuWmain->set_transparency(m_sceneOption.m_ui_alpha);
+  if (hudWmain != nullptr) hudWmain->set_transparency(m_sceneOption.m_ui_alpha);
+  if (hudWfixedSize != nullptr) hudWfixedSize->set_transparency(m_sceneOption.m_ui_alpha);
+
+  if (menuWmain != nullptr) menuWmain->set_cellMargin(tre::ui::s_size(float(m_sceneOption.m_ui_cellMargin), tre::ui::SIZE_PIXEL));
+  if (hudWmain != nullptr) hudWmain->set_cellMargin(tre::ui::s_size(float(m_sceneOption.m_ui_cellMargin), tre::ui::SIZE_PIXEL));
+  if (hudWfixedSize != nullptr) hudWfixedSize->set_cellMargin(tre::ui::s_size(float(m_sceneOption.m_ui_cellMargin), tre::ui::SIZE_PIXEL));
+
+  tre::ui::s_colorTheme theme = tre::ui::s_colorTheme(); // default is dark
+  switch (m_sceneOption.m_ui_colorTheme)
+  {
+    case 0: // dark (default)
+      theme.m_colorBackground.w = m_sceneOption.m_ui_backalpha;
+      break;
+    case 1: // blue
+      theme.m_colorBackground = glm::vec4(0.3f, 0.3f, 0.6f, m_sceneOption.m_ui_backalpha);
+      theme.m_colorSurface = glm::vec4(0.4f, 0.4f, 0.7f, 1.f);
+      theme.m_colorPrimary = glm::vec4(0.5f, 0.5f, 1.f, 1.f);
+      theme.m_colorOnSurface = glm::vec4(1.f, 1.f, 1.f, 1.f);
+      theme.m_colorOnObject = glm::vec4(0.f, 0.f, 0.3f, 1.f);
+      theme.factor = 0.5f;
+    break;
+    case 2: // light
+      theme.m_colorBackground = glm::vec4(0.9f, 0.9f, 0.9f, m_sceneOption.m_ui_backalpha);
+      theme.m_colorSurface = glm::vec4(0.8f, 0.8f, 0.8f, 1.f);
+      theme.m_colorPrimary = glm::vec4(1.f, 1.f, 1.f, 1.f);
+      theme.m_colorOnSurface = glm::vec4(0.2f, 0.2f, 0.2f, 1.f);
+      theme.m_colorOnObject = glm::vec4(0.4f, 0.4f, 0.4f, 1.f);
+    break;
+  }
+  if (menuWmain != nullptr) menuWmain->set_colortheme(theme);
+  if (menuWcolor != nullptr) menuWcolor->set_colortheme(theme);
+
+  if (menuWmain != nullptr) menuWmain->set_colSpacement(0, tre::ui::s_size(float(m_sceneOption.m_ui_col0Spacing), tre::ui::SIZE_PIXEL), false);
+
+  if (menuWmain != nullptr) menuWmain->set_fontSize(tre::ui::s_size(m_sceneOption.m_ui_sizePixel, tre::ui::SIZE_PIXEL));
+
 }
 
 // ----------------------------------------------------------------------------

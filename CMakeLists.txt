@@ -1,7 +1,5 @@
+cmake_minimum_required(VERSION 3.5)
 project(TinyRenderEngine CXX)
-cmake_minimum_required(VERSION 3.1)
-
-# set(CMAKE_VERBOSE_MAKEFILE ON) # Debug
 
 #
 # This project works both as stand-alone and included as a sub-project.

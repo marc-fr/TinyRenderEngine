@@ -123,7 +123,6 @@ static int app_init(int argc, char **argv)
 
     worldWin = worldUI.create_window();
     worldWin->set_colormask(glm::vec4(0.7f,1.f,0.7f,0.9f));
-    worldWin->set_colorAlpha(0.7f);
     worldWin->set_fontSize(tre::ui::s_size(16, tre::ui::SIZE_PIXEL));
     worldWin->set_cellMargin(tre::ui::s_size(4, tre::ui::SIZE_PIXEL));
     worldWin->set_topbar("Parameters", true, false);

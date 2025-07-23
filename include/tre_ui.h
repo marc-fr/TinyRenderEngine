@@ -11,17 +11,17 @@
 
 namespace tre {
 
-class shader;   // foward-declaration
-class font;     // foward-declaration
+class shader;
+class font;
 
-class baseUI;   // foward-declaration
-class baseUI2D; // foward-declaration
-class baseUI3D; // foward-declaration
+class baseUI;
+class baseUI2D;
+class baseUI3D;
 
 namespace ui {
 
-class widget; // foward-declaration
-class window; // foward-declaration
+class widget;
+class window;
 
 // Size =======================================================================
 
@@ -49,7 +49,7 @@ struct s_size
 
 // Color ======================================================================
 
-/// Color modes for color modifiers (highlighting, ...)
+/// Color modes for color modifiers
 enum e_colorThemeMode
 {
   COLORTHEME_LIGHTNESS,  ///< Use the brightness of the color
@@ -63,17 +63,18 @@ glm::vec4 blendColor(const glm::vec4 &frontColor, const glm::vec4 &backColor, fl
 
 struct s_colorTheme
 {
-  e_colorThemeMode mode;
-  float            factor;
+  glm::vec4 m_colorBackground = glm::vec4(0.f);   ///< background (0dp elevation)
+  glm::vec4 m_colorSurface = glm::vec4(0.2f, 0.2f, 0.2f, 0.5f); ///< surface (1dp elevation)
+  glm::vec4 m_colorPrimary = glm::vec4(0.4f, 0.4f, 0.4f, 0.7f);  ///< plain color for objects
 
-  s_colorTheme(e_colorThemeMode m, float f) : mode(m), factor(f) {}
-  bool operator==(const s_colorTheme &other) const { return mode == other.mode && factor == other.factor; }
-  bool operator!=(const s_colorTheme &other) const { return mode != other.mode || factor != other.factor; }
+  glm::vec4 m_colorOnSurface = glm::vec4(1.f); ///< text/line on background or surface
+  glm::vec4 m_colorOnObject = glm::vec4(1.f);  ///< text/line on objects
 
-  glm::vec4 resolveColor(const glm::vec4 &baseColor, float modifier) const
-  {
-    return ui::transformColor(baseColor, mode, modifier * factor);
-  }
+  float            factor = 1.f;
+
+  bool operator!=(const s_colorTheme &) const { return true; }
+
+  glm::vec4 resolveColor(const glm::vec4 &baseColor, float modifier) const { return transformColor(baseColor, COLORTHEME_LIGHTNESS, modifier * factor); }
 };
 
 // Language (auto-translate) ==================================================
@@ -116,6 +117,8 @@ struct s_layoutGrid
 
   std::vector<s_size> m_rowsInbetweenSpace, m_colsInbetweenSpace; ///< In-between size of rows and columns
 
+  s_size m_totalHeight, m_totalWidth; ///< Total size (given by the user)
+
   void set_dimension(uint rows, uint cols);
   uint index(uint iRow, uint iCol) const { TRE_ASSERT(iRow < m_dimension.y); TRE_ASSERT(iCol < m_dimension.x); return iCol + iRow * m_dimension.x; }
   glm::vec2 computeWidgetZones(const ui::window &win, const glm::vec2 &offset = glm::vec2(0.f)); ///< Computes the zone assigned to each widget. Returns the global size.
@@ -123,6 +126,12 @@ struct s_layoutGrid
 };
 
 // Other layout ?
+
+// Geometry helpers ===========================================================
+
+void fillNull(glm::vec4 * __restrict &buffer, const unsigned count);
+void fillRect(glm::vec4 * __restrict &buffer, const glm::vec4 &AxyBxy, const glm::vec4 &color, const glm::vec4 &AuvBuv = glm::vec4(0.f));
+void fillLine(glm::vec4 * __restrict &buffer, const glm::vec2 &p1, const glm::vec2 &p2, const glm::vec4 &color);
 
 // Events =====================================================================
 
@@ -145,13 +154,12 @@ struct s_eventIntern
 #define widget_DECLAREATTRIBUTE(wname,atype,aname,ainit,updateFlag) \
   public : \
     const atype & get_##aname() const { return w##aname; } \
-    wname * set_##aname(const atype & a_##aname) { updateFlag |= (w##aname != a_##aname); w##aname = a_##aname; return this; } \
+    wname * set_##aname(const atype & a_##aname) { if (w##aname != a_##aname) { setUpdateNeeded##updateFlag(); w##aname = a_##aname; } return this; } \
   protected :  \
     atype w##aname ainit;
 
-/**
- * @brief The widget class
- */
+// -------------------------------------------------------------
+
 class widget
 {
 public:
@@ -160,12 +168,10 @@ public:
 
   /// @name attributes
   /// @{
-  widget_DECLAREATTRIBUTE(widget,glm::vec4,color,= glm::vec4(0.8f, 0.8f, 0.8f, 1.f), m_isUpdateNeededData) ///< main color
-  widget_DECLAREATTRIBUTE(widget,bool,isactive,= false, m_isUpdateNeededData) ///< When true, the widget receives events and can trigger callbacks
-  widget_DECLAREATTRIBUTE(widget,bool,iseditable,= false, m_isUpdateNeededData) ///< When true, the widget is editable from events
-  widget_DECLAREATTRIBUTE(widget,bool,ishighlighted, = false, m_isUpdateNeededData) ///< read & write attribute: "acceptEvent" modifies the value; user can change the value, but no callback will be triggered in this case.
-  widget_DECLAREATTRIBUTE(widget,s_size,widthMin, = 0.f, m_isUpdateNeededLayout) ///< minimal width
-  widget_DECLAREATTRIBUTE(widget,s_size,heightMin, = 0.f, m_isUpdateNeededLayout) ///< minimal height
+  widget_DECLAREATTRIBUTE(widget,glm::vec4,color,= glm::vec4(-1.f), Data) ///< main color overwrite
+  widget_DECLAREATTRIBUTE(widget,bool,isactive,= false, Data) ///< When true, the widget receives events and can trigger callbacks
+  widget_DECLAREATTRIBUTE(widget,bool,iseditable,= false, Data) ///< When true, the widget is editable from events
+  widget_DECLAREATTRIBUTE(widget,bool,ishighlighted, = false, Data) ///< read & write attribute: "acceptEvent" modifies the value; user can change the value, but no callback will be triggered in this case.
   /// @}
 
   /// @name callbacks
@@ -186,13 +192,26 @@ public:
   /// @name virtual methods
   /// @{
 protected:
-  virtual uint get_vcountSolid() const { return 0; } ///< Return nbr of vertices needed for solid drawing (triangles)
-  virtual uint get_vcountLine() const { return 0; } ///< Return nbr of vertices needed for solid drawing (lines)
-  virtual uint get_vcountPict() const { return 0; } ///< Return nbr of vertices needed for textured drawing
-  virtual uint get_vcountText() const { return 0; } ///< Return nbr of vertices needed for text drawing
-  virtual uint get_textureSlot() const { return uint(-1); } ///< Return texture for textured-drawing (a widget cannot use more than 1 texture slot, excluding the font of the text)
+  struct s_drawElementCount
+  {
+    unsigned m_vcountSolid = 0; ///< Return nbr of vertices needed for solid drawing (triangles)
+    unsigned m_vcountLine = 0;  ///< Return nbr of vertices needed for solid drawing (lines)
+    unsigned m_vcountPict = 0;  ///< Return nbr of vertices needed for textured drawing
+    unsigned m_vcountText = 0;  ///< Return nbr of vertices needed for text drawing
+    unsigned m_textureSlot = -1; ///< Return texture for textured-drawing (a widget cannot use more than 1 texture slot, excluding the font of the text)
+
+    s_drawElementCount operator+=(const s_drawElementCount &other)
+    {
+      m_vcountSolid += other.m_vcountSolid;
+      m_vcountLine += other.m_vcountLine;
+      m_vcountPict += other.m_vcountPict;
+      m_vcountText += other.m_vcountText;
+      return *this;
+    }
+  };
+  virtual s_drawElementCount get_drawElementCount() const = 0;
   virtual glm::vec2 get_zoneSizeDefault() const = 0; ///< Return the default widget size (in the window's space).
-  virtual void compute_data() = 0;
+  virtual void compute_data() = 0; ///< fill the drawing buffers
   virtual void acceptEvent(s_eventIntern &event) { acceptEventBase_focus(event); acceptEventBase_click(event); }
   virtual void animate(float dt) { if (wcb_animate != nullptr) wcb_animate(this, dt); }
   /// @}
@@ -200,9 +219,11 @@ protected:
   /// @name helpers
   /// @{
 public:
-  virtual bool getIsOverPosition(const glm::vec3 & position) const; ///< Return true if the position is under the m_zone. Local space position. z is ignored.
-  glm::vec4 resolve_color() const;
-  widget* set_colorAlpha(float alpha) { m_isUpdateNeededData |= (alpha != wcolor.a); wcolor.a = alpha; return this; }
+  bool getIsOverPosition(const glm::vec3 & position) const { return (m_zone.x <= position.x) && (m_zone.z >= position.x) && (m_zone.y <= position.y) && (m_zone.w >= position.y); } ///< Return true if the position is under the m_zone. Local space position. z is ignored.
+  widget* set_colorAlpha(float alpha) { if (alpha != wcolor.a) { wcolor.a = alpha; setUpdateNeededData(); } return this; }
+  void setUpdateNeededAddress() const;
+  void setUpdateNeededLayout() const;
+  void setUpdateNeededData() const;
   /// @}
 
   /// @name intern helpers
@@ -210,30 +231,20 @@ public:
 protected:
   void acceptEventBase_focus(s_eventIntern &event); ///< trigger focus-state
   void acceptEventBase_click(s_eventIntern &event); ///< trigger simple click-callbacks (warning: event can be modified)
-  void set_zone(const glm::vec4 &assignedZone) { m_isUpdateNeededData |= (m_zone != assignedZone); m_zone = assignedZone; }
+  void set_zone(const glm::vec4 &assignedZone) { if (m_zone != assignedZone) { m_zone = assignedZone; setUpdateNeededData(); } }
 
-  glm::vec4  m_zone = glm::vec4(0.f);        ///< Widget zone (xmin,ymin,xmax,ymax)
-  bool       m_isUpdateNeededAdress = true;  ///< true when an object's adress update is needed (nbr of vertice changed, ...)
-  bool       m_isUpdateNeededLayout = true;  ///< true when a layout update is needed (widget gets resized, ..., typically when get_zoneSizeDefault() will return a new different value)
-  bool       m_isUpdateNeededData   = true;  ///< true when the vertice-data will changed (positions, color, ...)
-
-  struct s_objAdress
+  glm::vec4  m_zone = glm::vec4(0.f); ///< Widget zone (xmin,ymin,xmax,ymax)
+  window *m_parentWindow = nullptr;
+  struct s_objAddress
   {
     uint part = 0u;
     uint offset = 0u;
   };
-  mutable s_objAdress m_adSolid, m_adrLine, m_adrPict, m_adrText; ///< Adress plage for each specific object
-  /// @}
-
-  /// @name parent-hood
-  /// @{
-public:
-  widget*               get_parent() const { TRE_ASSERT(m_parent != nullptr); return m_parent; }
-  virtual window*       get_parentWindow() const { TRE_ASSERT(m_parent != nullptr); return m_parent->get_parentWindow(); }
-  virtual tre::baseUI*  get_parentUI() const { TRE_ASSERT(m_parent != nullptr); return m_parent->get_parentUI(); }
-  virtual float         resolve_colorModifier() const { TRE_ASSERT(m_parent != nullptr); return (wisactive && wishighlighted ? 1.f : 0.f) + m_parent->resolve_colorModifier(); }
-private:
-  widget *m_parent = nullptr;
+  mutable s_objAddress m_adSolid, m_adrLine, m_adrPict, m_adrText; ///< Address plage for each specific object.
+  glm::vec4 * __restrict getDrawBuffer_Solid() const;
+  glm::vec4 * __restrict getDrawBuffer_Line() const;
+  glm::vec4 * __restrict getDrawBuffer_Pict() const;
+  glm::vec4 * __restrict getDrawBuffer_Text() const;
   /// @}
 
 friend class window;
@@ -249,11 +260,7 @@ friend struct s_layoutGrid;
 
 #define widget_DECLARECOMMUNMETHODS() \
   protected : \
-    virtual uint get_vcountSolid() const override; \
-    virtual uint get_vcountLine() const override; \
-    virtual uint get_vcountPict() const override; \
-    virtual uint get_vcountText() const override; \
-    virtual uint get_textureSlot() const override; \
+    virtual s_drawElementCount get_drawElementCount() const override; \
     virtual glm::vec2 get_zoneSizeDefault() const override; \
     virtual void compute_data() override; \
     virtual void acceptEvent(s_eventIntern &event) override;
@@ -263,10 +270,13 @@ class widgetText : public widget
 {
   widget_DECLARECONSTRUCTORS(widgetText)
   widget_DECLARECOMMUNMETHODS()
-  widget_DECLAREATTRIBUTE(widgetText,std::string,text,= "", m_isUpdateNeededAdress = m_isUpdateNeededLayout) ///< Text to be drawn. Note: it makes a local copy of the text (safe but copy data).
-  widget_DECLAREATTRIBUTE(widgetText,float,fontsizeModifier,= 1.f, m_isUpdateNeededLayout) ///< Font-size factor in regards with the parent window's font-size.
-  widget_DECLAREATTRIBUTE(widgetText,bool,withborder,= false, m_isUpdateNeededAdress) ///< True if a border will be drawn
-  widget_DECLAREATTRIBUTE(widgetText,bool,withbackground,= false, m_isUpdateNeededAdress) ///< True if a background will be drawn
+  widget_DECLAREATTRIBUTE(widgetText,std::string,text,= "", Address) ///< Text to be drawn. Note: it makes a local copy of the text (safe but copy data).
+  widget_DECLAREATTRIBUTE(widgetText,float,fontsizeModifier,= 1.f, Layout) ///< Font-size factor in regards with the parent window's font-size.
+  widget_DECLAREATTRIBUTE(widgetText,bool,withborder,= false, Address) ///< True if a border will be drawn
+  widget_DECLAREATTRIBUTE(widgetText,glm::vec4,colorBackground,= glm::vec4(-1.f), Data) ///< Overwrite the background color
+
+  glm::vec4 resolveColorFront() const;
+  glm::vec4 resolveColorBack() const;
 };
 
 class widgetTextTranslatate : public widgetText
@@ -276,7 +286,7 @@ public:
   virtual ~widgetTextTranslatate() {}
 
 protected:
-  virtual uint get_vcountText() const override;
+  virtual s_drawElementCount get_drawElementCount() const override;
   virtual glm::vec2 get_zoneSizeDefault() const override;
   virtual void compute_data() override;
 
@@ -295,14 +305,14 @@ public:
   widgetTextEdit() : widgetText() { wisactive = wiseditable = true; }
   virtual ~widgetTextEdit() {}
 
-  virtual uint get_vcountSolid() const override;
+  virtual s_drawElementCount get_drawElementCount() const override;
   virtual glm::vec2 get_zoneSizeDefault() const override;
   virtual void compute_data() override;
   virtual void acceptEvent(s_eventIntern &event) override;
   virtual void animate(float dt) override;
 
-  widget_DECLAREATTRIBUTE(widgetTextEdit,bool,allowMultiLines,= false, m_isUpdateNeededLayout)
-  widget_DECLAREATTRIBUTE(widgetTextEdit,float,cursorAnimSpeed,= 1.f, m_isUpdateNeededData)
+  widget_DECLAREATTRIBUTE(widgetTextEdit,bool,allowMultiLines,= false, Layout)
+  widget_DECLAREATTRIBUTE(widgetTextEdit,float,cursorAnimSpeed,= 1.f, Data)
 
 public:
   bool get_isEditing() const { return wisEditing; }
@@ -317,25 +327,32 @@ class widgetPicture : public widget
 {
   widget_DECLARECONSTRUCTORS(widgetPicture)
   widget_DECLARECOMMUNMETHODS()
-  widget_DECLAREATTRIBUTE(widgetPicture,uint,texId,= uint(-1), m_isUpdateNeededAdress)
-  widget_DECLAREATTRIBUTE(widgetPicture,glm::vec4,texUV,= glm::vec4(0.f,0.f,1.f,1.f), m_isUpdateNeededLayout)
-  widget_DECLAREATTRIBUTE(widgetPicture,float,heightModifier,= 1.f, m_isUpdateNeededLayout) ///< height factor in regards with the default cell's height.
-  widget_DECLAREATTRIBUTE(widgetPicture,bool,snapPixels, = false, m_isUpdateNeededData) ///< snap pixels to entire zoom factor
+  widget_DECLAREATTRIBUTE(widgetPicture,uint,texId,= uint(-1), Address)
+  widget_DECLAREATTRIBUTE(widgetPicture,glm::vec4,texUV,= glm::vec4(0.f,0.f,1.f,1.f), Layout)
+  widget_DECLAREATTRIBUTE(widgetPicture,float,heightModifier,= 1.f, Layout) ///< height factor in regards with the default cell's height.
+  widget_DECLAREATTRIBUTE(widgetPicture,bool,snapPixels, = false, Data) ///< snap pixels to entire zoom factor
+
+  glm::vec4 resolveColorFill() const;
 };
 
 class widgetBar : public widget
 {
   widget_DECLARECONSTRUCTORS(widgetBar)
   widget_DECLARECOMMUNMETHODS()
-  widget_DECLAREATTRIBUTE(widgetBar,float,valuemin,= 0.f, m_isUpdateNeededData)
-  widget_DECLAREATTRIBUTE(widgetBar,float,valuemax,= 1.f, m_isUpdateNeededData)
-  widget_DECLAREATTRIBUTE(widgetBar,float,value,= 0.f, m_isUpdateNeededData)
-  widget_DECLAREATTRIBUTE(widgetBar,bool,withborder,= true, m_isUpdateNeededAdress) ///< True if a border must to be drawn
-  widget_DECLAREATTRIBUTE(widgetBar,bool,withthreshold,= false, m_isUpdateNeededAdress)
-  widget_DECLAREATTRIBUTE(widgetBar,float,valuethreshold,= 1.f, m_isUpdateNeededData)
-  widget_DECLAREATTRIBUTE(widgetBar,bool,withtext,= false, m_isUpdateNeededAdress)
-  widget_DECLAREATTRIBUTE(widgetBar,float,snapInterval, = 0.f, m_isUpdateNeededData) ///< Negative or zero value means no snapping
-  widget_DECLAREATTRIBUTE(widgetBar,float,widthFactor, = 5.f, m_isUpdateNeededData) ///< Width/Height ratio
+  widget_DECLAREATTRIBUTE(widgetBar,float,valuemin,= 0.f, Data)
+  widget_DECLAREATTRIBUTE(widgetBar,float,valuemax,= 1.f, Data)
+  widget_DECLAREATTRIBUTE(widgetBar,float,value,= 0.f, Data)
+  widget_DECLAREATTRIBUTE(widgetBar,bool,withborder,= true, Address) ///< True if a border must to be drawn
+  widget_DECLAREATTRIBUTE(widgetBar,bool,withthreshold,= false, Address)
+  widget_DECLAREATTRIBUTE(widgetBar,float,valuethreshold,= 1.f, Data)
+  widget_DECLAREATTRIBUTE(widgetBar,bool,withtext,= false, Address)
+  widget_DECLAREATTRIBUTE(widgetBar,float,snapInterval, = 0.f, Data) ///< Negative or zero value means no snapping
+  widget_DECLAREATTRIBUTE(widgetBar,float,widthFactor, = 5.f, Data) ///< Width/Height ratio
+
+  glm::vec4 resolveColorPlain() const;
+  glm::vec4 resolveColorFill() const;
+  glm::vec4 resolveColorOutLine() const;
+  glm::vec4 resolveColorText() const;
 
 public:
   std::function<std::string(float value)>  wcb_valuePrinter;
@@ -347,7 +364,7 @@ public:
   widgetBarZero() : widgetBar() { wvaluemin = -1.f; }
   virtual ~widgetBarZero() {}
 
-  virtual uint get_vcountLine() const;
+  virtual s_drawElementCount get_drawElementCount() const override;
   virtual void compute_data();
 };
 
@@ -355,39 +372,38 @@ class widgetSlider : public widget
 {
   widget_DECLARECONSTRUCTORS(widgetSlider)
   widget_DECLARECOMMUNMETHODS()
-  widget_DECLAREATTRIBUTE(widgetSlider,float,valuemin,= 0.f, m_isUpdateNeededData)
-  widget_DECLAREATTRIBUTE(widgetSlider,float,valuemax,= 1.f, m_isUpdateNeededData)
-  widget_DECLAREATTRIBUTE(widgetSlider,float,value,= 0.f, m_isUpdateNeededData)
-  widget_DECLAREATTRIBUTE(widgetSlider,float,widthFactor, = 5.f, m_isUpdateNeededData) ///< Width/Height ratio
+  widget_DECLAREATTRIBUTE(widgetSlider,float,valuemin,= 0.f, Data)
+  widget_DECLAREATTRIBUTE(widgetSlider,float,valuemax,= 1.f, Data)
+  widget_DECLAREATTRIBUTE(widgetSlider,float,value,= 0.f, Data)
+  widget_DECLAREATTRIBUTE(widgetSlider,float,widthFactor, = 5.f, Data) ///< Width/Height ratio
 };
 
 class widgetSliderInt : public widget
 {
   widget_DECLARECONSTRUCTORS(widgetSliderInt)
   widget_DECLARECOMMUNMETHODS()
-  widget_DECLAREATTRIBUTE(widgetSliderInt, int, valuemin, = 0, m_isUpdateNeededData)
-  widget_DECLAREATTRIBUTE(widgetSliderInt, int, valuemax, = 10, m_isUpdateNeededData)
-  widget_DECLAREATTRIBUTE(widgetSliderInt, int, value, = 0, m_isUpdateNeededData)
-  widget_DECLAREATTRIBUTE(widgetSliderInt, float, widthFactor, = 5.f, m_isUpdateNeededData) ///< Width/Height ratio
+  widget_DECLAREATTRIBUTE(widgetSliderInt, int, valuemin, = 0, Data)
+  widget_DECLAREATTRIBUTE(widgetSliderInt, int, valuemax, = 10, Data)
+  widget_DECLAREATTRIBUTE(widgetSliderInt, int, value, = 0, Data)
+  widget_DECLAREATTRIBUTE(widgetSliderInt, float, widthFactor, = 5.f, Data) ///< Width/Height ratio
 };
 
 class widgetBoxCheck : public widget
 {
   widget_DECLARECONSTRUCTORS(widgetBoxCheck)
   widget_DECLARECOMMUNMETHODS()
-  widget_DECLAREATTRIBUTE(widgetBoxCheck,bool,value,= false, m_isUpdateNeededData)
-  widget_DECLAREATTRIBUTE(widgetBoxCheck,float,margin,= 0.15f, m_isUpdateNeededData)
-  widget_DECLAREATTRIBUTE(widgetBoxCheck,float,thin,= 0.15f, m_isUpdateNeededData)
-  widget_DECLAREATTRIBUTE(widgetBoxCheck,bool,withBorder,= true, m_isUpdateNeededAdress)
+  widget_DECLAREATTRIBUTE(widgetBoxCheck,bool,value,= false, Data)
+  widget_DECLAREATTRIBUTE(widgetBoxCheck,float,margin,= 0.15f, Data)
+  widget_DECLAREATTRIBUTE(widgetBoxCheck,float,thin,= 0.15f, Data)
 };
 
 class widgetLineChoice : public widget
 {
   widget_DECLARECONSTRUCTORS(widgetLineChoice)
   widget_DECLARECOMMUNMETHODS()
-  widget_DECLAREATTRIBUTE(widgetLineChoice,std::vector<std::string>,values,, m_isUpdateNeededAdress)
-  widget_DECLAREATTRIBUTE(widgetLineChoice,uint,selectedIndex,= 0, m_isUpdateNeededData)
-  widget_DECLAREATTRIBUTE(widgetLineChoice,bool,cyclic,= false, m_isUpdateNeededData)
+  widget_DECLAREATTRIBUTE(widgetLineChoice,std::vector<std::string>,values,, Address)
+  widget_DECLAREATTRIBUTE(widgetLineChoice,uint,selectedIndex,= 0, Data)
+  widget_DECLAREATTRIBUTE(widgetLineChoice,bool,cyclic,= false, Data)
 
 public:
   widgetLineChoice* set_values(tre::span<std::string> values); // overload
@@ -404,29 +420,20 @@ protected:
 
 // declare window =============================================================
 
-/**
- * @brief The window class
- *
- * Inherits from class widget, but:
- * - m_zone means (xoffset, yoffset, width, height)
- */
-class window : public widget
+class window
 {
 protected:
-  window(tre::baseUI * parent) : widget(), m_parentUI(parent) { wisactive = true; wcolor = glm::vec4(0.f); wOwnWidgets.fill(nullptr); }
-  ~window() override { clear(); }
+  window(tre::baseUI * parent) : m_parentUI(parent) { wOwnWidgets.fill(nullptr); }
+  ~window() { clear(); }
 
   /// @name global properties
   /// @{
 
 public:
-  void set_isactiveWindow(bool a_active); ///< like widget::set_isactive(), but trigger a dummy event when the window get inactived.
-
-public:
-  bool get_visible() const { return wvisible; }
-  void set_visible(bool a_visible); ///< if the window becomes not visible, then a dummy event is triggered.
+  void set_isactiveWindow(bool a_active); ///< like set_isactive(), but trigger a dummy event when the window get inactived.
+  void set_isvisibleWindow(bool a_visible); ///< like set_isvisible(), but a dummy event is triggered.
 protected:
-  bool wvisible = true;
+  bool whasFocus = false;
 
 #define window_PROPERTY(atype,aname,ainit,updateFlag) \
   public: \
@@ -435,9 +442,11 @@ protected:
   protected: \
     atype w##aname = ainit;
 
+  window_PROPERTY(bool,isvisible, true, m_isUpdateNeededDummy);
+  window_PROPERTY(bool,isactive, true, m_isUpdateNeededDummy);
   window_PROPERTY(s_size, fontSize, s_size(16, SIZE_PIXEL), m_isUpdateNeededLayout)
   window_PROPERTY(glm::vec4, colormask, glm::vec4(1.f), m_isUpdateNeededData)
-  window_PROPERTY(s_colorTheme, colortheme, s_colorTheme(COLORTHEME_LIGHTNESS, 0.1f), m_isUpdateNeededData)
+  window_PROPERTY(s_colorTheme, colortheme, s_colorTheme(), m_isUpdateNeededData)
   window_PROPERTY(uint, alignMask, ALIGN_MASK_LEFT_TOP, m_isUpdateNeededData)
 
   window_PROPERTY(glm::mat4, mat4, glm::mat4(1.f), m_isUpdateNeededLayout) // used for 2D-ui
@@ -451,7 +460,7 @@ public:
   window* set_transparency(const float alpha) { m_isUpdateNeededData |= (wcolormask.w != alpha); wcolormask.w = alpha; return this; } ///< set the global transparency
 
 public:
-  void set_layoutGrid(uint row, uint col) { m_isUpdateNeededAdress = true; wlayout.set_dimension(row, col); } ///< set the layout.
+  void set_layoutGrid(uint row, uint col) { m_isUpdateNeededAddress = true; wlayout.set_dimension(row, col); } ///< set the layout.
   void set_colWidth(uint col, const s_size width); ///< set the width of a column, that overwrites the automatic size. A negative value will unset the value.
   void set_rowHeight(uint row, const s_size height); /// set the height of a row, that overwrites the automatic size. A negative value will unset the value.
   void set_cellMargin(const s_size margin) { m_isUpdateNeededLayout |= (wlayout.m_cellMargin != margin); wlayout.m_cellMargin = margin; }
@@ -476,21 +485,38 @@ public:
   /// @name self-implementation
   /// @{
 protected:
-  virtual glm::vec2 get_zoneSizeDefault() const override { TRE_FATAL("should not be called"); return glm::vec2(0.f); }
-  virtual void compute_data() override;
-  virtual void acceptEvent(s_eventIntern &event) override;
-  virtual void animate(float dt) override;
+  void compute_adressPlage();
+  void compute_data();
+  void acceptEvent(s_eventIntern &event);
+  void animate(float dt);
   void clear();
-  virtual bool getIsOverPosition(const glm::vec3 & position) const override;
+  bool getIsOverPosition(const glm::vec3 & position) const;
+  void acceptEventBase_focus(s_eventIntern &event);
+public:
+  void setUpdateNeededAddress() { m_isUpdateNeededAddress = true; } ///< object's Address update is needed (nbr of vertice changed, ...)
+  void setUpdateNeededLayout() { m_isUpdateNeededLayout = true; } ///< layout update is needed (widget gets resized, ..., typically when get_zoneSizeDefault() will return a new different value)
+  void setUpdateNeededData() { m_isUpdateNeededData = true; }   ///< vertice-data will changed (positions, color, ...)
 private:
-  void compute_adressPlage(); ///< set adress-plage, and resize the parts in the m_model
+  void compute_AddressPlage(); ///< set Address-plage, and resize the parts in the m_model
   void compute_layout(); ///< compute and set zone of widgets
+  glm::vec4 m_zone = glm::vec4(0.f);
   s_layoutGrid wlayout;
   std::array<widget*, 2> wOwnWidgets;
   union { glm::mat3 m3; glm::mat4 m4; } wmatPrev; ///< On move, store the origin matrix
   bool m_isMoved = false;
+
+  struct s_objAddress
+  {
+    uint part = 0u;
+    uint offset = 0u;
+  };
+  s_objAddress m_adSolid, m_adrLine, m_adrPict, m_adrText; ///< Address plage for all objects in the window
   /// @}
 
+  bool m_isUpdateNeededAddress = true; ///< true when an object's Address update is needed (nbr of vertice changed, ...)
+  bool m_isUpdateNeededLayout = true; ///< true when a layout update is needed (widget gets resized, ..., typically when get_zoneSizeDefault() will return a new different value)
+  bool m_isUpdateNeededData = true;   ///< true when the vertice-data will changed (positions, color, ...)
+  bool m_isUpdateNeededDummy = true;
 
   /// @name interface with widgets
   /// @{
@@ -529,12 +555,19 @@ public:
   void set_selfwidget_CloseBox(widget * w);
   /// @}
 
+  /// @name callbacks
+  /// @{
+public:
+  std::function<void(window *)> wcb_gain_focus = nullptr; ///< Triggered when the widget gain focus. No need to set hasfocus = true (done internally).
+  std::function<void(window *)> wcb_loss_focus = nullptr; ///< Triggered when the widget gain focus. No need to set hasfocus = false (done internally).
+  std::function<void(window *, float)> wcb_animate = nullptr; ///< Called when the root "animate" method is called.
+  /// @}
+
+
   /// @name parent-hood
   /// @{
 public:
-  virtual window*   get_parentWindow() const override { return const_cast<window*>(this); }
-  virtual baseUI*   get_parentUI() const override { return m_parentUI; }
-  virtual float     resolve_colorModifier() const override { return wiseditable && wishighlighted ? 0.3f : 0.f; }
+  baseUI*   get_parentUI() const { return m_parentUI; }
 private:
   baseUI * m_parentUI;
   /// @}
@@ -609,7 +642,8 @@ public:
   void updateIntoGPU(); ///< Update data into GPU
   void clearGPU(); ///< Clean GPU handlers
 
-  modelRaw2D    & getDrawModel () { return m_model;  }
+  modelRaw2D & getDrawModel() { return m_model; }
+  glm::vec4 * __restrict getDrawBuffer(const unsigned offset = 0) const { return reinterpret_cast<glm::vec4 *>(m_model.layout().m_positions.m_data + (8 * offset)); }
 
   virtual bool loadShader(shader *shaderToUse = nullptr) = 0;
   void clearShader();

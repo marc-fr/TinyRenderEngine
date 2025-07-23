@@ -21,7 +21,7 @@ CORE_OBJ    := $(patsubst $(CORE_SRCDIR)/%.cpp, $(OBJDIR)/%.o, $(CORE_SRC))
 
 # Opus (Optionnal)
 
-OPUS_SRCDIR  := $(ROOTDIR)/../Opus
+OPUS_SRCDIR  := $(ROOTDIR)/../opus
 OPUS_DEFINE  := -DTRE_WITH_OPUS
 OPUS_INC     := -I$(OPUS_SRCDIR)/include
 OPUS_LDFLAGS := $(OBJDIR)/libopus.a
@@ -67,7 +67,6 @@ $(OBJDIR)/%.o : $(ROOTDIR)/test/%.cpp
 opus : $(OBJDIR)/libopus.a
 
 $(OBJDIR)/libopus.a :
-	cd $(OPUS_SRCDIR); ./autogen.sh
 	cd $(OPUS_SRCDIR); emconfigure ./configure --disable-extra-programs --disable-doc --disable-intrinsics --disable-stack-protector
 	cd $(OPUS_SRCDIR); emmake make;
 	rm $(OPUS_SRCDIR)/*.wasm

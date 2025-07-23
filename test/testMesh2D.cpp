@@ -184,7 +184,7 @@ int main(int argc, char **argv)
   tre::ui::window &wUI_main = *bUI_main.create_window();
   wUI_main.set_layoutGrid(3, 2);
   wUI_main.set_fontSize(tre::ui::s_size(20, tre::ui::SIZE_PIXEL));
-  wUI_main.set_color(glm::vec4(0.f, 0.f, 0.f, 0.5f));
+  wUI_main.set_colormask(glm::vec4(1.f, 1.f, 1.f, 0.6f));
 
   wUI_main.create_widgetText(0, 0)->set_text("mode (Enter):");
   wUI_main.create_widgetText(0, 1);

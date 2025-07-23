@@ -116,6 +116,32 @@ glm::vec4 ui::blendColor(const glm::vec4 &frontColor, const glm::vec4 &backColor
   return frontColor + (backColor - frontColor) * glm::vec4(cursorRGB, cursorRGB, cursorRGB, cursor);
 }
 
+// Geometry helpers ===========================================================
+
+void ui::fillNull(glm::vec4 * __restrict &buffer, const unsigned count)
+{
+  std::memset(buffer, 0, count * sizeof(glm::vec4) * 2);
+  buffer += 2 * count;
+}
+
+void ui::fillRect(glm::vec4 * __restrict &buffer, const glm::vec4 &AxyBxy, const glm::vec4 &color, const glm::vec4 &AuvBuv)
+{
+  // triangle 1
+  *buffer++ = glm::vec4(AxyBxy.x, AxyBxy.y, AuvBuv.x, AuvBuv.y); *buffer++ = color;
+  *buffer++ = glm::vec4(AxyBxy.z, AxyBxy.y, AuvBuv.z, AuvBuv.y); *buffer++ = color;
+  *buffer++ = glm::vec4(AxyBxy.z, AxyBxy.w, AuvBuv.z, AuvBuv.w); *buffer++ = color;
+  // triangle 2
+  *buffer++ = glm::vec4(AxyBxy.x, AxyBxy.y, AuvBuv.x, AuvBuv.y); *buffer++ = color;
+  *buffer++ = glm::vec4(AxyBxy.z, AxyBxy.w, AuvBuv.z, AuvBuv.w); *buffer++ = color;
+  *buffer++ = glm::vec4(AxyBxy.x, AxyBxy.w, AuvBuv.x, AuvBuv.w); *buffer++ = color;
+}
+
+void ui::fillLine(glm::vec4 * __restrict &buffer, const glm::vec2 &p1, const glm::vec2 &p2, const glm::vec4 &color)
+{
+  *buffer++ = glm::vec4(p1.x, p1.y, 0.f, 0.f); *buffer++ = color;
+  *buffer++ = glm::vec4(p2.x, p2.y, 0.f, 0.f); *buffer++ = color;
+}
+
 // baseUI methods : global settings ===========================================
 
 void baseUI::animate(float dt)
@@ -141,7 +167,7 @@ void baseUI::set_language(std::size_t lid)
   TRE_ASSERT(lid < TRE_UI_NLANGUAGES);
   if (lid == m_language) return;
   m_language = lid;
-  for (auto win : windowsList) win->m_isUpdateNeededAdress = win->m_isUpdateNeededLayout = win->m_isUpdateNeededData = true;
+  for (auto win : windowsList) win->m_isUpdateNeededAddress = win->m_isUpdateNeededLayout = win->m_isUpdateNeededData = true;
 }
 
 // baseUI methods : GPU interface =============================================
@@ -201,7 +227,7 @@ ui::window *  baseUI::create_window()
   TRE_ASSERT(!m_model.isLoadedGPU());
   ui::window * newwin = new ui::window(this);
   if (newwin == nullptr) return nullptr; // out of memory ?!
-  newwin->m_isUpdateNeededAdress = true;
+  newwin->m_isUpdateNeededAddress = true;
   windowsList.push_back(newwin);
   return newwin;
 }
@@ -264,7 +290,7 @@ void baseUI2D::draw() const
 
   for (ui::window * curwin : windowsList)
   {
-    if (!curwin->wvisible) continue;
+    if (!curwin->wisvisible) continue;
 
     const glm::mat3 & matWin = curwin->get_mat3();
     m_shader->setUniformMatrix(m_PV * matWin);
@@ -376,7 +402,7 @@ bool baseUI2D::acceptEvent(const SDL_Event &event)
   for (ui::window * curw : windowsList)
   {
     // visible ?
-    if (!curw->wvisible) continue;
+    if (!curw->wisvisible) continue;
     // process
     ui::s_eventIntern eventIntern = eventState;
     eventIntern.mousePosPrev = glm::vec3(projectWindowPointFromScreen(eventState.mousePosPrev, curw->get_mat3()), 0.f);
@@ -423,7 +449,7 @@ bool baseUI2D::acceptEvent(glm::ivec2 mousePosition, bool mouseLEFT, bool mouseR
   for (ui::window * curw : windowsList)
   {
     // visible ?
-    if (!curw->wvisible) continue;
+    if (!curw->wisvisible) continue;
     // process
     ui::s_eventIntern eventIntern = eventState;
     eventIntern.mousePosPrev = glm::vec3(projectWindowPointFromScreen(eventState.mousePosPrev, curw->get_mat3()), 0.f);
@@ -508,7 +534,7 @@ void baseUI3D::draw() const
 
   for (ui::window * curwin : windowsList)
   {
-    if (!curwin->wvisible) continue;
+    if (!curwin->wisvisible) continue;
 
     const glm::mat4 & matWin = curwin->get_mat4();
     m_shader->setUniformMatrix(m_PV * matWin, matWin);
@@ -624,7 +650,7 @@ bool baseUI3D::acceptEvent(const SDL_Event &event)
   for (ui::window * curw : windowsList)
   {
     // visible ?
-    if (!curw->wvisible) continue;
+    if (!curw->wisvisible) continue;
     // process
     ui::s_eventIntern eventIntern = eventState;
     eventIntern.mousePosPrev = projectWindowPointFromScreen(glm::vec2(eventState.mousePosPrev), curw->get_mat4());
@@ -671,7 +697,7 @@ bool baseUI3D::acceptEvent(glm::ivec2 mousePosition, bool mouseLEFT, bool mouseR
   for (ui::window * curw : windowsList)
   {
     // visible ?
-    if (!curw->wvisible) continue;
+    if (!curw->wisvisible) continue;
     // process
     ui::s_eventIntern eventIntern = eventState;
     eventIntern.mousePosPrev = projectWindowPointFromScreen(glm::vec2(eventState.mousePosPrev), curw->get_mat4());
