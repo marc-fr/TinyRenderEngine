@@ -446,7 +446,9 @@ static void app_update()
                int(myTimings.worktime * 1000),
                int((myTimings.frametime - myTimings.worktime) * 1000));
       tre::textgenerator::s_textInfo tInfo;
-      tInfo.setupBasic(&font, 0.05f, txtFPS);
+      tInfo.setupBasic(&font, txtFPS);
+      tInfo.setupSize(0.05f);
+      tInfo.m_fontPixelSize = 16;
       meshFps.resizePart(0, tre::textgenerator::geometry_VertexCount(tInfo.m_text));
       tre::textgenerator::generate(tInfo, &meshFps, 0, 0, nullptr);
       meshFps.updateIntoGPU();

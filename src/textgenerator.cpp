@@ -18,21 +18,18 @@ void generate(const s_textInfo &info, modelRaw2D *outMesh, unsigned outPartId, u
   TRE_ASSERT(outMesh == nullptr || outOffset + maxVertexCount <= outMesh->partInfo(outPartId).m_size)
 
   const bool isBoxValid = (info.m_zone.x < info.m_zone.z) && (info.m_zone.y < info.m_zone.w);
-  const bool isPixelSizeValid = (info.m_pixelSize.x > 0.f) && (info.m_pixelSize.y > 0.f);
 
-  const uint fontsizePixel = isPixelSizeValid ? uint(info.m_fontsize / info.m_pixelSize.y) : 512 /*big value*/;
-  const font::s_fontMap &fontMap = info.m_font->get_bestFontMap(fontsizePixel);
-  const float fontsize = info.m_fontsize; // pixel-snap ? info.m_pixelSize.y * fontsizePixel
+  const font::s_fontMap &fontMap = info.m_font->get_bestFontMap(info.m_fontPixelSize);
 
-  const float scaleH = fontsize / fontMap.m_hline;
+  const float scaleH = info.m_fontHeight / fontMap.m_hline;
   const glm::vec2 scale = glm::vec2(info.m_font->get_texture().m_w * scaleH / info.m_font->get_texture().m_h, scaleH);
 
   glm::vec2 maxboxsize = glm::vec2(0.f);
 
   maxboxsize.x = 0.f;
-  maxboxsize.y = fontsize;
+  maxboxsize.y = info.m_lineHeight;
   float posx = info.m_zone.x;
-  float posy = info.m_zone.w;
+  float posy = info.m_zone.w + 0.5f * (info.m_fontHeight - info.m_lineHeight);
   uint vidx = outOffset;
   for (std::size_t ich = 0, iLen = std::strlen(info.m_text); ich < iLen; ++ich)
   {
@@ -41,13 +38,13 @@ void generate(const s_textInfo &info, modelRaw2D *outMesh, unsigned outPartId, u
     if (idchar == '\n')
     {
       posx = info.m_zone.x;
-      posy -= fontsize;
-      maxboxsize.y += fontsize;
+      posy -= info.m_lineHeight;
+      maxboxsize.y += info.m_lineHeight;
       continue;
     }
     else if (idchar == '\t')
     {
-      posx += fontsize * 3.f;
+      posx += info.m_fontHeight * 3.f; // TODO: snap to next alignement.
       continue;
     }
     else if (idchar == 0)
@@ -107,7 +104,7 @@ void generate(const s_textInfo &info, modelRaw2D *outMesh, unsigned outPartId, u
 
   if (outMesh != nullptr)
   {
-    for (uint stop = outOffset + maxVertexCount; vidx < stop; ++vidx)
+    for (uint stop = outOffset + maxVertexCount; vidx < stop; vidx += 6)
       outMesh->fillDataRectangle(outPartId, vidx, glm::vec4(0.f), glm::vec4(0.f), glm::vec4(0.f));
   }
 

@@ -342,6 +342,7 @@ int main(int argc, char **argv)
   TRE_LOG("... loading textures ...");
 
   tre::texture worldSkyBoxTex;
+  bool         withSkyBox = true;
   {
     // The textures are generated from "testTextureSampling", with TRE_WITH_SDL2_IMAGE and TRE_WITH_TIFF enabled
     const std::array<SDL_Surface*, 6> cubeFaces = { tre::texture::loadTextureFromFile("imageTIFF.1024.inside.xpos.png"),
@@ -350,7 +351,7 @@ int main(int argc, char **argv)
                                                     tre::texture::loadTextureFromFile("imageTIFF.1024.inside.yneg.png"),
                                                     tre::texture::loadTextureFromFile("imageTIFF.1024.inside.zpos.png"),
                                                     tre::texture::loadTextureFromFile("imageTIFF.1024.inside.zneg.png"), };
-    worldSkyBoxTex.loadCube(cubeFaces, tre::texture::MMASK_MIPMAP | tre::texture::MMASK_COMPRESS, true);
+    withSkyBox = worldSkyBoxTex.loadCube(cubeFaces, tre::texture::MMASK_MIPMAP | tre::texture::MMASK_COMPRESS, true);
   }
 
   if (!worldScene.texGrass.load(tre::texture::loadTextureFromFile(TESTIMPORTPATH "resources/scene/wispy-grass-meadow_albedo.jpg"), tre::texture::MMASK_MIPMAP | tre::texture::MMASK_ANISOTROPIC | tre::texture::MMASK_SRBG_SPACE, true))
@@ -415,7 +416,9 @@ int main(int argc, char **argv)
     for (uint it = 0; it < 5; ++it)
     {
       tre::textgenerator::s_textInfo tInfo;
-      tInfo.setupBasic(&worldHUDFont, 0.06f, txts[it], glm::vec2(0.f, -0.08f - 0.08f * it));
+      tInfo.setupBasic(&worldHUDFont, txts[it], glm::vec2(0.f, -0.08f - 0.08f * it));
+      tInfo.setupSize(0.06f);
+      tInfo.m_fontPixelSize = 16;
       worldHUDModel.createPart(tre::textgenerator::geometry_VertexCount(tInfo.m_text));
       tre::textgenerator::generate(tInfo, &worldHUDModel, it, 0, nullptr);
     }
@@ -601,7 +604,7 @@ int main(int argc, char **argv)
   myView3D.setKeyBinding(true);
 
   bool showMaps = false;
-  bool withMSAA = canMSAA;
+  bool withMSAA = false; //canMSAA; // issue with mesa driver (hangs on blit)
   bool withBlur = true;
 
   // MAIN LOOP
@@ -950,20 +953,23 @@ int main(int argc, char **argv)
 
       tre::IsOpenGLok("opaque render pass - draw Particle (Mesh)");
 
-      glDepthFunc(GL_LEQUAL);
+      if (withSkyBox)
+      {
+        glDepthFunc(GL_LEQUAL);
 
-      glUseProgram(shaderSkybox.m_drawProgram);
+        glUseProgram(shaderSkybox.m_drawProgram);
 
-      glActiveTexture(GL_TEXTURE3);
-      glBindTexture(GL_TEXTURE_CUBE_MAP,worldSkyBoxTex.m_handle);
-      glUniform1i(shaderSkybox.getUniformLocation(tre::shader::TexCube),3);
+        glActiveTexture(GL_TEXTURE3);
+        glBindTexture(GL_TEXTURE_CUBE_MAP,worldSkyBoxTex.m_handle);
+        glUniform1i(shaderSkybox.getUniformLocation(tre::shader::TexCube),3);
 
-      glm::mat4 MViewBox(myView3D.m_matView);
-      MViewBox[3] = glm::vec4(0.f,0.f,0.f,1.f); // no translation
+        glm::mat4 MViewBox(myView3D.m_matView);
+        MViewBox[3] = glm::vec4(0.f,0.f,0.f,1.f); // no translation
 
-      shaderSkybox.setUniformMatrix(myWindow.m_matProjection3D * MViewBox, glm::mat4(1.f), MViewBox);
+        shaderSkybox.setUniformMatrix(myWindow.m_matProjection3D * MViewBox, glm::mat4(1.f), MViewBox);
 
-      worldSkyboxModel.drawcallAll();
+        worldSkyboxModel.drawcallAll();
+      }
 
       glDepthFunc(GL_LESS);
 
@@ -1061,7 +1067,9 @@ int main(int argc, char **argv)
                  int(myTimings.worktime * 1000),
                  int((myTimings.frametime - myTimings.worktime) * 1000));
         tre::textgenerator::s_textInfo tInfo;
-        tInfo.setupBasic(&worldHUDFont, 0.06f, txtFPS, glm::vec2(0.f, -0.08f - 0.08f * 0));
+        tInfo.setupBasic(&worldHUDFont, txtFPS, glm::vec2(0.f, -0.08f - 0.08f * 0));
+        tInfo.setupSize(0.06f);
+        tInfo.m_fontPixelSize = 16;
         worldHUDModel.resizePart(0, tre::textgenerator::geometry_VertexCount(tInfo.m_text));
         tre::textgenerator::generate(tInfo, &worldHUDModel, 0, 0, nullptr);
 

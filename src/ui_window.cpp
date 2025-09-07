@@ -13,7 +13,7 @@ public:
   virtual ~widgetTextTitle() override {}
 
   virtual s_drawElementCount get_drawElementCount() const override;
-  virtual void compute_data() override;
+  virtual void compute_data(s_drawData &dd) override;
 };
 widget::s_drawElementCount widgetTextTitle::get_drawElementCount() const
 {
@@ -21,11 +21,11 @@ widget::s_drawElementCount widgetTextTitle::get_drawElementCount() const
   res.m_vcountSolid = 2 * 6; // overwrite.
   return res;
 }
-void widgetTextTitle::compute_data()
+void widgetTextTitle::compute_data(s_drawData &dd)
 {
-  widgetText::compute_data();
-  // process
-  auto & objsolid = m_parentWindow->get_parentUI()->getDrawModel();
+  glm::vec4 * bufferSolidSave = dd.m_bufferSolid;
+  widgetText::compute_data(dd);
+  dd.m_bufferSolid = bufferSolidSave; // will overwrite the background if any
 
   const float sepY = 0.35f * m_zone.y + 0.65f * m_zone.w;
 
@@ -34,8 +34,9 @@ void widgetTextTitle::compute_data()
 
   const glm::vec4 colorPlain1 = colorTheme.resolveColor(colorTheme.m_colorSurface, wishighlighted ? 0.1f : 0.f) * colorMask;
   const glm::vec4 colorPlain2 = colorTheme.resolveColor(colorTheme.m_colorSurface, wishighlighted ? 0.f : -0.1f) * colorMask;
-  objsolid.fillDataRectangle(m_adSolid.part, m_adSolid.offset + 0, glm::vec4(m_zone.x,m_zone.y,m_zone.z,sepY   ), colorPlain2, glm::vec4(0.f));
-  objsolid.fillDataRectangle(m_adSolid.part, m_adSolid.offset + 6, glm::vec4(m_zone.x,sepY   ,m_zone.z,m_zone.w), colorPlain1, glm::vec4(0.f));
+
+  fillRect(dd.m_bufferSolid, glm::vec4(m_zone.x,m_zone.y,m_zone.z,sepY   ), colorPlain2);
+  fillRect(dd.m_bufferSolid, glm::vec4(m_zone.x,sepY   ,m_zone.z,m_zone.w), colorPlain1);
 }
 
 class widgetCloseButton : public widgetBoxCheck
@@ -45,7 +46,7 @@ public:
   virtual ~widgetCloseButton() override {}
 
   virtual s_drawElementCount get_drawElementCount() const override;
-  virtual void compute_data() override;
+  virtual void compute_data(s_drawData &dd) override;
 };
 widget::s_drawElementCount widgetCloseButton::get_drawElementCount() const
 {
@@ -53,36 +54,34 @@ widget::s_drawElementCount widgetCloseButton::get_drawElementCount() const
   res.m_vcountSolid = 6 + 12;
   return res;
 }
-void widgetCloseButton::compute_data()
+void widgetCloseButton::compute_data(s_drawData &dd)
 {
-  glm::vec4 * __restrict bufferSolid = getDrawBuffer_Solid();
-
   const auto &colorTheme = m_parentWindow->get_colortheme();
   const auto &colorMask = m_parentWindow->get_colormask();
   const glm::vec4 colorBG = (wishighlighted ? colorTheme.m_colorPrimary : glm::vec4(0.f)) * colorMask;
   const glm::vec4 colorCross = (wishighlighted ? colorTheme.m_colorOnObject : colorTheme.m_colorOnSurface) * colorMask;
 
-  fillRect(bufferSolid, m_zone, colorBG);
+  fillRect(dd.m_bufferSolid, m_zone, colorBG);
 
   const glm::vec2 dXY = glm::vec2(m_zone.z - m_zone.x, m_zone.w - m_zone.y);
   static const float fExt = wmargin;
   static const float fInt = wmargin + wthin;
 
-  *bufferSolid++ = glm::vec4(m_zone.x + fExt * dXY.x, m_zone.y + fExt * dXY.y, 0.f, 0.f); *bufferSolid++ = colorCross;
-  *bufferSolid++ = glm::vec4(m_zone.z - fInt * dXY.x, m_zone.w - fExt * dXY.y, 0.f, 0.f); *bufferSolid++ = colorCross;
-  *bufferSolid++ = glm::vec4(m_zone.z - fExt * dXY.x, m_zone.w - fExt * dXY.y, 0.f, 0.f); *bufferSolid++ = colorCross;
+  *dd.m_bufferSolid++ = glm::vec4(m_zone.x + fExt * dXY.x, m_zone.y + fExt * dXY.y, 0.f, 0.f); *dd.m_bufferSolid++ = colorCross;
+  *dd.m_bufferSolid++ = glm::vec4(m_zone.z - fInt * dXY.x, m_zone.w - fExt * dXY.y, 0.f, 0.f); *dd.m_bufferSolid++ = colorCross;
+  *dd.m_bufferSolid++ = glm::vec4(m_zone.z - fExt * dXY.x, m_zone.w - fExt * dXY.y, 0.f, 0.f); *dd.m_bufferSolid++ = colorCross;
 
-  *bufferSolid++ = glm::vec4(m_zone.x + fInt * dXY.x, m_zone.y + fExt * dXY.y, 0.f, 0.f); *bufferSolid++ = colorCross;
-  *bufferSolid++ = glm::vec4(m_zone.x + fExt * dXY.x, m_zone.y + fExt * dXY.y, 0.f, 0.f); *bufferSolid++ = colorCross;
-  *bufferSolid++ = glm::vec4(m_zone.z - fExt * dXY.x, m_zone.w - fExt * dXY.y, 0.f, 0.f); *bufferSolid++ = colorCross;
+  *dd.m_bufferSolid++ = glm::vec4(m_zone.x + fInt * dXY.x, m_zone.y + fExt * dXY.y, 0.f, 0.f); *dd.m_bufferSolid++ = colorCross;
+  *dd.m_bufferSolid++ = glm::vec4(m_zone.x + fExt * dXY.x, m_zone.y + fExt * dXY.y, 0.f, 0.f); *dd.m_bufferSolid++ = colorCross;
+  *dd.m_bufferSolid++ = glm::vec4(m_zone.z - fExt * dXY.x, m_zone.w - fExt * dXY.y, 0.f, 0.f); *dd.m_bufferSolid++ = colorCross;
 
-  *bufferSolid++ = glm::vec4(m_zone.z - fInt * dXY.x, m_zone.y + fExt * dXY.y, 0.f, 0.f); *bufferSolid++ = colorCross;
-  *bufferSolid++ = glm::vec4(m_zone.x + fExt * dXY.x, m_zone.w - fExt * dXY.y, 0.f, 0.f); *bufferSolid++ = colorCross;
-  *bufferSolid++ = glm::vec4(m_zone.z - fExt * dXY.x, m_zone.y + fExt * dXY.y, 0.f, 0.f); *bufferSolid++ = colorCross;
+  *dd.m_bufferSolid++ = glm::vec4(m_zone.z - fInt * dXY.x, m_zone.y + fExt * dXY.y, 0.f, 0.f); *dd.m_bufferSolid++ = colorCross;
+  *dd.m_bufferSolid++ = glm::vec4(m_zone.x + fExt * dXY.x, m_zone.w - fExt * dXY.y, 0.f, 0.f); *dd.m_bufferSolid++ = colorCross;
+  *dd.m_bufferSolid++ = glm::vec4(m_zone.z - fExt * dXY.x, m_zone.y + fExt * dXY.y, 0.f, 0.f); *dd.m_bufferSolid++ = colorCross;
 
-  *bufferSolid++ = glm::vec4(m_zone.x + fExt * dXY.x, m_zone.w - fExt * dXY.y, 0.f, 0.f); *bufferSolid++ = colorCross;
-  *bufferSolid++ = glm::vec4(m_zone.x + fInt * dXY.x, m_zone.w - fExt * dXY.y, 0.f, 0.f); *bufferSolid++ = colorCross;
-  *bufferSolid++ = glm::vec4(m_zone.z - fExt * dXY.x, m_zone.y + fExt * dXY.y, 0.f, 0.f); *bufferSolid++ = colorCross;
+  *dd.m_bufferSolid++ = glm::vec4(m_zone.x + fExt * dXY.x, m_zone.w - fExt * dXY.y, 0.f, 0.f); *dd.m_bufferSolid++ = colorCross;
+  *dd.m_bufferSolid++ = glm::vec4(m_zone.x + fInt * dXY.x, m_zone.w - fExt * dXY.y, 0.f, 0.f); *dd.m_bufferSolid++ = colorCross;
+  *dd.m_bufferSolid++ = glm::vec4(m_zone.z - fExt * dXY.x, m_zone.y + fExt * dXY.y, 0.f, 0.f); *dd.m_bufferSolid++ = colorCross;
 }
 
 // global properties ----------------------------------------------------------
@@ -146,6 +145,14 @@ window* window::set_topbarName(const std::string &name)
   return this;
 }
 
+void window::set_fontSize(s_size fontSize)
+{
+  set_fontHeight(fontSize);
+  if (fontSize.unit == SIZE_NATIVE) fontSize.size *= 1.08f;
+  else                              fontSize.size += int(1.f + fontSize.size * 0.04f) * 2.f;
+  set_lineHeight(fontSize);
+}
+
 void window::set_colWidth(uint col, const s_size relWidth)
 {
   TRE_ASSERT(col < wlayout.m_dimension.x);
@@ -190,15 +197,12 @@ void window::set_rowSpacement(uint row, const s_size height, const bool atTop)
   wlayout.m_rowsInbetweenSpace[row + (atTop ? 0u : 1u)] = height;
 }
 
-glm::vec2 window::resolve_sizeWH(s_size size) const
+glm::vec2 window::resolve_pixelSize() const
 {
-  if (size.unit == SIZE_NATIVE) return glm::vec2(size.size, size.size);
-
-  TRE_ASSERT(size.unit == SIZE_PIXEL);
   if (get_parentUI()->get_dimension() == 2)
   {
     const baseUI2D *ui = static_cast<const baseUI2D*>(get_parentUI());
-    return ui->projectWindowPointFromScreen(glm::vec2(size.size, size.size), wmat3, false);
+    return ui->projectWindowPointFromScreen(glm::vec2(1.f), wmat3, false);
   }
   else if (get_parentUI()->get_dimension() == 3)
   {
@@ -207,7 +211,7 @@ glm::vec2 window::resolve_sizeWH(s_size size) const
     const glm::vec4 ptWin = glm::vec4(0.f, 0.f, 0.f, 1.f);
     const glm::vec4 ptClip = ui->get_matPV() * (wmat4 * ptWin);
 
-    const glm::vec2 sizeViewport = size.size * 2.f / ui->get_viewport();
+    const glm::vec2 sizeViewport = glm::vec2(1.f) * 2.f / ui->get_viewport();
     return ptClip.w * sizeViewport;
   }
   else
@@ -301,10 +305,6 @@ void window::compute_adressPlage()
     {
       if (cell.m_widget == nullptr) continue;
       const auto adc = cell.m_widget->get_drawElementCount();
-      cell.m_widget->m_adSolid.part   = m_adSolid.part;
-      cell.m_widget->m_adSolid.offset = ad.m_vcountSolid;
-      cell.m_widget->m_adrLine.part   = m_adrLine.part;
-      cell.m_widget->m_adrLine.offset = ad.m_vcountLine;
       if (adc.m_textureSlot < baseUI::s_textureSlotsCount)
       {
         cell.m_widget->m_adrPict.part   = m_adrPict.part + adc.m_textureSlot;
@@ -313,24 +313,21 @@ void window::compute_adressPlage()
       }
       else
       {
-        cell.m_widget->m_adrPict.part   = -1; // no pict
+        cell.m_widget->m_adrPict.part   = 0; // no pict
         cell.m_widget->m_adrPict.offset = 0u; // no pict
       }
       cell.m_widget->m_adrText.part   = m_adrText.part;
       cell.m_widget->m_adrText.offset = ad.m_vcountText;
-      ad += cell.m_widget->get_drawElementCount();
+      ad += adc;
     }
     for (auto *widPtr : wOwnWidgets)
     {
       if (widPtr == nullptr) continue;
-      widPtr->m_adSolid.part   = m_adSolid.part;
-      widPtr->m_adSolid.offset = ad.m_vcountSolid;
-      widPtr->m_adrLine.part   = m_adrLine.part;
-      widPtr->m_adrLine.offset = ad.m_vcountLine;
-      TRE_ASSERT(ad.m_vcountPict == 0); // not implemented
+      const auto adc = widPtr->get_drawElementCount();
+      TRE_ASSERT(adc.m_vcountPict == 0); // not implemented
       widPtr->m_adrText.part   = m_adrText.part;
       widPtr->m_adrText.offset = ad.m_vcountText;
-      ad += widPtr->get_drawElementCount();
+      ad += adc;
     }
     model.resizePart(m_adSolid.part, ad.m_vcountSolid);
     model.resizePart(m_adrLine.part, ad.m_vcountLine);
@@ -346,16 +343,18 @@ void window::compute_layout()
   m_isUpdateNeededLayout = false;
   m_isUpdateNeededData = true;
 
+  widget::s_drawData dd(get_parentUI()->getDrawModel(), resolve_pixelSize());
+
   widget *widTopBar = wOwnWidgets[0];
   widget *widCloseButton = wOwnWidgets[1];
 
   // note: no need to set "m_isUpdateNeededData" because "set_zone()" will flag widget(s) wih this flag.
 
-  const glm::vec2 topBarZoneSize = (widTopBar != nullptr) ? widTopBar->get_zoneSizeDefault() : glm::vec2(0.f);
-  const glm::vec2 topCloseButtonZoneSize = (widCloseButton != nullptr) ? widCloseButton->get_zoneSizeDefault() : glm::vec2(0.f);
+  const glm::vec2 topBarZoneSize = (widTopBar != nullptr) ? widTopBar->get_zoneSizeDefault(dd) : glm::vec2(0.f);
+  const glm::vec2 topCloseButtonZoneSize = (widCloseButton != nullptr) ? widCloseButton->get_zoneSizeDefault(dd) : glm::vec2(0.f);
 
   glm::vec2 offset = glm::vec2(m_zone.x, m_zone.y);
-  glm::vec2 innerSize = wlayout.computeWidgetZones(*this, glm::vec2(m_zone.x, m_zone.y + m_zone.w - topBarZoneSize.y));
+  glm::vec2 innerSize = wlayout.computeWidgetZones(dd, glm::vec2(m_zone.x, m_zone.y + m_zone.w - topBarZoneSize.y));
 
   // add zone for top-bar
   {
@@ -397,7 +396,7 @@ void window::compute_layout()
   {
     m_zone = glm::vec4(offset, innerSize);
 
-    wlayout.computeWidgetZones(*this, glm::vec2(m_zone.x, m_zone.y + m_zone.w - topBarZoneSize.y));
+    wlayout.computeWidgetZones(dd, glm::vec2(m_zone.x, m_zone.y + m_zone.w - topBarZoneSize.y));
 
     if (widTopBar != nullptr)
       widTopBar->set_zone(glm::vec4(m_zone.x, m_zone.y + m_zone.w - topBarZoneSize.y, m_zone.x + m_zone.z, m_zone.y + m_zone.w));
@@ -414,23 +413,41 @@ void window::compute_data()
   TRE_ASSERT(m_isUpdateNeededLayout == false);
   m_isUpdateNeededData = false;
 
+  widget::s_drawData dd(get_parentUI()->getDrawModel(), resolve_pixelSize());
+
+  // TMP !! clear the whole data in each model-part, because the widgets might not fill it completely
+  {
+    auto & objsolid = get_parentUI()->getDrawModel();
+    objsolid.colorizePart(m_adSolid.part, glm::vec4(0.f));
+    objsolid.colorizePart(m_adrLine.part, glm::vec4(0.f));
+    objsolid.colorizePart(m_adrPict.part, glm::vec4(0.f));
+    objsolid.colorizePart(m_adrText.part, glm::vec4(0.f));
+  }
+
   {
     const glm::vec4 colorBase = wcolortheme.resolveColor(wcolortheme.m_colorBackground, 0.f) * wcolormask;
     auto & objsolid = get_parentUI()->getDrawModel();
-    objsolid.fillDataRectangle(m_adSolid.part, 0, glm::vec4(m_zone.x, m_zone.y, m_zone.x + m_zone.z, m_zone.y + m_zone.w), colorBase, glm::vec4(0.f));
+    objsolid.fillDataRectangle(m_adSolid.part, m_adSolid.offset, glm::vec4(m_zone.x, m_zone.y, m_zone.x + m_zone.z, m_zone.y + m_zone.w), colorBase, glm::vec4(0.f));
   }
+
+  dd.m_bufferSolid = get_parentUI()->getDrawBuffer(get_parentUI()->getDrawModel().partInfo(m_adSolid.part).m_offset + m_adSolid.offset + 6);
+  dd.m_bufferLine = get_parentUI()->getDrawBuffer(get_parentUI()->getDrawModel().partInfo(m_adrLine.part).m_offset + m_adrLine.offset);
 
   // window's widgets
   for (const s_layoutGrid::s_cell &c : wlayout.m_cells)
   {
     if (c.m_widget == nullptr) continue;
-    c.m_widget->compute_data();
+    dd.m_bufferPict = get_parentUI()->getDrawBuffer(get_parentUI()->getDrawModel().partInfo(c.m_widget->m_adrPict.part).m_offset + c.m_widget->m_adrPict.offset);
+    dd.m_bufferText = get_parentUI()->getDrawBuffer(get_parentUI()->getDrawModel().partInfo(c.m_widget->m_adrText.part).m_offset + c.m_widget->m_adrText.offset);
+    c.m_widget->compute_data(dd);
   }
   for (auto *widPtr : wOwnWidgets)
   {
     if (widPtr == nullptr) continue;
     // TODO: (perf) update only if widget's data needs to be computed, and only the data has changed but not the address or layout.
-    widPtr->compute_data();
+    dd.m_bufferPict = get_parentUI()->getDrawBuffer(get_parentUI()->getDrawModel().partInfo(widPtr->m_adrPict.part).m_offset + widPtr->m_adrPict.offset);
+    dd.m_bufferText = get_parentUI()->getDrawBuffer(get_parentUI()->getDrawModel().partInfo(widPtr->m_adrText.part).m_offset + widPtr->m_adrText.offset);
+    widPtr->compute_data(dd);
   }
 }
 

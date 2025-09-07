@@ -83,50 +83,6 @@ struct s_colorTheme
 #define TRE_UI_NLANGUAGES 2
 #endif
 
-// Layout =====================================================================
-
-enum e_alignment
-{
-  ALIGN_MASK_HORIZONTAL_LEFT     = 0x0001,
-  ALIGN_MASK_HORIZONTAL_CENTERED = 0x0002,
-  ALIGN_MASK_HORIZONTAL_RIGHT    = 0x0004,
-
-  ALIGN_MASK_VERTICAL_TOP        = 0x0010,
-  ALIGN_MASK_VERTICAL_CENTERED   = 0x0020,
-  ALIGN_MASK_VERTICAL_BOTTOM     = 0x0040,
-
-  ALIGN_MASK_CENTERED = ALIGN_MASK_HORIZONTAL_CENTERED | ALIGN_MASK_VERTICAL_CENTERED,
-  ALIGN_MASK_LEFT_TOP = ALIGN_MASK_HORIZONTAL_LEFT | ALIGN_MASK_VERTICAL_TOP,
-};
-
-struct s_layoutGrid
-{
-  struct s_cell
-  {
-    widget     *m_widget = nullptr;
-    glm::uvec2 m_span = glm::uvec2(1); ///< span (x:col, y:row)
-    uint       m_alignMask = ALIGN_MASK_HORIZONTAL_LEFT | ALIGN_MASK_VERTICAL_CENTERED;
-  };
-
-  glm::uvec2          m_dimension = glm::uvec2(0); ///< Dimension (x:columns, y:rows)
-  std::vector<s_cell> m_cells;
-  s_size              m_cellMargin = s_size::ONE_PIXEL;
-
-  std::vector<s_size> m_rowsHeight_User, m_colsWidth_User; ///< Size of rows and columns (given by the user)
-  std::vector<float>  m_rowsHeight, m_colsWidth; ///< Size of rows and columns (real)
-
-  std::vector<s_size> m_rowsInbetweenSpace, m_colsInbetweenSpace; ///< In-between size of rows and columns
-
-  s_size m_totalHeight, m_totalWidth; ///< Total size (given by the user)
-
-  void set_dimension(uint rows, uint cols);
-  uint index(uint iRow, uint iCol) const { TRE_ASSERT(iRow < m_dimension.y); TRE_ASSERT(iCol < m_dimension.x); return iCol + iRow * m_dimension.x; }
-  glm::vec2 computeWidgetZones(const ui::window &win, const glm::vec2 &offset = glm::vec2(0.f)); ///< Computes the zone assigned to each widget. Returns the global size.
-  void clear();
-};
-
-// Other layout ?
-
 // Geometry helpers ===========================================================
 
 void fillNull(glm::vec4 * __restrict &buffer, const unsigned count);
@@ -169,6 +125,7 @@ public:
   /// @name attributes
   /// @{
   widget_DECLAREATTRIBUTE(widget,glm::vec4,color,= glm::vec4(-1.f), Data) ///< main color overwrite
+  widget_DECLAREATTRIBUTE(widget,float,colorAlpha,= 1.f, Data) ///< opacity
   widget_DECLAREATTRIBUTE(widget,bool,isactive,= false, Data) ///< When true, the widget receives events and can trigger callbacks
   widget_DECLAREATTRIBUTE(widget,bool,iseditable,= false, Data) ///< When true, the widget is editable from events
   widget_DECLAREATTRIBUTE(widget,bool,ishighlighted, = false, Data) ///< read & write attribute: "acceptEvent" modifies the value; user can change the value, but no callback will be triggered in this case.
@@ -210,8 +167,23 @@ protected:
     }
   };
   virtual s_drawElementCount get_drawElementCount() const = 0;
-  virtual glm::vec2 get_zoneSizeDefault() const = 0; ///< Return the default widget size (in the window's space).
-  virtual void compute_data() = 0; ///< fill the drawing buffers
+  struct s_drawData
+  {
+    glm::vec4 * __restrict m_bufferSolid = nullptr; ///< buffer for solid drawing (triangles)
+    glm::vec4 * __restrict m_bufferLine = nullptr;  ///< buffer for line drawing
+    glm::vec4 * __restrict m_bufferPict = nullptr;  ///< buffer for textured drawing
+    glm::vec4 * __restrict m_bufferText = nullptr;  ///< buffer for text drawing
+    const glm::vec2        m_pixelSize = glm::vec2(0.f); ///< resolved pixel size (in the window's UV-space)
+    modelRaw2D             &m_model; // DEPRECATED.
+
+    s_drawData(modelRaw2D &model, const glm::vec2 &pixelSize) : m_model(model), m_pixelSize(pixelSize) {}
+
+    float resolve_sizeW(const s_size &size) const { return (size.unit == SIZE_PIXEL) ? size.size * m_pixelSize.x : size.size; }
+    float resolve_sizeH(const s_size &size) const { return (size.unit == SIZE_PIXEL) ? size.size * m_pixelSize.y : size.size; }
+    glm::vec2 resolve_sizeWH(const s_size &size) const { return (size.unit == SIZE_PIXEL) ? size.size * m_pixelSize : glm::vec2(size.size); }
+  };
+  virtual glm::vec2 get_zoneSizeDefault(const s_drawData &) const = 0; ///< Return the default widget size (in the window's space).
+  virtual void compute_data(s_drawData &) = 0; ///< fill the drawing buffers
   virtual void acceptEvent(s_eventIntern &event) { acceptEventBase_focus(event); acceptEventBase_click(event); }
   virtual void animate(float dt) { if (wcb_animate != nullptr) wcb_animate(this, dt); }
   /// @}
@@ -220,7 +192,6 @@ protected:
   /// @{
 public:
   bool getIsOverPosition(const glm::vec3 & position) const { return (m_zone.x <= position.x) && (m_zone.z >= position.x) && (m_zone.y <= position.y) && (m_zone.w >= position.y); } ///< Return true if the position is under the m_zone. Local space position. z is ignored.
-  widget* set_colorAlpha(float alpha) { if (alpha != wcolor.a) { wcolor.a = alpha; setUpdateNeededData(); } return this; }
   void setUpdateNeededAddress() const;
   void setUpdateNeededLayout() const;
   void setUpdateNeededData() const;
@@ -232,6 +203,7 @@ protected:
   void acceptEventBase_focus(s_eventIntern &event); ///< trigger focus-state
   void acceptEventBase_click(s_eventIntern &event); ///< trigger simple click-callbacks (warning: event can be modified)
   void set_zone(const glm::vec4 &assignedZone) { if (m_zone != assignedZone) { m_zone = assignedZone; setUpdateNeededData(); } }
+  window *get_parentWindow() const { return m_parentWindow; }
 
   glm::vec4  m_zone = glm::vec4(0.f); ///< Widget zone (xmin,ymin,xmax,ymax)
   window *m_parentWindow = nullptr;
@@ -240,11 +212,7 @@ protected:
     uint part = 0u;
     uint offset = 0u;
   };
-  mutable s_objAddress m_adSolid, m_adrLine, m_adrPict, m_adrText; ///< Address plage for each specific object.
-  glm::vec4 * __restrict getDrawBuffer_Solid() const;
-  glm::vec4 * __restrict getDrawBuffer_Line() const;
-  glm::vec4 * __restrict getDrawBuffer_Pict() const;
-  glm::vec4 * __restrict getDrawBuffer_Text() const;
+  mutable s_objAddress m_adrPict, m_adrText; ///< Address plage for each specific object.
   /// @}
 
 friend class window;
@@ -261,8 +229,8 @@ friend struct s_layoutGrid;
 #define widget_DECLARECOMMUNMETHODS() \
   protected : \
     virtual s_drawElementCount get_drawElementCount() const override; \
-    virtual glm::vec2 get_zoneSizeDefault() const override; \
-    virtual void compute_data() override; \
+    virtual glm::vec2 get_zoneSizeDefault(const s_drawData &) const override; \
+    virtual void compute_data(s_drawData &) override; \
     virtual void acceptEvent(s_eventIntern &event) override;
 
 
@@ -287,8 +255,8 @@ public:
 
 protected:
   virtual s_drawElementCount get_drawElementCount() const override;
-  virtual glm::vec2 get_zoneSizeDefault() const override;
-  virtual void compute_data() override;
+  virtual glm::vec2 get_zoneSizeDefault(const s_drawData &) const override;
+  virtual void compute_data(s_drawData &) override;
 
   std::array<std::string, TRE_UI_NLANGUAGES> wtexts;
 
@@ -297,6 +265,8 @@ public:
   widgetTextTranslatate* set_texts(tre::span<std::string> values);
   widgetTextTranslatate* set_texts(tre::span<const char*> values);
   widgetTextTranslatate* set_text_LangIdx(const std::string &str, std::size_t lidx);
+
+  widget_DECLAREATTRIBUTE(widgetTextTranslatate,bool,adjust,= false, Layout) ///< Overwrite the background color
 };
 
 class widgetTextEdit : public widgetText
@@ -306,8 +276,8 @@ public:
   virtual ~widgetTextEdit() {}
 
   virtual s_drawElementCount get_drawElementCount() const override;
-  virtual glm::vec2 get_zoneSizeDefault() const override;
-  virtual void compute_data() override;
+  virtual glm::vec2 get_zoneSizeDefault(const s_drawData &) const override;
+  virtual void compute_data(s_drawData &) override;
   virtual void acceptEvent(s_eventIntern &event) override;
   virtual void animate(float dt) override;
 
@@ -365,7 +335,7 @@ public:
   virtual ~widgetBarZero() {}
 
   virtual s_drawElementCount get_drawElementCount() const override;
-  virtual void compute_data();
+  virtual void compute_data(s_drawData &) override;
 };
 
 class widgetSlider : public widget
@@ -418,6 +388,50 @@ protected:
 #undef widget_DECLARECOMMUNMETHODS
 #undef widget_DECLAREATTRIBUTE
 
+// Layout =====================================================================
+
+enum e_alignment
+{
+  ALIGN_MASK_HORIZONTAL_LEFT     = 0x0001,
+  ALIGN_MASK_HORIZONTAL_CENTERED = 0x0002,
+  ALIGN_MASK_HORIZONTAL_RIGHT    = 0x0004,
+
+  ALIGN_MASK_VERTICAL_TOP        = 0x0010,
+  ALIGN_MASK_VERTICAL_CENTERED   = 0x0020,
+  ALIGN_MASK_VERTICAL_BOTTOM     = 0x0040,
+
+  ALIGN_MASK_CENTERED = ALIGN_MASK_HORIZONTAL_CENTERED | ALIGN_MASK_VERTICAL_CENTERED,
+  ALIGN_MASK_LEFT_TOP = ALIGN_MASK_HORIZONTAL_LEFT | ALIGN_MASK_VERTICAL_TOP,
+};
+
+struct s_layoutGrid
+{
+  struct s_cell
+  {
+    widget     *m_widget = nullptr;
+    glm::uvec2 m_span = glm::uvec2(1); ///< span (x:col, y:row)
+    uint       m_alignMask = ALIGN_MASK_HORIZONTAL_LEFT | ALIGN_MASK_VERTICAL_CENTERED;
+  };
+
+  glm::uvec2          m_dimension = glm::uvec2(0); ///< Dimension (x:columns, y:rows)
+  std::vector<s_cell> m_cells;
+  s_size              m_cellMargin = s_size::ONE_PIXEL;
+
+  std::vector<s_size> m_rowsHeight_User, m_colsWidth_User; ///< Size of rows and columns (given by the user)
+  std::vector<float>  m_rowsHeight, m_colsWidth; ///< Size of rows and columns (real)
+
+  std::vector<s_size> m_rowsInbetweenSpace, m_colsInbetweenSpace; ///< In-between size of rows and columns
+
+  s_size m_totalHeight, m_totalWidth; ///< Total size (given by the user)
+
+  void set_dimension(uint rows, uint cols);
+  uint index(uint iRow, uint iCol) const { TRE_ASSERT(iRow < m_dimension.y); TRE_ASSERT(iCol < m_dimension.x); return iCol + iRow * m_dimension.x; }
+  glm::vec2 computeWidgetZones(const widget::s_drawData &dd, const glm::vec2 &offset = glm::vec2(0.f)); ///< Computes the zone assigned to each widget. Returns the global size.
+  void clear();
+};
+
+// Other layout ? -> make layouts derived from widget ?
+
 // declare window =============================================================
 
 class window
@@ -429,22 +443,24 @@ protected:
   /// @name global properties
   /// @{
 
+protected:
+  bool whasFocus = false;
 public:
   void set_isactiveWindow(bool a_active); ///< like set_isactive(), but trigger a dummy event when the window get inactived.
   void set_isvisibleWindow(bool a_visible); ///< like set_isvisible(), but a dummy event is triggered.
-protected:
-  bool whasFocus = false;
+  bool get_hasFocus() const { return whasFocus; }
 
 #define window_PROPERTY(atype,aname,ainit,updateFlag) \
   public: \
     const atype &get_##aname() const { return w##aname; } \
-    void  set_##aname(atype a_##aname) { updateFlag |= (w##aname != a_##aname); w##aname = a_##aname; } \
+    void  set_##aname(const atype & a_##aname) { updateFlag |= (w##aname != a_##aname); w##aname = a_##aname; } \
   protected: \
     atype w##aname = ainit;
 
   window_PROPERTY(bool,isvisible, true, m_isUpdateNeededDummy);
   window_PROPERTY(bool,isactive, true, m_isUpdateNeededDummy);
-  window_PROPERTY(s_size, fontSize, s_size(16, SIZE_PIXEL), m_isUpdateNeededLayout)
+  window_PROPERTY(s_size, lineHeight, s_size(16, SIZE_PIXEL), m_isUpdateNeededLayout)
+  window_PROPERTY(s_size, fontHeight, s_size(20, SIZE_PIXEL), m_isUpdateNeededLayout)
   window_PROPERTY(glm::vec4, colormask, glm::vec4(1.f), m_isUpdateNeededData)
   window_PROPERTY(s_colorTheme, colortheme, s_colorTheme(), m_isUpdateNeededData)
   window_PROPERTY(uint, alignMask, ALIGN_MASK_LEFT_TOP, m_isUpdateNeededData)
@@ -458,8 +474,7 @@ public:
   window* set_topbar(const std::string &name, bool canBeMoved, bool canBeClosed);
   window* set_topbarName(const std::string &name); ///< rename the top-bar title (only after "set_topbar" call)
   window* set_transparency(const float alpha) { m_isUpdateNeededData |= (wcolormask.w != alpha); wcolormask.w = alpha; return this; } ///< set the global transparency
-
-public:
+  void set_fontSize(s_size fontSize); ///< set the font-size, andt the line-height (with padding)
   void set_layoutGrid(uint row, uint col) { m_isUpdateNeededAddress = true; wlayout.set_dimension(row, col); } ///< set the layout.
   void set_colWidth(uint col, const s_size width); ///< set the width of a column, that overwrites the automatic size. A negative value will unset the value.
   void set_rowHeight(uint row, const s_size height); /// set the height of a row, that overwrites the automatic size. A negative value will unset the value.
@@ -469,9 +484,7 @@ public:
   void set_colSpacement(uint col, const s_size width, const bool atLeft = true); ///< set a space in-between two columns
   void set_rowSpacement(uint row, const s_size height, const bool atTop = true); ///< set a space in-between two rows
 
-  float     resolve_sizeW(s_size size) const { return resolve_sizeWH(size).x; }
-  float     resolve_sizeH(s_size size) const { return resolve_sizeWH(size).y; }
-  glm::vec2 resolve_sizeWH(s_size size) const; ///< returns the size of a pixel, in the local-space of the window.
+  glm::vec2 resolve_pixelSize() const; ///< returns the size of a pixel, in the local-space of the window.
   glm::vec2 resolve_pixelOffset() const; ///< returns a local-space position that is in the center of a pixel. The offset might not be minimal, nor positive.
   //0}
 
@@ -642,9 +655,6 @@ public:
   void updateIntoGPU(); ///< Update data into GPU
   void clearGPU(); ///< Clean GPU handlers
 
-  modelRaw2D & getDrawModel() { return m_model; }
-  glm::vec4 * __restrict getDrawBuffer(const unsigned offset = 0) const { return reinterpret_cast<glm::vec4 *>(m_model.layout().m_positions.m_data + (8 * offset)); }
-
   virtual bool loadShader(shader *shaderToUse = nullptr) = 0;
   void clearShader();
 
@@ -654,10 +664,14 @@ protected:
 
   modelRaw2D    m_model; ///< main mesh-model: part0: solid-boxes, part1: solid-lines, part2: pictures, part[3-...]: pictures(texts)
 
+  modelRaw2D & getDrawModel() { return m_model; } // DEPRECATED.
+  glm::vec4 * __restrict getDrawBuffer(const unsigned offset = 0) const { return reinterpret_cast<glm::vec4 *>(m_model.layout().m_positions.m_data) + (2 * offset); }
+
   shader       *m_shader = nullptr; ///< Global shader for solid drawing
   bool          m_shaderOwner = true;
   /// @}
 
+friend class tre::ui::window;
 };
 
 /**

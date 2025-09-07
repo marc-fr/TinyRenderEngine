@@ -132,46 +132,42 @@ public:
   };
   s_value wvalue;
 
-  virtual s_drawElementCount get_drawElementCount() const
+  virtual s_drawElementCount get_drawElementCount() const override
   {
     s_drawElementCount res;
     res.m_vcountSolid = 18;
     return res;
   }
 
-  virtual glm::vec2 get_zoneSizeDefault() const override
+  virtual glm::vec2 get_zoneSizeDefault(const s_drawData &dd) const override
   {
-    const float h = m_parentWindow->resolve_sizeH(m_parentWindow->get_fontSize());
+    const float h = dd.resolve_sizeH(m_parentWindow->get_lineHeight());
     return glm::vec2(5.f * h, h);
   }
 
-  void compute_data() override
+  void compute_data(s_drawData &dd) override
   {
-    auto & objsolid = m_parentWindow->get_parentUI()->getDrawModel();
-
-    objsolid.fillDataRectangle(m_adSolid.part, m_adSolid.offset + 0, m_zone, glm::vec4(0.f), glm::vec4(0.f));
+    tre::ui::fillRect(dd.m_bufferSolid, m_zone, glm::vec4(0.f));
 
     const float valx1 = m_zone.x + (m_zone.z-m_zone.x) * (wvalue.m_peak);
-    const glm::vec4 zoneBar1 = glm::vec4(m_zone.x,m_zone.y,valx1,m_zone.w);
     const glm::vec4 zoneC1 = glm::vec4(0.5f * wvalue.m_peak, 0.5f * (1.f - wvalue.m_peak), 0.f, 1.f);
-    objsolid.fillDataRectangle(m_adSolid.part, m_adSolid.offset + 6, zoneBar1, glm::vec4(0.f), glm::vec4(0.f));
-    objsolid.layout().m_colors.get<glm::vec4>(m_adSolid.offset + 6    ) = glm::vec4(0.f, 0.5f, 0.f, 1.f);
-    objsolid.layout().m_colors.get<glm::vec4>(m_adSolid.offset + 6 + 1) = zoneC1;
-    objsolid.layout().m_colors.get<glm::vec4>(m_adSolid.offset + 6 + 2) = zoneC1;
-    objsolid.layout().m_colors.get<glm::vec4>(m_adSolid.offset + 6 + 3) = glm::vec4(0.f, 0.5f, 0.f, 1.f);
-    objsolid.layout().m_colors.get<glm::vec4>(m_adSolid.offset + 6 + 4) = zoneC1;
-    objsolid.layout().m_colors.get<glm::vec4>(m_adSolid.offset + 6 + 5) = glm::vec4(0.f, 0.5f, 0.f, 1.f);
+
+    *dd.m_bufferSolid++ = glm::vec4(m_zone.x, m_zone.y, 0.f, 0.f); *dd.m_bufferSolid++ = glm::vec4(0.f, 0.5f, 0.f, 1.f);
+    *dd.m_bufferSolid++ = glm::vec4(valx1   , m_zone.y, 0.f, 0.f); *dd.m_bufferSolid++ = zoneC1;
+    *dd.m_bufferSolid++ = glm::vec4(valx1   , m_zone.w, 0.f, 0.f); *dd.m_bufferSolid++ = zoneC1;
+    *dd.m_bufferSolid++ = glm::vec4(m_zone.x, m_zone.y, 0.f, 0.f); *dd.m_bufferSolid++ = glm::vec4(0.f, 0.5f, 0.f, 1.f);
+    *dd.m_bufferSolid++ = glm::vec4(valx1   , m_zone.w, 0.f, 0.f); *dd.m_bufferSolid++ = zoneC1;
+    *dd.m_bufferSolid++ = glm::vec4(m_zone.x, m_zone.w, 0.f, 0.f); *dd.m_bufferSolid++ = glm::vec4(0.f, 0.5f, 0.f, 1.f);
 
     const float valx2 = m_zone.x + (m_zone.z-m_zone.x) * (wvalue.m_RMS);
-    const glm::vec4 zoneBar2 = glm::vec4(m_zone.x,m_zone.y,valx2,m_zone.w);
     const glm::vec4 zoneC2 = glm::vec4(wvalue.m_peak, 1.f - wvalue.m_peak, 0.f, 1.f);
-    objsolid.fillDataRectangle(m_adSolid.part, m_adSolid.offset + 12, zoneBar2, glm::vec4(0.f), glm::vec4(0.f));
-    objsolid.layout().m_colors.get<glm::vec4>(m_adSolid.offset + 12    ) = glm::vec4(0.f, 1.f, 0.f, 1.f);
-    objsolid.layout().m_colors.get<glm::vec4>(m_adSolid.offset + 12 + 1) = zoneC2;
-    objsolid.layout().m_colors.get<glm::vec4>(m_adSolid.offset + 12 + 2) = zoneC2;
-    objsolid.layout().m_colors.get<glm::vec4>(m_adSolid.offset + 12 + 3) = glm::vec4(0.f, 1.f, 0.f, 1.f);
-    objsolid.layout().m_colors.get<glm::vec4>(m_adSolid.offset + 12 + 4) = zoneC2;
-    objsolid.layout().m_colors.get<glm::vec4>(m_adSolid.offset + 12 + 5) = glm::vec4(0.f, 1.f, 0.f, 1.f);
+
+    *dd.m_bufferSolid++ = glm::vec4(m_zone.x, m_zone.y, 0.f, 0.f); *dd.m_bufferSolid++ = glm::vec4(0.f, 0.5f, 0.f, 1.f);
+    *dd.m_bufferSolid++ = glm::vec4(valx2   , m_zone.y, 0.f, 0.f); *dd.m_bufferSolid++ = zoneC2;
+    *dd.m_bufferSolid++ = glm::vec4(valx2   , m_zone.w, 0.f, 0.f); *dd.m_bufferSolid++ = zoneC2;
+    *dd.m_bufferSolid++ = glm::vec4(m_zone.x, m_zone.y, 0.f, 0.f); *dd.m_bufferSolid++ = glm::vec4(0.f, 0.5f, 0.f, 1.f);
+    *dd.m_bufferSolid++ = glm::vec4(valx2   , m_zone.w, 0.f, 0.f); *dd.m_bufferSolid++ = zoneC2;
+    *dd.m_bufferSolid++ = glm::vec4(m_zone.x, m_zone.w, 0.f, 0.f); *dd.m_bufferSolid++ = glm::vec4(0.f, 0.5f, 0.f, 1.f);
   }
 
   void setValueModified() { setUpdateNeededData(); }
@@ -183,7 +179,7 @@ class widgetWaveform : public tre::ui::widgetPicture
 {
 public:
 
-  virtual s_drawElementCount get_drawElementCount() const
+  virtual s_drawElementCount get_drawElementCount() const override
   {
     s_drawElementCount res = tre::ui::widgetPicture::get_drawElementCount();
     res.m_vcountLine += 2;
@@ -194,18 +190,14 @@ public:
 
   void setCursor(float c) { if (c != wcursor) { wcursor = c; setUpdateNeededData(); } }
 
-  virtual void compute_data() override
+  virtual void compute_data(s_drawData &dd) override
   {
-    tre::ui::widgetPicture::compute_data();
-
-    auto & objsolid = m_parentWindow->get_parentUI()->getDrawModel();
-    const uint adPart = m_adrLine.part;
-    const uint adOffset = m_adrLine.offset + tre::ui::widgetPicture::get_drawElementCount().m_vcountLine;
+    tre::ui::widgetPicture::compute_data(dd);
 
     const float xC = m_zone.x + (m_zone.z - m_zone.x) * wcursor;
     const glm::vec2 pA = glm::vec2(xC, m_zone.y);
     const glm::vec2 pB = glm::vec2(xC, m_zone.w);
-    objsolid.fillDataLine(adPart, adOffset, pA, pB, glm::vec4(0.3f, 1.f, 0.3f, 1.f));
+    tre::ui::fillLine(dd.m_bufferLine, pA, pB, glm::vec4(0.3f, 1.f, 0.3f, 1.f));
   }
 
   template<class _soundData, class _soundSampler>

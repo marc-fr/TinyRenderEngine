@@ -510,7 +510,8 @@ void profiler::compute_data()
   for(uint iT = 0; iT < nThread; ++iT)
   {
     textgenerator::s_textInfo txtInfo;
-    txtInfo.setupBasic(m_font, m_dYthread * 0.7f, m_context.m_name.c_str(), glm::vec2(m_xTitle + 0.01f, m_yStart + iT * m_dYthread + m_dYthread));
+    txtInfo.setupBasic(m_font, m_context.m_name.c_str(), glm::vec2(m_xTitle + 0.01f, m_yStart + iT * m_dYthread + m_dYthread));
+    txtInfo.setupSize(m_dYthread);
     textgenerator::generate(txtInfo, &m_model, m_partText, offsetText, nullptr);
     offsetText += textgenerator::geometry_VertexCount(txtInfo.m_text);
   }
@@ -522,7 +523,8 @@ void profiler::compute_data()
     std::snprintf(txt, 15, "%.f ms", t * 1000.f);
 
     textgenerator::s_textInfo txtInfo;
-    txtInfo.setupBasic(m_font, m_dYthread * 0.5f, txt, glm::vec2(x - 0.5f * m_dYthread, m_yStart - 0.02f * m_dYthread));
+    txtInfo.setupBasic(m_font, txt, glm::vec2(x - 0.5f * m_dYthread, m_yStart - 0.02f * m_dYthread));
+    txtInfo.setupSize(m_dYthread);
     textgenerator::generate(txtInfo, &m_model, m_partText, offsetText, nullptr);
     offsetText += textgenerator::geometry_VertexCount(txtInfo.m_text);
   }
@@ -568,15 +570,18 @@ void profiler::compute_data()
 
     textgenerator::s_textInfo txtInfo;
 
-    txtInfo.setupBasic(m_font, m_dYthread * 0.7f, "frame", glm::vec2(m_xTitle, y0 + m_dYthread * 0.5));
+    txtInfo.setupBasic(m_font, "frame", glm::vec2(m_xTitle, y0 + m_dYthread * 0.5));
+    txtInfo.setupSize(m_dYthread);
     textgenerator::generate(txtInfo, &m_model, m_partText, offsetText, nullptr);
     offsetText += textgenerator::geometry_VertexCount(txtInfo.m_text);
 
-    txtInfo.setupBasic(m_font, m_dYthread * 0.5f, "1ms", glm::vec2(x0 - 1.5f * m_dYthread, y1ms + m_dYthread * 0.25f));
+    txtInfo.setupBasic(m_font, "1ms", glm::vec2(x0 - 1.5f * m_dYthread, y1ms + m_dYthread * 0.25f));
+    txtInfo.setupSize(m_dYthread * 0.5f);
     textgenerator::generate(txtInfo, &m_model, m_partText, offsetText, nullptr);
     offsetText += textgenerator::geometry_VertexCount(txtInfo.m_text);
 
-    txtInfo.setupBasic(m_font, m_dYthread * 0.5f, "10ms", glm::vec2(x0 - 1.5f * m_dYthread, y10ms + m_dYthread * 0.25f));
+    txtInfo.setupBasic(m_font, "10ms", glm::vec2(x0 - 1.5f * m_dYthread, y10ms + m_dYthread * 0.25f));
+    txtInfo.setupSize(m_dYthread * 0.5f);
     textgenerator::generate(txtInfo, &m_model, m_partText, offsetText, nullptr);
     offsetText += textgenerator::geometry_VertexCount(txtInfo.m_text);
   }
@@ -608,7 +613,8 @@ void profiler::compute_data()
     txt += txtT;
 
     textgenerator::s_textInfo txtInfo;
-    txtInfo.setupBasic(m_font, m_dYthread * 0.7f, txt.c_str());
+    txtInfo.setupBasic(m_font, txt.c_str());
+    txtInfo.setupSize(m_dYthread);
 
     textgenerator::s_textInfoOut txtInfoOut;
     textgenerator::generate(txtInfo, nullptr, 0, 0, &txtInfoOut); // without mesh

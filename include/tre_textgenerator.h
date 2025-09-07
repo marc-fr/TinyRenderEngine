@@ -30,19 +30,29 @@ namespace textgenerator
   {
     glm::vec4    m_color = glm::vec4(1.f);
     glm::vec4    m_zone = glm::vec4(0.f); ///< zone in which the text is drawn (x1,y1,x2,y2). Use (x1,y1,x1,y1) if no out border.
-    float        m_fontsize = 1.f; ///< font-size
     const char   *m_text = nullptr;
     const font   *m_font = nullptr;
-    glm::vec2    m_pixelSize = glm::vec2(0.f, 0.f); ///< Size of a pixel. (Zero means no valid size.)
+    float        m_fontHeight = 1.f; ///< font-size
+    float        m_lineHeight = 1.08f; ///< line-size
+    unsigned     m_fontPixelSize = -1u; ///< hint on font-size in pixel units. Used to select best font maps according to pixel size.
     bool         m_boxExtendedToNextChar = false; ///< Extend the bounding box by the next character start position.
 
-    void setupBasic(const font *font, const float fontSize, const char *str, const glm::vec2 &pos = glm::vec2(0.f), const glm::vec4 &color = glm::vec4(1.f))
+    void setupBasic(const font *font, const char *str, const glm::vec2 &pos = glm::vec2(0.f), const glm::vec4 &color = glm::vec4(1.f))
     {
       m_font = font;
-      m_fontsize = fontSize;
       m_text = str;
       m_zone = glm::vec4(pos, pos);
       m_color = color;
+    }
+    void setupSize(const float lineHeight, const float fontHeight)
+    {
+      m_lineHeight = lineHeight;
+      m_fontHeight = fontHeight;
+    }
+    void setupSize(const float lineHeight)
+    {
+      m_lineHeight = lineHeight;
+      m_fontHeight = lineHeight / 1.08f;
     }
   };
 

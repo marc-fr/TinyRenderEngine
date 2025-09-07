@@ -35,21 +35,38 @@ struct s_sceneOption
 class widgetTextAndReport : public tre::ui::widgetText
 {
 public:
-  unsigned get_resolvedFontSizePixel() const
+  widgetTextAndReport() : widgetText() {}
+  virtual ~widgetTextAndReport() override {}
+
+  float    wFontRealSize = 0.f;
+  unsigned wResolvedFontSize = 0;
+
+  virtual void animate(float dt) override
   {
-    return unsigned( m_parentWindow->resolve_sizeH(m_parentWindow->get_fontSize()) / m_parentWindow->resolve_sizeH(tre::ui::s_size::ONE_PIXEL) );
+    char outT[128];
+    std::snprintf(outT, 128, "resolved font size %.1f (font look-up %d)", wFontRealSize, wResolvedFontSize);
+    outT[127] = 0;
+    set_text(outT);
+
+    widgetText::animate(dt);
   }
-  unsigned get_pickedFontSizePixel() const
+
+  virtual void compute_data(s_drawData &dd) override
   {
+    const float fsize = dd.resolve_sizeH(m_parentWindow->get_fontHeight());
+    const float fsizePx = fsize / dd.resolve_sizeH(tre::ui::s_size::ONE_PIXEL);
+
     tre::textgenerator::s_textInfo tInfo;
-    tInfo.setupBasic(m_parentWindow->get_parentUI()->get_defaultFont(), m_parentWindow->resolve_sizeH(m_parentWindow->get_fontSize()), ".");
-    tInfo.m_pixelSize = m_parentWindow->resolve_sizeWH(tre::ui::s_size::ONE_PIXEL);
+    tInfo.setupBasic(m_parentWindow->get_parentUI()->get_defaultFont(), ".");
+    tInfo.m_fontPixelSize = unsigned(fsizePx);
 
     tre::textgenerator::s_textInfoOut tOut;
-
     tre::textgenerator::generate(tInfo, nullptr, 0, 0, &tOut);
 
-    return tOut.m_choosenFontSizePixel;
+    wFontRealSize = fsizePx;
+    wResolvedFontSize = tOut.m_choosenFontSizePixel;
+
+    widgetText::compute_data(dd);
   }
 };
 
@@ -67,17 +84,14 @@ public:
     res.m_vcountSolid = 6;
     return res;
   }
-
-  virtual glm::vec2 get_zoneSizeDefault() const override
+  virtual glm::vec2 get_zoneSizeDefault(const s_drawData &dd) const override
   {
-    const float h = m_parentWindow->resolve_sizeH(m_parentWindow->get_fontSize());
+    const float h = dd.resolve_sizeH(m_parentWindow->get_lineHeight());
     return glm::vec2(3.f * h, h);
   }
-  virtual void compute_data() override
+  virtual void compute_data(s_drawData &dd) override
   {
-    auto & objsolid = m_parentWindow->get_parentUI()->getDrawModel();
-
-    objsolid.fillDataRectangle(m_adSolid.part, m_adSolid.offset, m_zone, wcolor, glm::vec4(0.f));
+    tre::ui::fillRect(dd.m_bufferSolid, m_zone, wcolor);
   }
 };
 
@@ -97,18 +111,16 @@ public:
     return res;
   }
 
-  virtual glm::vec2 get_zoneSizeDefault() const override
+  virtual glm::vec2 get_zoneSizeDefault(const s_drawData &dd) const override
   {
-    const float h = m_parentWindow->resolve_sizeH(m_parentWindow->get_fontSize());
+    const float h = dd.resolve_sizeH(m_parentWindow->get_lineHeight());
     return glm::vec2(3.f * h, h);
   }
-  virtual void compute_data() override
+  virtual void compute_data(s_drawData &dd) override
   {
-    auto & objsolid = m_parentWindow->get_parentUI()->getDrawModel();
+    tre::ui::fillRect(dd.m_bufferSolid, m_zone, glm::vec4(0.f, 0.f, 0.f, 1.f), glm::vec4(0.f));
 
-    objsolid.fillDataRectangle(m_adSolid.part, m_adSolid.offset, m_zone, glm::vec4(0.f, 0.f, 0.f, 1.f), glm::vec4(0.f));
-
-    const glm::vec2 pxSize2 = m_parentWindow->resolve_sizeWH(tre::ui::s_size(2, tre::ui::SIZE_PIXEL));
+    const glm::vec2 pxSize2 = dd.resolve_sizeWH(tre::ui::s_size(2, tre::ui::SIZE_PIXEL));
 
     glm::vec2 pxOffset = m_parentWindow->resolve_pixelOffset();
     pxOffset.x += m_zone.x;
@@ -116,20 +128,20 @@ public:
 
     // draw base line (not snapped)
 
-    objsolid.fillDataLine(m_adrLine.part, m_adrLine.offset +  0, glm::vec2(m_zone.x, m_zone.y), glm::vec2(m_zone.x, m_zone.w), glm::vec4(1.f));
-    objsolid.fillDataLine(m_adrLine.part, m_adrLine.offset +  2, glm::vec2(m_zone.x, m_zone.w), glm::vec2(m_zone.z, m_zone.w), glm::vec4(1.f));
+    tre::ui::fillLine(dd.m_bufferLine, glm::vec2(m_zone.x, m_zone.y), glm::vec2(m_zone.x, m_zone.w), glm::vec4(1.f));
+    tre::ui::fillLine(dd.m_bufferLine, glm::vec2(m_zone.x, m_zone.w), glm::vec2(m_zone.z, m_zone.w), glm::vec4(1.f));
 
     // draw 4 horizontal and 4 vertical lines every 2-pixels (if the zone is large enough)
 
-    objsolid.fillDataLine(m_adrLine.part, m_adrLine.offset +  4, glm::vec2(pxOffset.x + pxSize2.x * 1, m_zone.y), glm::vec2(pxOffset.x + pxSize2.x * 1, m_zone.w), glm::vec4(1.f));
-    objsolid.fillDataLine(m_adrLine.part, m_adrLine.offset +  6, glm::vec2(pxOffset.x + pxSize2.x * 2, m_zone.y), glm::vec2(pxOffset.x + pxSize2.x * 2, m_zone.w), glm::vec4(1.f));
-    objsolid.fillDataLine(m_adrLine.part, m_adrLine.offset +  8, glm::vec2(pxOffset.x + pxSize2.x * 3, m_zone.y), glm::vec2(pxOffset.x + pxSize2.x * 3, m_zone.w), glm::vec4(1.f));
-    objsolid.fillDataLine(m_adrLine.part, m_adrLine.offset + 10, glm::vec2(pxOffset.x + pxSize2.x * 4, m_zone.y), glm::vec2(pxOffset.x + pxSize2.x * 4, m_zone.w), glm::vec4(1.f));
+    tre::ui::fillLine(dd.m_bufferLine, glm::vec2(pxOffset.x + pxSize2.x * 1, m_zone.y), glm::vec2(pxOffset.x + pxSize2.x * 1, m_zone.w), glm::vec4(1.f));
+    tre::ui::fillLine(dd.m_bufferLine, glm::vec2(pxOffset.x + pxSize2.x * 2, m_zone.y), glm::vec2(pxOffset.x + pxSize2.x * 2, m_zone.w), glm::vec4(1.f));
+    tre::ui::fillLine(dd.m_bufferLine, glm::vec2(pxOffset.x + pxSize2.x * 3, m_zone.y), glm::vec2(pxOffset.x + pxSize2.x * 3, m_zone.w), glm::vec4(1.f));
+    tre::ui::fillLine(dd.m_bufferLine, glm::vec2(pxOffset.x + pxSize2.x * 4, m_zone.y), glm::vec2(pxOffset.x + pxSize2.x * 4, m_zone.w), glm::vec4(1.f));
 
-    objsolid.fillDataLine(m_adrLine.part, m_adrLine.offset + 12, glm::vec2(m_zone.x, pxOffset.y -  pxSize2.y * 1), glm::vec2(m_zone.z, pxOffset.y - pxSize2.y * 1), glm::vec4(1.f));
-    objsolid.fillDataLine(m_adrLine.part, m_adrLine.offset + 14, glm::vec2(m_zone.x, pxOffset.y -  pxSize2.y * 2), glm::vec2(m_zone.z, pxOffset.y - pxSize2.y * 2), glm::vec4(1.f));
-    objsolid.fillDataLine(m_adrLine.part, m_adrLine.offset + 16, glm::vec2(m_zone.x, pxOffset.y -  pxSize2.y * 3), glm::vec2(m_zone.z, pxOffset.y - pxSize2.y * 3), glm::vec4(1.f));
-    objsolid.fillDataLine(m_adrLine.part, m_adrLine.offset + 18, glm::vec2(m_zone.x, pxOffset.y -  pxSize2.y * 4), glm::vec2(m_zone.z, pxOffset.y - pxSize2.y * 4), glm::vec4(1.f));
+    tre::ui::fillLine(dd.m_bufferLine, glm::vec2(m_zone.x, pxOffset.y -  pxSize2.y * 1), glm::vec2(m_zone.z, pxOffset.y - pxSize2.y * 1), glm::vec4(1.f));
+    tre::ui::fillLine(dd.m_bufferLine, glm::vec2(m_zone.x, pxOffset.y -  pxSize2.y * 2), glm::vec2(m_zone.z, pxOffset.y - pxSize2.y * 2), glm::vec4(1.f));
+    tre::ui::fillLine(dd.m_bufferLine, glm::vec2(m_zone.x, pxOffset.y -  pxSize2.y * 3), glm::vec2(m_zone.z, pxOffset.y - pxSize2.y * 3), glm::vec4(1.f));
+    tre::ui::fillLine(dd.m_bufferLine, glm::vec2(m_zone.x, pxOffset.y -  pxSize2.y * 4), glm::vec2(m_zone.z, pxOffset.y - pxSize2.y * 4), glm::vec4(1.f));
 
     setUpdateNeededData(); // hack, always update
   }
@@ -257,19 +269,6 @@ bool s_uiManager::load(const s_loadArgs &args)
 
     tre::ui::widget *wFeedBackFontSize = new widgetTextAndReport;
     menuWmain->set_widget(wFeedBackFontSize, 11,0, 1, 55);
-    wFeedBackFontSize->wcb_animate = [](tre::ui::widget *self, float)
-    {
-      widgetTextAndReport* selfTx = static_cast<widgetTextAndReport*>(self);
-
-      const unsigned fontSizePixel = selfTx->get_resolvedFontSizePixel();
-      const unsigned pickedSizePixel = selfTx->get_pickedFontSizePixel();
-
-      char outT[128];
-      std::snprintf(outT, 128, "resolved font size %d (font look-up %d)", fontSizePixel, pickedSizePixel);
-      outT[127] = 0;
-
-      selfTx->set_text(outT);
-    };
   }
 
     if (args.with3D)
@@ -484,19 +483,6 @@ bool s_uiManager::load(const s_loadArgs &args)
 
     tre::ui::widget *wFeedBackFontSize = new widgetTextAndReport;
     menuWoption->set_widget(wFeedBackFontSize, 10,0, 1,55);
-    wFeedBackFontSize->wcb_animate = [](tre::ui::widget *self, float)
-    {
-      widgetTextAndReport* selfTx = static_cast<widgetTextAndReport*>(self);
-
-      const unsigned fontSizePixel = selfTx->get_resolvedFontSizePixel();
-      const unsigned pickedSizePixel = selfTx->get_pickedFontSizePixel();
-
-      char outT[128];
-      std::snprintf(outT, 128, "resolved font size %d (font look-up %d)", fontSizePixel, pickedSizePixel);
-      outT[127] = 0;
-
-      selfTx->set_text(outT);
-    };
 
     menuWoption->create_widgetText(12,0, 1,2)->set_text("Window controls")->set_fontsizeModifier(1.1f)->set_color(glm::vec4(1.f, 0.f, 1.f, 1.f));
 
