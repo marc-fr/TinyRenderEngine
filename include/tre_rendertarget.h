@@ -21,6 +21,7 @@ public:
   static const int RT_COLOR_SAMPLABLE = 0x0100;
   static const int RT_DEPTH_SAMPLABLE = 0x0200;
   static const int RT_COLOR_HDR       = 0x0010;
+  static const int RT_NATIVE_DEPTH    = 0x0020;
   static const int RT_MULTISAMPLED    = 0x0003;
 
   static const int RT_COLOR_AND_DEPTH = RT_COLOR | RT_DEPTH;
@@ -36,7 +37,7 @@ public:
   void bindForWritting() const;
   void bindForReading() const;
 
-  void resolve(const int outwidth, const int outheigth) const;
+  void resolve(const int outwidth, const int outheigth, const bool withDepth = false) const;
   void resolve(renderTarget & targetFBO) const;
 
   int w()               const { return m_w; }
@@ -44,6 +45,7 @@ public:
   bool hasColor()       const { return (m_flags & RT_COLOR) != 0; }
   bool hasDepth()       const { return (m_flags & RT_DEPTH) != 0; }
   bool isHDR()          const { return (m_flags & RT_COLOR_HDR) != 0; }
+  bool isNativeDepth()  const { return (m_flags & RT_NATIVE_DEPTH) != 0; }
   bool isMultisampled() const { return (m_flags & RT_MULTISAMPLED) != 0; }
   GLuint colorHandle()  const { TRE_ASSERT(m_colorhandle != 0); return m_colorhandle; }
   GLuint depthHandle()  const { TRE_ASSERT(m_depthhandle != 0); return m_depthhandle; }
@@ -54,8 +56,6 @@ protected:
   GLuint  m_drawFBO = 0;
   GLuint  m_colorhandle = 0, m_depthhandle = 0;
   GLuint  m_colorbuffer = 0, m_depthbuffer = 0;
-
-  bool hasValidFlags() const;
 };
 
 // ============================================================================

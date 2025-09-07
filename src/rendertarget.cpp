@@ -9,6 +9,11 @@ namespace tre {
 // ============================================================================
 // Helpers ...
 
+static int kNativeDepthSize = 0;
+static int kMaxMultiSampling = 0;
+
+// ----------------------------------------------------------------------------
+
 static void createColorAttachment(int w, int h, bool isHDR, bool isMultisampled, bool isSamplable,
                                   GLenum attachment,
                                   GLuint &outTextureHandle, GLuint &outBufferHandle)
@@ -57,10 +62,11 @@ static void createColorAttachment(int w, int h, bool isHDR, bool isMultisampled,
 
 // ----------------------------------------------------------------------------
 
-static void createDepthAttachment(int w, int h, bool highPrecision, bool isMultisampled, bool isSamplable,
+static void createDepthAttachment(int w, int h, int depthSize, bool isMultisampled, bool isSamplable,
                                   GLuint &outTextureHandle, GLuint &outBufferHandle)
 {
   TRE_ASSERT(w != 0 && h != 0);
+  TRE_ASSERT(depthSize == 16 || depthSize == 24 || depthSize == 32);
   TRE_ASSERT(!isMultisampled || !isSamplable);
   TRE_ASSERT(outTextureHandle == 0 && outBufferHandle == 0);
 
@@ -69,12 +75,11 @@ static void createDepthAttachment(int w, int h, bool highPrecision, bool isMulti
     //create
     glGenTextures(1,&outTextureHandle);
     glBindTexture(GL_TEXTURE_2D,outTextureHandle);
-#ifndef TRE_OPENGL_ES
-    if (highPrecision) glTexImage2D(GL_TEXTURE_2D,0,GL_DEPTH_COMPONENT32F,w,h,0,GL_DEPTH_COMPONENT,GL_FLOAT,nullptr);
-    else               glTexImage2D(GL_TEXTURE_2D,0,GL_DEPTH_COMPONENT   ,w,h,0,GL_DEPTH_COMPONENT,GL_UNSIGNED_INT,nullptr); // keep the native GL_DEPTH_COMPONENT so the depth-format stay compatible when using "glBlitFramebuffer"
-#else
-    glTexImage2D(GL_TEXTURE_2D,0,GL_DEPTH_COMPONENT16 ,w,h,0,GL_DEPTH_COMPONENT,GL_UNSIGNED_SHORT,nullptr); // GL_DEPTH_COMPONENT16 is required on WebGL
-#endif
+    if      (depthSize == 16) glTexImage2D(GL_TEXTURE_2D,0,GL_DEPTH_COMPONENT16 ,w,h,0,GL_DEPTH_COMPONENT,GL_UNSIGNED_SHORT,nullptr);
+    else if (depthSize == 24) glTexImage2D(GL_TEXTURE_2D,0,GL_DEPTH_COMPONENT24 ,w,h,0,GL_DEPTH_COMPONENT,GL_UNSIGNED_INT,nullptr);
+    else if (depthSize == 32) glTexImage2D(GL_TEXTURE_2D,0,GL_DEPTH_COMPONENT32F,w,h,0,GL_DEPTH_COMPONENT,GL_FLOAT,nullptr);
+
+    // GL_DEPTH_COMPONENT16 is required on WebGL (TODO: check this !)
 
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);
@@ -99,11 +104,10 @@ static void createDepthAttachment(int w, int h, bool highPrecision, bool isMulti
     //create
     glGenRenderbuffers(1,&outBufferHandle);
     glBindRenderbuffer(GL_RENDERBUFFER,outBufferHandle);
-#ifndef TRE_OPENGL_ES
-    const GLenum depthFormat = highPrecision ? GL_DEPTH_COMPONENT32F : GL_DEPTH_COMPONENT; // keep the native GL_DEPTH_COMPONENT so the depth-format stay compatible when using "glBlitFramebuffer"
-#else
-    const GLenum depthFormat = highPrecision ? GL_DEPTH_COMPONENT32F : GL_DEPTH_COMPONENT16;
-#endif
+    GLenum depthFormat = 0;
+    if      (depthSize == 16) depthFormat = GL_DEPTH_COMPONENT16;
+    else if (depthSize == 24) depthFormat = GL_DEPTH_COMPONENT24;
+    else if (depthSize == 32) depthFormat = GL_DEPTH_COMPONENT32F;
     if (isMultisampled) glRenderbufferStorageMultisample(GL_RENDERBUFFER,4,depthFormat,w,h);
     else                glRenderbufferStorage(GL_RENDERBUFFER,depthFormat,w,h);
     glBindRenderbuffer(GL_RENDERBUFFER, 0);
@@ -129,16 +133,21 @@ static void clearAttachment(GLuint &outTextureHandle, GLuint &outBufferHandle)
 
 bool renderTarget::load(const int pwidth, const int pheigth)
 {
-  TRE_ASSERT(hasValidFlags());
   TRE_ASSERT(m_drawFBO == 0);
   TRE_ASSERT(pwidth != 0 && pheigth != 0);
 
-  if (isMultisampled())
+  if (isMultisampled() && kMaxMultiSampling == 0)
   {
-    int nmaxsamples = 0;
-    glGetIntegerv(GL_MAX_SAMPLES,&nmaxsamples);
-    TRE_LOG("GL_MAX_SAMPLES: " << nmaxsamples);
-    TRE_ASSERT(nmaxsamples >= 4);
+    glGetIntegerv(GL_MAX_SAMPLES, &kMaxMultiSampling);
+    TRE_LOG("GL_MAX_SAMPLES = " << kMaxMultiSampling);
+    TRE_ASSERT(kMaxMultiSampling >= 4);
+  }
+  if (hasDepth() && kNativeDepthSize == 0)
+  {
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER, GL_DEPTH, GL_FRAMEBUFFER_ATTACHMENT_DEPTH_SIZE, &kNativeDepthSize);
+    TRE_LOG("GL_FRAMEBUFFER_ATTACHMENT_DEPTH_SIZE = " << kNativeDepthSize);
+    TRE_ASSERT(kNativeDepthSize == 16 || kNativeDepthSize == 24 || kNativeDepthSize == 32);
   }
 
   // create frame buffer object
@@ -186,7 +195,10 @@ bool renderTarget::resize(const int pwidth, const int pheigth)
 
   if (hasDepth())
   {
-    createDepthAttachment(m_w, m_h, !hasColor() /*no color, then use better precision for depth-only*/, isMultisampled(), (m_flags & RT_DEPTH_SAMPLABLE) != 0,
+    int dsize = 24;
+    if (!hasColor()) dsize = 32; // high precision if no color
+    if (isNativeDepth()) dsize = kNativeDepthSize;
+    createDepthAttachment(m_w, m_h, dsize, isMultisampled(), (m_flags & RT_DEPTH_SAMPLABLE) != 0,
                           m_depthhandle, m_depthbuffer);
   }
   else
@@ -208,6 +220,15 @@ bool renderTarget::resize(const int pwidth, const int pheigth)
     else if (glstatus==GL_FRAMEBUFFER_UNSUPPORTED)                   { TRE_LOG("(GL_FRAMEBUFFER_UNSUPPORTED returned)");                   }
     myframebufferstatus=false;
   }
+
+#ifdef TRE_DEBUG
+  if (hasDepth())
+  {
+    int depthSize = 0;
+    glGetFramebufferAttachmentParameteriv(GL_FRAMEBUFFER,  GL_DEPTH_ATTACHMENT, GL_FRAMEBUFFER_ATTACHMENT_DEPTH_SIZE, &depthSize);
+    TRE_LOG("FBO: Depth attachment is " << depthSize << " bits.");
+  }
+#endif
 
   glBindFramebuffer(GL_FRAMEBUFFER,0);
 
@@ -252,7 +273,7 @@ void renderTarget::bindForReading() const
 
 // ----------------------------------------------------------------------------
 
-void renderTarget::resolve(const int outwidth, const int outheigth) const
+void renderTarget::resolve(const int outwidth, const int outheigth, const bool withDepth) const
 {
   TRE_ASSERT(m_drawFBO != 0);
   TRE_ASSERT(!isHDR()); // glBlitFramebuffer: buffer(color & depth) must have same format.
@@ -260,11 +281,7 @@ void renderTarget::resolve(const int outwidth, const int outheigth) const
   glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
   glBindFramebuffer(GL_READ_FRAMEBUFFER, m_drawFBO);
 
-  const GLbitfield blitMask = (hasColor() ? GL_COLOR_BUFFER_BIT : 0) | (hasDepth() ? GL_DEPTH_BUFFER_BIT : 0);
-
-#ifdef TRE_OPENGL_ES
-  TRE_ASSERT(!hasDepth()); // undefined behavior: the depth format must be identical, but we cannot insure the format of the default "screen" FBO.
-#endif
+  const GLbitfield blitMask = (hasColor() ? GL_COLOR_BUFFER_BIT : 0) | (hasDepth() && withDepth ? GL_DEPTH_BUFFER_BIT : 0);
 
   glBlitFramebuffer(0, 0, m_w, m_h, 0, 0, outwidth, outheigth, blitMask, GL_NEAREST);
   IsOpenGLok("renderTarget::resolve to screen");
@@ -285,19 +302,6 @@ void renderTarget::resolve(renderTarget &targetFBO) const
 
   glBlitFramebuffer(0, 0, m_w, m_h, 0, 0, targetFBO.w(), targetFBO.h(), blitMask, GL_NEAREST);
   IsOpenGLok("renderTarget::resolve to FBO");
-}
-
-// ----------------------------------------------------------------------------
-
-bool renderTarget::hasValidFlags() const
-{
-  bool isOk = true;
-  isOk &= (hasColor() || hasDepth());
-  isOk &= (hasColor() || ((m_flags & RT_COLOR_SAMPLABLE) == 0));
-  isOk &= (hasDepth() || ((m_flags & RT_DEPTH_SAMPLABLE) == 0));
-  isOk &= (!isMultisampled() || ((m_flags & (RT_COLOR_SAMPLABLE | RT_DEPTH_SAMPLABLE)) == 0));
-  isOk &= (hasColor() || !isHDR());
-  return isOk;
 }
 
 // ============================================================================
@@ -526,7 +530,7 @@ bool renderTarget_GBuffer::resize(const int pwidth, const int pheigth)
 
   // depth (float)
   {
-    createDepthAttachment(m_w, m_h, true, false, true, m_depthhandle, dummy);
+    createDepthAttachment(m_w, m_h, 32, false, true, m_depthhandle, dummy);
   }
 
   // check

@@ -2,17 +2,11 @@
 
 namespace tre {
 
-static_assert(SDL_BYTEORDER == SDL_LIL_ENDIAN  , "Only implemented with little-endian system.");
-
 //-----------------------------------------------------------------------------
 
-static const unsigned k_Config = (SDL_BYTEORDER == SDL_LIL_ENDIAN ? 0x04 : 0x08) |
-#ifdef TRE_OPENGL_ES
-                                 0x01 |
-#else
-                                 0x02 |
-#endif
-                                 0;
+static_assert(SDL_BYTEORDER == SDL_LIL_ENDIAN  , "Only implemented with little-endian system.");
+
+static const unsigned k_Config = (SDL_BYTEORDER == SDL_LIL_ENDIAN ? 0x04 : 0x08);
 
 //-----------------------------------------------------------------------------
 
