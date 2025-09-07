@@ -29,10 +29,14 @@ namespace tre {
 
 #endif
 
+#define TRE_LOG_N(uniqueName, count, msg) { static int uniqueName = 0; if (uniqueName++ % count == 0) TRE_LOG("(every " << count << ") " << msg); }
+
 #else
 
 #define TRE_LOG(msg) {}
 #define TRE_FATAL(msg) { abort(); }
+
+#define TRE_LOG_N(uniqueName, count, msg)
 
 #endif
 

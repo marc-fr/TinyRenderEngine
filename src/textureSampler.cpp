@@ -220,12 +220,12 @@ struct s_driverTIFF
     TRE_ASSERT(m_w != 0 && m_h != 0);
 
     // Get the source format
-    uint16 bytesPerSample = 0;
+    uint16_t bytesPerSample = 0;
     TIFFGetField(m_tiff, TIFFTAG_BITSPERSAMPLE, &bytesPerSample);
     bytesPerSample /= 8;
-    uint16 samplePerPixel = 0;
+    uint16_t samplePerPixel = 0;
     TIFFGetField(m_tiff, TIFFTAG_SAMPLESPERPIXEL, &samplePerPixel);
-    uint16 sampleFormat = 0;
+    uint16_t sampleFormat = 0;
     TIFFGetField(m_tiff, TIFFTAG_SAMPLEFORMAT, &sampleFormat);
     TRE_ASSERT(bytesPerSample != 0 && samplePerPixel != 0);
 
@@ -255,7 +255,7 @@ struct s_driverTIFF
     TRE_ASSERT(stripCount != 0 && m_stripSizeInBytes != 0 && m_rowsPerStrip != 0);
 
     // Check orientation
-    uint16 orient = 0;
+    uint16_t orient = 0;
     int hasOrient = TIFFGetField(m_tiff, TIFFTAG_ORIENTATION, &orient);
     if      (hasOrient == 0) { m_flipV = false; /* default */ }
     else if (hasOrient != 0 && orient == ORIENTATION_TOPLEFT) { m_flipV = false; }

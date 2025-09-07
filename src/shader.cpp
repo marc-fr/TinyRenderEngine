@@ -165,9 +165,9 @@ bool shader::loadCustomShaderGF(const s_layout & shaderLayout , const char * sou
   createShaderSource_VertexMain(sourceVert);
 
   TRE_ASSERT(sourceFullGeom != nullptr);
-  sourceGeom += sourceFullGeom;
+  sourceGeom = sourceFullGeom;
   TRE_ASSERT(sourceFullFrag != nullptr);
-  sourceFrag += sourceFullFrag;
+  sourceFrag = sourceFullFrag;
 
   //-- compile and load it
 

@@ -438,10 +438,10 @@ void windowContext::s_view2D::treatControlEvent(const s_controls &control, const
     const glm::vec2 deltaMouse = mouseCurr_clipSpace - m_mousePrev;
     m_matView[2] = m_matViewPrev[2] + glm::vec3(- deltaMouse, 0.f);
 
-#ifdef TRE_EMSCRIPTEN
+#if defined(TRE_EMSCRIPTEN) || defined(TRE_DEBUG)
     if (SDL_GetMouseFocus() == m_parentWindow->m_window)
     {
-      TRE_LOG("Mouse is unbound because the pointer-lock is not confirmed (or lost) from the web-browser");
+      TRE_LOG("Mouse is unbound because the pointer-lock is not confirmed (or lost) from the web-browser, or other failure");
       SDL_SetRelativeMouseMode(SDL_FALSE);
       m_mouseBound = false;
     }
@@ -541,10 +541,10 @@ void windowContext::s_view3D::treatControlEvent(const s_controls &control, const
     m_matView = glm::rotate(glm::mat4(1.f), deltaMouse.x, glm::vec3(m_matViewPrev[1])) * m_matViewPrev;
     m_matView = glm::rotate(glm::mat4(1.f), deltaMouse.y, glm::vec3(-1.f,0.f,0.f)) * m_matView;
 
-#ifdef TRE_EMSCRIPTEN
+#if defined(TRE_EMSCRIPTEN) || defined(TRE_DEBUG)
     if (SDL_GetMouseFocus() != m_parentWindow->m_window)
     {
-      TRE_LOG("Mouse is unbound because the pointer-lock is not confirmed (or lost) from the web-browser");
+      TRE_LOG("Mouse is unbound because the pointer-lock is not confirmed (or lost) from the web-browser, or other failure");
       SDL_SetRelativeMouseMode(SDL_FALSE);
       m_mouseBound = false;
     }
