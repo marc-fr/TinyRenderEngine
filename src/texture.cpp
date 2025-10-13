@@ -671,7 +671,7 @@ bool texture::write(std::ostream &outbuffer, SDL_Surface *surface, int modemask,
 
   // header
   uint tinfo[8];
-  tinfo[0] = (surface != nullptr) ? TI_2D : TI_NONE;
+  tinfo[0] = TI_2D;
   tinfo[1] = (surface != nullptr) ? surface->w : 0u;
   tinfo[2] = (surface != nullptr) ? surface->h : 0u;
   tinfo[3] = modemask;
@@ -753,13 +753,15 @@ bool texture::writeArray(std::ostream& outbuffer, const span<SDL_Surface*> &surf
       isValid &= (w != 0 && w == s->w && h != 0 && h == s->h && components != 0 && components == s->format->BytesPerPixel);
     }
   }
+  if (!isValid) { w = h = 0; }
+
   if (modemask & MMASK_FORCE_NO_ALPHA) components = 3;
   if (modemask & MMASK_RG_ONLY) components = 2;
   if (modemask & MMASK_ALPHA_ONLY) components = 1;
 
   // header
   uint tinfo[8];
-  tinfo[0] = isValid ? TI_2DARRAY : TI_NONE;
+  tinfo[0] = TI_2DARRAY;
   tinfo[1] = w;
   tinfo[2] = h;
   tinfo[3] = modemask;
@@ -852,9 +854,9 @@ bool texture::writeCube(std::ostream &outbuffer, const std::array<SDL_Surface *,
 
   // header
   uint tinfo[8];
-  tinfo[0] = isValid ? TI_CUBEMAP : TI_NONE;
-  tinfo[1] = isValid ? cubeFaces[0]->w : 4u;
-  tinfo[2] = isValid ? cubeFaces[0]->h : 4u;
+  tinfo[0] = TI_CUBEMAP;
+  tinfo[1] = isValid ? cubeFaces[0]->w : 0u;
+  tinfo[2] = isValid ? cubeFaces[0]->h : 0u;
   tinfo[3] = modemask;
   tinfo[4] = k_Config; // internal
   tinfo[5] = 0; // depth
@@ -908,13 +910,14 @@ bool texture::writeCube(std::ostream &outbuffer, const std::array<SDL_Surface *,
 bool texture::write3D(std::ostream &outbuffer, const uint8_t *data, int w, int h, int d, bool formatFloat, uint components, int modemask)
 {
   const bool isValid = (data != nullptr) && (formatFloat == false) && (components >= 1) && (components <= 4);
+  if (!isValid) { h = d = 0; }
   TRE_ASSERT((modemask & MMASK_ALPHA_ONLY) == 0); // alpha-only modifier not supported
   TRE_ASSERT((modemask & MMASK_FORCE_NO_ALPHA) == 0); // no-alpha modifier not supported
   TRE_ASSERT((modemask & MMASK_RG_ONLY) == 0); // 2-chanels modifier not supported
 
   // header
   uint tinfo[8];
-  tinfo[0] = isValid ? TI_3D : TI_NONE;
+  tinfo[0] = TI_3D;
   tinfo[1] = w;
   tinfo[2] = h;
   tinfo[3] = modemask & (~MMASK_COMPRESS);
@@ -967,6 +970,11 @@ bool texture::read(std::istream &inbuffer)
   if (tinfo[4] != k_Config)
   {
     TRE_LOG("texture::read invalid config used (expecting " << k_Config << " but reading " << tinfo[4] << ")");
+    return false;
+  }
+  if (m_w == 0 || m_h == 0 || m_components == 0)
+  {
+    TRE_LOG("texture::read empty texture (w=" << m_w << " h=" << m_h << " comp=" << m_components << ")");
     return false;
   }
 
