@@ -223,11 +223,11 @@ struct s_shadowDebug
 struct s_worldScene
 {
   tre::modelStaticIndexed3D mesh;
-  GLuint                    partId_Main = 0;
-  GLuint                    partId_Tower = 0;
-  GLuint                    partId_TreeTrunck = 0;
-  GLuint                    partId_TreeLeaves = 0;
-  GLuint                    partId_Sphere = 0;
+  std::size_t               partId_Main = 0;
+  std::size_t               partId_Tower = 0;
+  std::size_t               partId_TreeTrunck = 0;
+  std::size_t               partId_TreeLeaves = 0;
+  std::size_t               partId_Sphere = 0;
   tre::texture              texGrass;
   tre::texture              texWall;
   tre::texture              texWall_normal;
@@ -454,8 +454,7 @@ int main(int argc, char **argv)
   shaderMaterialFlat.loadShader(tre::shader::PRGM_3D,
                                tre::shader::PRGM_TEXTURED |
                                tre::shader::PRGM_LIGHT_SUN | tre::shader::PRGM_SHADOW_SUN | tre::shader::PRGM_AO |
-                               tre::shader::PRGM_LIGHT_PTS | tre::shader::PRGM_SHADOW_PTS |
-                               tre::shader::PRGM_UNIBRDF);
+                               tre::shader::PRGM_LIGHT_PTS | tre::shader::PRGM_SHADOW_PTS);
 
   tre::shader shaderMaterialBumped;
   shaderMaterialBumped.setShadowSunSamplerCount(1);
@@ -463,8 +462,7 @@ int main(int argc, char **argv)
   shaderMaterialBumped.loadShader(tre::shader::PRGM_3D,
                                   tre::shader::PRGM_TEXTURED | tre::shader::PRGM_MAPNORMAL | tre::shader::PRGM_AO |
                                   tre::shader::PRGM_LIGHT_SUN | tre::shader::PRGM_SHADOW_SUN |
-                                  tre::shader::PRGM_LIGHT_PTS | tre::shader::PRGM_SHADOW_PTS |
-                                  tre::shader::PRGM_UNIBRDF);
+                                  tre::shader::PRGM_LIGHT_PTS | tre::shader::PRGM_SHADOW_PTS);
 
   tre::shader shaderMaterialBrdf;
   shaderMaterialBrdf.setShadowSunSamplerCount(1);
@@ -473,7 +471,7 @@ int main(int argc, char **argv)
                                 tre::shader::PRGM_TEXTURED | tre::shader::PRGM_AO |
                                 tre::shader::PRGM_LIGHT_SUN | tre::shader::PRGM_SHADOW_SUN |
                                 tre::shader::PRGM_LIGHT_PTS | tre::shader::PRGM_SHADOW_PTS |
-                                tre::shader::PRGM_MAPBRDF);
+                                tre::shader::PRGM_MAPMAT);
 
   tre::shader shaderMetarialDsidedMask;
   {
@@ -484,22 +482,20 @@ int main(int argc, char **argv)
                            "vec3 V = - normalize((MView * vec4(pixelPosition, 1.f)).xyz);\n"
                            "vec3 rawN = normalize(pixelNormal);\n"
                            "vec3 N = normalize((MView * vec4(pixelNormal, 0.f)).xyz);\n"
-                           "vec2 matMetalRough = uniBRDF;\n"
                            "vec3 L = - normalize((MView * vec4(m_sunlight.direction, 0.f)).xyz);\n"
                            "vec3 Ndsided = (dot(N,L) >= 0.f ? 1.f : -1.f) * N;\n"
                            "float tanTheta = tan(acos(clamp(dot(rawN,normalize(-m_sunlight.direction)), 1.e-3f, 1.f)));\n"
                            "float islighted_sun = ShadowOcclusion_sun(tanTheta, rawN);\n"
-                           "vec3 lsun = BRDFLighting(cDiffuse, m_sunlight.color, Ndsided, L, V, uniBRDF.x, uniBRDF.y);\n"
-                           "vec3 lamb = BRDFLighting_ambiante(cDiffuse, m_sunlight.colorAmbiant, Ndsided, V, uniBRDF.x, uniBRDF.y);\n"
+                           "vec3 lsun = BRDFLighting(cDiffuse, m_sunlight.color, Ndsided, L, V, uniMat.x, uniMat.y);\n"
+                           "vec3 lamb = BRDFLighting_ambiante(cDiffuse, m_sunlight.colorAmbiant, Ndsided, V, uniMat.x, uniMat.y);\n"
                            " color.xyz = lsun * islighted_sun + lamb;\n"
                            " color.w = 1.f;\n"
                            "}\n";
 
     shaderMetarialDsidedMask.setShadowSunSamplerCount(1);
-    tre::shaderGenerator::s_layout sl(tre::shader::PRGM_3D, 
+    tre::shaderGenerator::s_layout sl(tre::shader::PRGM_3D,
                                       tre::shader::PRGM_TEXTURED |
-                                      tre::shader::PRGM_LIGHT_SUN | tre::shader::PRGM_SHADOW_SUN |
-                                      tre::shader::PRGM_UNIBRDF);
+                                      tre::shader::PRGM_LIGHT_SUN | tre::shader::PRGM_SHADOW_SUN);
     shaderMetarialDsidedMask.loadCustomShader(sl, shSource, "3d_leaves");
   }
 
@@ -523,7 +519,7 @@ int main(int argc, char **argv)
   shaderInstancedBB.loadShader(tre::shader::PRGM_2Dto3D,
                                tre::shader::PRGM_TEXTURED |
                                tre::shader::PRGM_LIGHT_SUN | tre::shader::PRGM_SHADOW_SUN |
-                               tre::shader::PRGM_UNIPHONG |
+                               tre::shader::PRGM_MODELPHONG |
                                tre::shader::PRGM_INSTANCED | tre::shader::PRGM_INSTCOLOR | tre::shader::PRGM_ROTATION |
                                tre::shader::PRGM_SOFT);
 
@@ -531,7 +527,7 @@ int main(int argc, char **argv)
   shaderInstancedMesh.setShadowSunSamplerCount(1);
   shaderInstancedMesh.loadShader(tre::shader::PRGM_3D,
                                  tre::shader::PRGM_LIGHT_SUN | tre::shader::PRGM_SHADOW_SUN | tre::shader::PRGM_NO_SELF_SHADOW |
-                                 tre::shader::PRGM_UNIPHONG |
+                                 tre::shader::PRGM_MODELPHONG |
                                  tre::shader::PRGM_INSTANCED | tre::shader::PRGM_INSTCOLOR | tre::shader::PRGM_ORIENTATION);
 
   tre::shader shaderText2D;
@@ -947,7 +943,7 @@ int main(int argc, char **argv)
       glUniform1i(shaderMaterialFlat.getUniformLocation(tre::shader::TexShadowPts0),3);
       glUniform1i(shaderMaterialFlat.getUniformLocation(tre::shader::TexDiffuse),4);
       glUniform1i(shaderMaterialFlat.getUniformLocation(tre::shader::TexAO),11);
-      glUniform2f(shaderMaterialFlat.getUniformLocation(tre::shader::uniBRDF), 0.f, 0.98f);
+      glUniform2f(shaderMaterialFlat.getUniformLocation(tre::shader::uniMat), 0.f, 0.98f);
       shaderMaterialFlat.setUniformMatrix(mPV, glm::mat4(1.f), myView3D.m_matView);
       worldScene.mesh.drawcall(worldScene.partId_Main, 1, true);
 
@@ -957,7 +953,7 @@ int main(int argc, char **argv)
       glUniform1i(shaderMaterialBumped.getUniformLocation(tre::shader::TexDiffuse),5);
       glUniform1i(shaderMaterialBumped.getUniformLocation(tre::shader::TexNormal),6);
       glUniform1i(shaderMaterialBumped.getUniformLocation(tre::shader::TexAO),11);
-      glUniform2f(shaderMaterialBumped.getUniformLocation(tre::shader::uniBRDF), 0.f, 0.5f);
+      glUniform2f(shaderMaterialBumped.getUniformLocation(tre::shader::uniMat), 0.f, 0.5f);
       shaderMaterialBumped.setUniformMatrix(mPV * worldScene.instance_Tower, worldScene.instance_Tower, myView3D.m_matView);
       worldScene.mesh.drawcall(worldScene.partId_Tower, 1, false);
 
@@ -966,7 +962,7 @@ int main(int argc, char **argv)
       glUniform1i(shaderMaterialFlat.getUniformLocation(tre::shader::TexShadowPts0),3);
       glUniform1i(shaderMaterialFlat.getUniformLocation(tre::shader::TexDiffuse),7);
       glUniform1i(shaderMaterialFlat.getUniformLocation(tre::shader::TexAO),11);
-      glUniform2f(shaderMaterialFlat.getUniformLocation(tre::shader::uniBRDF), 0.f, 0.9f);
+      glUniform2f(shaderMaterialFlat.getUniformLocation(tre::shader::uniMat), 0.f, 0.9f);
       for (const auto &ti : worldScene.instances_Tree)
       {
         shaderMaterialFlat.setUniformMatrix(mPV * ti, ti, myView3D.m_matView);
@@ -977,7 +973,7 @@ int main(int argc, char **argv)
       glUniform1i(shaderMetarialDsidedMask.getUniformLocation(tre::shader::TexShadowSun0),2);
       //glUniform1i(shaderMetarialDsidedMask.getUniformLocation(tre::shader::TexShadowPts0),3);
       glUniform1i(shaderMetarialDsidedMask.getUniformLocation(tre::shader::TexDiffuse),8);
-      glUniform2f(shaderMetarialDsidedMask.getUniformLocation(tre::shader::uniBRDF), 0.f, 0.5f);
+      glUniform2f(shaderMetarialDsidedMask.getUniformLocation(tre::shader::uniMat), 0.f, 0.5f);
       for (const auto &ti : worldScene.instances_Tree)
       {
         shaderMetarialDsidedMask.setUniformMatrix(mPV * ti, ti, myView3D.m_matView);
@@ -988,8 +984,8 @@ int main(int argc, char **argv)
       glUniform1i(shaderMaterialBrdf.getUniformLocation(tre::shader::TexShadowSun0),2);
       glUniform1i(shaderMaterialBrdf.getUniformLocation(tre::shader::TexShadowPts0),3);
       glUniform1i(shaderMaterialBrdf.getUniformLocation(tre::shader::TexDiffuse),9);
-      glUniform1i(shaderMaterialBrdf.getUniformLocation(tre::shader::TexBRDF),10);
-      glUniform1i(shaderMaterialFlat.getUniformLocation(tre::shader::TexAO),11);
+      glUniform1i(shaderMaterialBrdf.getUniformLocation(tre::shader::TexMat),10);
+      glUniform1i(shaderMaterialBrdf.getUniformLocation(tre::shader::TexAO),11);
       for (const auto &si : worldScene.instances_Sphere)
       {
         shaderMaterialBrdf.setUniformMatrix(mPV * si, si, myView3D.m_matView);
@@ -1000,7 +996,7 @@ int main(int argc, char **argv)
 
       glUseProgram(shaderInstancedMesh.m_drawProgram);
       glUniform1i(shaderInstancedMesh.getUniformLocation(tre::shader::TexShadowSun0),2);
-      glUniform3f(shaderInstancedMesh.getUniformLocation(tre::shader::uniPhong), 2.f, 0.7f, 0.8f);
+      glUniform2f(shaderInstancedMesh.getUniformLocation(tre::shader::uniMat), 0.9f, 0.4f);
       shaderInstancedMesh.setUniformMatrix(mPV, glm::mat4(1.f), myView3D.m_matView);
       worldParticlesMesh.drawInstanced(0, 0, worldParticlesMeshStream.m_countPerMeshId[0], true);
       worldParticlesMesh.drawInstanced(1, worldParticlesMeshStream.m_countPerMeshId[0], worldParticlesMeshStream.m_countPerMeshId[1], false);
@@ -1055,7 +1051,7 @@ int main(int argc, char **argv)
       glBindTexture(GL_TEXTURE_2D,worldParticlesTex.m_handle);
       glUniform1i(shaderInstancedBB.getUniformLocation(tre::shader::TexDiffuse),4);
 
-      glUniform3f(shaderInstancedBB.getUniformLocation(tre::shader::uniPhong), 2.f, 0.7f, 0.8f);
+      glUniform2f(shaderInstancedBB.getUniformLocation(tre::shader::uniMat), 0.f, 0.8f);
 
       glUniform3f(shaderInstancedBB.getUniformLocation(tre::shader::SoftDistance), 0.2f, myWindow.m_near, myWindow.m_far);
 

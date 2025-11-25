@@ -28,12 +28,8 @@ static tre::windowContext::s_controls myControls;
 
 static tre::modelStaticIndexed3D meshes;
 
-static tre::texture texAsphaltColor;
-static tre::texture texAsphaltNormal;
-static tre::texture texSkyboxColor;
-
 static tre::shader shaderPhong;
-static tre::shader shaderBRDF;
+static tre::shader shaderGGX;
 static tre::shader shaderFresnelValue;
 static tre::shader shaderScreenSpaceNormal;
 
@@ -76,26 +72,19 @@ int main(int argc, char **argv)
     meshes.loadIntoGPU();
   }
 
-  // Resources: Textures
-
-  texAsphaltColor.load(tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/Asphalt_004_COLOR.bmp"), tre::texture::MMASK_FORCE_NO_ALPHA | tre::texture::MMASK_MIPMAP, true);
-  texAsphaltNormal.load(tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/Asphalt_004_NRM.bmp"), tre::texture::MMASK_FORCE_NO_ALPHA | tre::texture::MMASK_MIPMAP, true);
-  texSkyboxColor.load(tre::texture::loadTextureFromBMP(TESTIMPORTPATH "resources/cubemap_inside_UVcoords"), tre::texture::MMASK_MIPMAP, true);
-
   // Material (shader)
 
   shaderPhong.loadShader(tre::shader::PRGM_3D,
                          tre::shader::PRGM_UNICOLOR |
                          tre::shader::PRGM_LIGHT_SUN |
-                         tre::shader::PRGM_UNIPHONG);
+                         tre::shader::PRGM_MODELPHONG);
 
-  shaderBRDF.loadShader(tre::shader::PRGM_3D,
+  shaderGGX.loadShader(tre::shader::PRGM_3D,
                         tre::shader::PRGM_UNICOLOR |
-                        tre::shader::PRGM_LIGHT_SUN |
-                        tre::shader::PRGM_UNIBRDF);
+                        tre::shader::PRGM_LIGHT_SUN);
 
   {
-    tre::shader::s_layout layout(tre::shader::PRGM_3D, tre::shader::PRGM_UNICOLOR | tre::shader::PRGM_LIGHT_SUN | tre::shader::PRGM_UNIBRDF);
+    tre::shader::s_layout layout(tre::shader::PRGM_3D, tre::shader::PRGM_UNICOLOR | tre::shader::PRGM_LIGHT_SUN);
 
     const char * srcFrag = "void main()\n"
                            "{\n"
@@ -104,10 +93,10 @@ int main(int argc, char **argv)
                            "  vec3 V = - normalize((MView * vec4(pixelPosition, 1.f)).xyz);\n"
                            "  float NdotL = max(dot(N, L), 0.f); // Light-incidence\n"
                            "  vec3 H = normalize(L + V); // Half-way vector\n"
-                           "  float LdotH = max(dot(V, H), 0.f);\n"
-                           "  vec3 F0     = mix(vec3(0.04f), uniColor.xyz, uniBRDF.x);;\n"
-                           "  vec3 kRefl  = _fresnelSchlick(F0, LdotH); // ratio of reflected light over total light\n"
-                           "  color.xyz = kRefl * m_sunlight.color * NdotL;\n"
+                           "  float VdotH = max(dot(V, H), 0.f);\n"
+                           "  vec3 F0     = mix(vec3(0.04f), uniColor.xyz, uniMat.x);;\n"
+                           "  vec3 kRefl  = _FresnelSchlick(F0, VdotH);\n"
+                           "  color.xyz = kRefl; // * m_sunlight.color * NdotL;\n"
                            "  color.w = 1.f;\n"
                            "}\n";
 
@@ -145,13 +134,13 @@ int main(int argc, char **argv)
 
   glm::vec4 mViewEulerAndDistance = glm::vec4(0.f, 0.f, 0.f, 4.f);
 
-  unsigned modelPart = 0;
-  const unsigned NmodelPart = meshes.partCount();
+  std::size_t modelPart = 0;
+  const std::size_t NmodelPart = meshes.partCount();
 
   unsigned shaderMode = 1;
   const unsigned NshaderMode = 4;
-  tre::shader* listShader[NshaderMode] = { &shaderPhong, &shaderBRDF, &shaderFresnelValue, &shaderScreenSpaceNormal };
-  std::string listShaderName[NshaderMode] = { "Phong", "BRDF", "Fresnel", "Normal"};
+  tre::shader* listShader[NshaderMode] = { &shaderPhong, &shaderGGX, &shaderFresnelValue, &shaderScreenSpaceNormal };
+  std::string listShaderName[NshaderMode] = { "Phong", "GGX", "Fresnel", "Normal"};
 
   glm::vec4 colorDiffuse = glm::vec4(1.f,0.f,0.f,1.f);
   float materialMetalness = 0.01f;
@@ -230,7 +219,7 @@ int main(int argc, char **argv)
     wGC->wcb_modified_ongoing = [&postEffectToneMapping](tre::ui::widget* myself) { postEffectToneMapping.set_gamma(static_cast<tre::ui::widgetBoxCheck*>(myself)->get_value() ? 2.2f : 1.f); };
 
     worldWin->create_widgetText(12, 0)->set_text("exposure");
-    tre::ui::widget * wEP = worldWin->create_widgetBar(12, 1)->set_value(1.4)->set_valuemax(2.f)->set_iseditable(true)->set_isactive(true);
+    tre::ui::widget * wEP = worldWin->create_widgetBar(12, 1)->set_value(1.4f)->set_valuemax(2.f)->set_iseditable(true)->set_isactive(true);
     wEP->wcb_modified_ongoing = [&postEffectToneMapping](tre::ui::widget* myself) { postEffectToneMapping.set_exposure(static_cast<tre::ui::widgetBar*>(myself)->get_value()); };
 
     worldWin->create_widgetText(13, 0)->set_text("light intensity");
@@ -345,14 +334,9 @@ int main(int argc, char **argv)
       glUniform4fv(curShader.getUniformLocation(tre::shader::uniColor), 1, glm::value_ptr(colorDiffuse));
     }
 
-    if (curShader.layout().hasUNI_uniPhong)
+    if (curShader.layout().hasUNI_uniMat)
     {
-      glUniform3f(curShader.getUniformLocation(tre::shader::uniPhong), 2.f / (0.99f * materialRoughness * materialRoughness + 0.01f), 0.f, 0.5f);
-    }
-
-    if (curShader.layout().hasUNI_uniBRDF)
-    {
-      glUniform2f(curShader.getUniformLocation(tre::shader::uniBRDF), materialMetalness, materialRoughness);
+      glUniform2f(curShader.getUniformLocation(tre::shader::uniMat), materialMetalness, materialRoughness);
     }
 
     meshes.drawcall(modelPart, 1);
@@ -403,15 +387,11 @@ int main(int argc, char **argv)
   worldFont.clear();
 
   shaderPhong.clearShader();
-  shaderBRDF.clearShader();
+  shaderGGX.clearShader();
   shaderFresnelValue.clearShader();
   shaderScreenSpaceNormal.clearShader();
 
   tre::shader::clearUBO();
-
-  texAsphaltColor.clear();
-  texAsphaltNormal.clear();
-  texSkyboxColor.clear();
 
   rtMultisampled.clear();
   rtResolveMSAA.clear();

@@ -154,8 +154,8 @@ static int app_init()
 
   // material (shaders)
 
-  sunLight_Data.color = glm::vec3(0.9f,0.9f,0.9f);
-  sunLight_Data.colorAmbiant = glm::vec3(0.1f,0.1f,0.1f);
+  sunLight_Data.color = glm::vec3(1.2f);
+  sunLight_Data.colorAmbiant = glm::vec3(0.1f);
 
 #ifdef TEST_WITH_SHADOW
   sunShadow_Data.nShadow = 1;
@@ -185,11 +185,9 @@ static int app_init()
   shaderInstancedBB.loadShader(tre::shader::PRGM_2Dto3D,
                                tre::shader::PRGM_TEXTURED |
                                tre::shader::PRGM_LIGHT_SUN | flagShaderShadow |
-                               tre::shader::PRGM_UNIPHONG |
                                tre::shader::PRGM_INSTANCED | tre::shader::PRGM_INSTCOLOR | tre::shader::PRGM_ROTATION);
 
   shaderMesh3D.loadShader(tre::shader::PRGM_3D,
-                          tre::shader::PRGM_UNIBRDF |
                           tre::shader::PRGM_LIGHT_SUN | flagShaderShadow);
 
 #ifdef TEST_WITH_FPS
@@ -378,8 +376,6 @@ static void app_update()
     glBindTexture(GL_TEXTURE_2D, sunLight_ShadowMap.depthHandle());
 #endif
 
-    const glm::vec4 ucolorMain(0.5f,0.5f,0.5f,1.f);
-
     glUseProgram(shaderMesh3D.m_drawProgram);
 
 #ifdef TEST_WITH_SHADOW
@@ -388,9 +384,7 @@ static void app_update()
 
     shaderMesh3D.setUniformMatrix(mPV * mModelCube, mModelCube, myView3D.m_matView);
 
-    glUniform2f(shaderMesh3D.getUniformLocation(tre::shader::uniBRDF), 0.1f, 0.7f);
-
-    glUniform4fv(shaderMesh3D.getUniformLocation(tre::shader::uniColor), 1, glm::value_ptr(ucolorMain));
+    glUniform2f(shaderMesh3D.getUniformLocation(tre::shader::uniMat), 0.f, 0.4f);
 
     meshCube.drawcallAll();
   }
@@ -414,7 +408,7 @@ static void app_update()
     glBindTexture(GL_TEXTURE_2D, texture2D.m_handle);
     glUniform1i(shaderInstancedBB.getUniformLocation(tre::shader::TexDiffuse), 1);
 
-    glUniform3f(shaderInstancedBB.getUniformLocation(tre::shader::uniPhong), 2.f, 0.7f, 0.8f);
+    glUniform2f(shaderInstancedBB.getUniformLocation(tre::shader::uniMat), 0.f, 0.8f);
 
     const glm::mat3 matOrient = glm::mat3(-1.f, 0.f, 0.f,
                                            0.f, 0.f, 1.f,

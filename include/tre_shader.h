@@ -46,15 +46,21 @@ public:
   /// @name Uniforms
   /// @{
 public:
-  enum uniformname { MPVM, MView, MModel, MOrientation,
-                     uniBlend, uniColor, uniBRDF, uniPhong,
-                     AtlasInvDim, SoftDistance,
-                     TexDiffuse, TexDiffuseB, TexCube, TexCubeB,
-                     TexNormal, TexBRDF,
-                     TexShadowSun0, TexShadowSun1, TexShadowSun2, TexShadowSun3,
-                     TexShadowPts0,
-                     TexDepth, TexAO,
-                     NCOMUNIFORMVAR };
+  enum uniformname
+  {
+    MPVM, MView, MModel,
+    MOrientation, ///< 3x3 rotation matrix
+    uniBlend,
+    uniColor,
+    uniMat, ///< metal, roughness
+    AtlasInvDim, ///< 1/w, 1/h
+    SoftDistance, ///< distance, near, far
+    TexDiffuse, TexDiffuseB, TexCube, TexCubeB, TexNormal, TexMat,
+    TexShadowSun0, TexShadowSun1, TexShadowSun2, TexShadowSun3,
+    TexShadowPts0, ///< samplerCube
+    TexDepth, TexAO,
+    NCOMUNIFORMVAR
+  };
   GLint getUniformLocation(const uniformname utype) const; ///< get very-common uniform variables
   GLint getUniformLocation(const char * uname) const; ///< get other uniform variables
 

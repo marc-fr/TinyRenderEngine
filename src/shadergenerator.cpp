@@ -17,7 +17,7 @@ shaderGenerator::s_layout::s_layout(const e_category cat, const int flags)
   // fill layout ...
 
   hasBUF_Normal    = (flags & (PRGM_MASK_LIGHT)) && (!(cat == PRGM_2D || cat == PRGM_2Dto3D));
-  hasBUF_UV        = flags & (PRGM_TEXTURED | PRGM_MAPNORMAL | PRGM_MAPBRDF);
+  hasBUF_UV        = flags & (PRGM_TEXTURED | PRGM_MAPNORMAL | PRGM_MAPMAT);
   hasBUF_Color     = flags & (PRGM_COLOR);
   hasBUF_TangentU  = flags & (PRGM_MAPNORMAL) && (!(cat == PRGM_2D || cat == PRGM_2Dto3D));
   hasBUF_InstancedPosition    = flags & (PRGM_INSTANCED);
@@ -27,16 +27,15 @@ shaderGenerator::s_layout::s_layout(const e_category cat, const int flags)
   hasBUF_InstancedRotation    = (flags & (PRGM_INSTANCED)) && (flags & (PRGM_ROTATION));
 
   hasPIX_Position           = flags & (PRGM_MASK_LIGHT | PRGM_CUBEMAPED);
-  hasPIX_Normal             = flags & (PRGM_MASK_LIGHT) || (flags & (PRGM_MAPNORMAL));
-  hasPIX_PositionClipspace  = flags & (PRGM_SOFT | PRGM_SOFT | PRGM_AO);
+  hasPIX_Normal             = flags & (PRGM_MASK_LIGHT | PRGM_MAPNORMAL);
+  hasPIX_PositionClipspace  = flags & (PRGM_SOFT | PRGM_AO);
 
   hasUNI_MPVM      = (flags != 0) || is3D();
-  hasUNI_MView     = (flags & (PRGM_MASK_LIGHT)) || (flags & (PRGM_CUBEMAPED)) || (flags & (PRGM_MAPNORMAL));
-  hasUNI_MModel    = (flags & (PRGM_MASK_LIGHT)) || (flags & (PRGM_INSTANCED));
+  hasUNI_MView     = hasPIX_Position || hasPIX_Normal;
+  hasUNI_MModel    = hasPIX_Position || hasPIX_Normal || (flags & (PRGM_INSTANCED));
   hasUNI_MOrientation = (flags & (PRGM_INSTANCED)) && is3D() && !(flags & (PRGM_ORIENTATION));
   hasUNI_uniColor  = flags & (PRGM_UNICOLOR);
-  hasUNI_uniBRDF   = flags & (PRGM_UNIBRDF);
-  hasUNI_uniPhong  = flags & (PRGM_UNIPHONG);
+  hasUNI_uniMat    =  (flags & (PRGM_MASK_LIGHT)) && !(flags & (PRGM_MAPMAT));
   hasUNI_uniBlend = !(flags & (PRGM_INSTANCED)) && (flags & (PRGM_BLEND));
   hasUNI_AtlasInvDim   = (flags & (PRGM_INSTANCED)) && (flags & (PRGM_ATLAS));
   hasUNI_SoftDistance = flags & (PRGM_SOFT);
@@ -51,7 +50,7 @@ shaderGenerator::s_layout::s_layout(const e_category cat, const int flags)
   hasSMP_Cube      = flags & (PRGM_CUBEMAPED);
   hasSMP_CubeB     = hasSMP_Cube && (flags & (PRGM_BLEND)) && !(flags & (PRGM_ATLAS) );
   hasSMP_Normal    = flags & (PRGM_MAPNORMAL);
-  hasSMP_BRDF      = flags & (PRGM_MAPBRDF);
+  hasSMP_Mat       = (flags & (PRGM_MASK_LIGHT)) && (flags & (PRGM_MAPMAT));
   hasSMP_ShadowSun = flags & (PRGM_SHADOW_SUN);
   hasSMP_ShadowPts = flags & (PRGM_SHADOW_PTS);
   hasSMP_Depth     = flags & (PRGM_SOFT);
@@ -68,83 +67,125 @@ shaderGenerator::s_layout::s_layout(const e_category cat, const int flags)
 
 // ============================================================================
 
-void shaderGenerator::createShaderFunctions_Light_BlinnPhong(std::string &outstring)
+void shaderGenerator::createShaderFunctions_Light(std::string &outstring)
 {
-  outstring +=
-      "const float PI = 3.14159265359;\n"
-      "vec3 BlinnPhong(vec3 albedo, vec3 radiance, vec3 N, vec3 L, vec3 V, float hardness, float normalRemap, float specFactor)\n"
-      "{\n"
-      "  vec3 H = normalize(L + V);\n"
-      "  float NdotL = clamp(dot(N,L) * (1.f - normalRemap) + normalRemap, 0.f, 1.f);\n"
-      "  float NdotH = max(dot(N,H), 0.f);\n"
-      "  return (albedo / PI * NdotL + vec3(1.f) * specFactor / PI * pow(NdotH, hardness) * (hardness + 8.f) / (8.f * PI) ) * radiance;\n"
-      "}\n"
-      "vec3 BlinnPhong_ambiante(vec3 albedo, vec3 ambiante, vec3 N, vec3 L, float normalRemap, float specFactor)\n"
-      "{\n"
-      "  float NdotL_ao = clamp(dot(N,L) * 0.7f * (1.f - normalRemap) + 0.9f + normalRemap * 0.7f, 0.f, 1.f); // pseudo Ambiant-Occlusion\n"
-      "  return (albedo + vec3(1.f) * specFactor) / PI * ambiante * NdotL_ao;\n"
-      "}\n";
-}
+  /// credits: https://graphicrants.blogspot.com/2013/08/specular-brdf-reference.html
+  ///          https://google.github.io/filament/Filament.md.html
 
-// ----------------------------------------------------------------------------
-
-void shaderGenerator::createShaderFunctions_Light_BRDF(std::string &outstring)
-{
-  /// credits: https://learnopengl.com/PBR/Lighting
   outstring +=
-      "const float PI = 3.14159265359;\n"
-      "vec3 _fresnelSchlick(vec3 F0, float cosTheta)\n"
-      "{\n"
-      "  return F0 + (vec3(1.f) - F0) * pow(1.f - cosTheta, 5.f);\n"
-      "}\n"
-      "float _DistributionGGX(float cosTheta, float roughness)\n"
-      "{\n"
-      "  float a2    = roughness * roughness;\n"
-      "  float denom = cosTheta * cosTheta * (a2 - 1.f) + 1.f;\n"
-      "  denom = PI * denom * denom;\n"
-      "  return a2 / denom;\n"
-      "}\n"
-      "float _GeometrySchlickGGX(float cosTheta, float roughness)\n"
-      "{\n"
-      "  float r = roughness + 1.f;\n"
-      "  float k = r * r / 8.f;\n"
-      "  return cosTheta / (cosTheta * (1.f - k) + k);\n"
-      "}\n"
-      "float _GeometrySmith(float NdotV, float NdotL, float roughness)\n"
-      "{\n"
-      "  return _GeometrySchlickGGX(NdotV, roughness) * _GeometrySchlickGGX(NdotL, roughness);\n"
-      "}\n"
-      "vec3 BRDFLighting(vec3 albedo, vec3 radiance, vec3 N, vec3 L, vec3 V, float metallic, float roughnessUser)\n"
-      "{\n"
-      "  float roughness = clamp(roughnessUser * roughnessUser, 1.e-3f, 1.f);\n"
-      "  float NdotL = max(dot(N, L), 0.f);           // Light-incidence\n"
-      "  float NdotV = clamp(dot(N, V), 1.e-3f, 1.f); // View-incidence\n"
-      "  vec3 H = normalize(L + V);                   // Half-way vector\n"
-      "  float VdotH = max(dot(V, H), 0.f);\n"
-      "  float NdotH = max(dot(N, H), 0.f);\n"
-      "  float LdotH = max(dot(L, H), 0.f);\n"
-      "  // Material coef. of refraction and reflection\n"
-      "  vec3 F0     = min(mix(vec3(0.04f), albedo, metallic), vec3(1.f));\n"
-      "  vec3 kRefl  = _fresnelSchlick(F0, LdotH); // ratio of reflected light over total light\n"
-      "  vec3 kRefr  = (vec3(1.f) - kRefl) * (1.f - metallic);\n"
-      "  // Cook-torrance BRDF\n"
-      "  float NDis  = _DistributionGGX(NdotH, roughness); //approximate amount of microfacets alligned with H\n"
-      "  float Geom  = _GeometrySmith(NdotV, NdotL, roughness); //approximate amount of microfactes obstruction from the View(V) and the Light(L)\n"
-      "  // Outgoing radiance\n"
-      "  return (kRefr * albedo / PI + NDis * Geom * kRefl / max(4.0 * NdotV * NdotL, 0.001) ) * radiance * NdotL;\n"
-      "}\n"
-      "vec3 BRDFLighting_ambiante(vec3 albedo, vec3 ambiante, vec3 N, vec3 V, float metallic, float roughnessUser)\n"
-      "{\n"
-      "  float roughness = clamp(roughnessUser * roughnessUser, 1.e-3f, 1.f);\n"
-      "  float NdotV = max(dot(N, V), 0.f);\n"
-      "  // Material coef. of refraction and reflection\n"
-      "  vec3 F0     = mix(vec3(0.04f), albedo, metallic);\n"
-      "  vec3 F90    = mix(vec3(1.f), albedo, metallic);\n"
-      "  vec3 kRefl  = F0 + (F90 - F0) * pow(1.f - NdotV, 5.f) * (0.7f - 0.5f * roughness);\n"
-      "  vec3 kRefr  = (F90 - kRefl) * (1.f - metallic);\n"
-      "  // Outgoing radiance\n"
-      "  return (kRefr * albedo + kRefl) / PI * ambiante;\n"
-      "}\n";
+    "vec3 _FresnelSchlick(vec3 F0, float cosTheta)\n"
+    "{\n"
+    "  return F0 + (vec3(1.f) - F0) * pow(1.f - cosTheta, 5.f);\n"
+    "}\n";
+
+  outstring +=
+    "float _DistributionBlinnPhong(float cosTheta, float roughness)\n"
+    "{\n"
+    "  const float PI = 3.14159265359;\n"
+    "  float a2    = roughness * roughness;\n"
+    "  float hardness = 2.f / a2 - 2.f;\n"
+    "  return pow(cosTheta, hardness) / (PI * a2);\n"
+    "}\n"
+    "float _VisibilityNeumann(float NoV, float NoL, float roughness) // note: geometry, but already divided by '4 NoV NoL'\n"
+    "{\n"
+    "  return 0.25f / (max(NoV, NoL) + 0.001);\n"
+    "}\n"
+    "vec3 BlinnPhong(vec3 albedo, vec3 radiance, vec3 N, vec3 L, vec3 V, float metallic, float roughnessUser)\n"
+    "{\n"
+    "  const float PI = 3.14159265359;\n"
+    "  float roughness = clamp(roughnessUser * roughnessUser, 1.e-3f, 1.f);\n"
+    "  float NdotL = max(dot(N, L), 0.f);           // Light-incidence\n"
+    "  float NdotV = clamp(dot(N, V), 1.e-2f, 1.f); // View-incidence\n"
+    "  vec3 H = normalize(L + V);                   // Half-way vector\n"
+    "  float VdotH = max(dot(V, H), 0.f);\n"
+    "  float NdotH = max(dot(N, H), 0.f);\n"
+    "  // Material coef. of refraction and reflection\n"
+    "  vec3 F0     = mix(vec3(0.04f), albedo, metallic);\n"
+    "  vec3 kRefl  = _FresnelSchlick(F0, VdotH);\n"
+    "  vec3 kRefr  = (vec3(1.f) - kRefl) * (1.f - metallic);\n"
+    "  // Cook-torrance BRDF\n"
+    "  float Dis  = _DistributionBlinnPhong(NdotH, roughness);\n"
+    "  float Vis  = _VisibilityNeumann(NdotV, NdotL, roughness);\n"
+    "  // Outgoing radiance\n"
+    "  return (kRefr * albedo / PI + Dis * Vis * kRefl) * radiance * NdotL;\n"
+    "}\n"
+    "vec3 BlinnPhong_ambiante(vec3 albedo, vec3 ambiante, vec3 N, vec3 L, vec3 V, float metallic, float roughnessUser)\n"
+    "{\n"
+    "  float roughness = clamp(roughnessUser * roughnessUser, 1.e-3f, 1.f);\n"
+    "  float NdotL = 0.8f + 0.2f * dot(N, L); // pseudo AO\n"
+    "  float NdotV = max(dot(N, V), 0.f);\n"
+    "  // Material coef. of refraction and reflection\n"
+    "  vec3 F0     = mix(vec3(0.04f), albedo, metallic);\n"
+    "  vec3 F90    = mix(vec3(1.f), albedo, metallic);\n"
+    "  vec3 kRefl  = F0; // + (F90 - F0) * pow(1.f - NdotV, 5.f) * (0.7f - 0.5f * roughness); // TODO\n"
+    "  vec3 kRefr  = (F90 - kRefl) * (1.f - metallic);\n"
+    "  // Cook-torrance BRDF (intergrated)\n"
+    "  float Vis  = 1.f; //_VisibilityNeumann(NdotV, 1.f, roughness); // TODO\n"
+    "  // Outgoing radiance\n"
+    "  return (kRefr * albedo + Vis * kRefl) * ambiante * NdotL;\n"
+    "}\n";
+
+  outstring +=
+    "float _DistributionGGX(float cosTheta, float roughness)\n"
+    "{\n"
+    "  const float PI = 3.14159265359;\n"
+    "  float a2    = roughness * roughness;\n"
+    "  float denom = cosTheta * cosTheta * (a2 - 1.f) + 1.f;\n"
+    "  return a2 / (PI * denom * denom);\n"
+    "}\n"
+    "float _VisibilityGGX(float NoV, float NoL, float roughness) // note: Smith-geometry, but already divided by '4 NoV NoL'\n"
+    "{\n"
+    "  float r = roughness + 1.f;\n"
+    "  float k = r * r / 8.f;\n"
+    "  return 0.25f / ((NoV * (1.f - k) + k) * (NoL * (1.f - k) + k));\n"
+    "}\n"
+    "float _VisibilityGGXCorrelated(float NoV, float NoL, float roughness) //note: Smith-geometry, but already divided by '4 NoV NoL'\n"
+    "{\n"
+    "  float a2 = roughness * roughness;\n"
+    "  float GGXV = NoL * sqrt(NoV * NoV * (1.0 - a2) + a2);\n"
+    "  float GGXL = NoV * sqrt(NoL * NoL * (1.0 - a2) + a2);\n"
+    "  return 0.5 / (GGXV + GGXL);\n"
+    "}\n"
+    "float _VisibilityGGXCorrelatedFast(float NoV, float NoL, float roughness) // note: Smith-geometry, but already divided by '4 NoV NoL'\n"
+    "{\n"
+    "  float GGXV = NoL * (NoV * (1.0 - roughness) + roughness);\n"
+    "  float GGXL = NoV * (NoL * (1.0 - roughness) + roughness);\n"
+    "  return 0.5 / (GGXV + GGXL);\n"
+    "}\n"
+    "vec3 BRDFLighting(vec3 albedo, vec3 radiance, vec3 N, vec3 L, vec3 V, float metallic, float roughnessUser)\n"
+    "{\n"
+    "  const float PI = 3.14159265359;\n"
+    "  float roughness = clamp(roughnessUser * roughnessUser, 1.e-3f, 1.f);\n"
+    "  float NdotL = max(dot(N, L), 0.f);           // Light-incidence\n"
+    "  float NdotV = clamp(dot(N, V), 1.e-2f, 1.f); // View-incidence\n"
+    "  vec3 H = normalize(L + V);                   // Half-way vector\n"
+    "  float VdotH = max(dot(V, H), 0.f);\n"
+    "  float NdotH = max(dot(N, H), 0.f);\n"
+    "  // Material coef. of refraction and reflection\n"
+    "  vec3 F0     = mix(vec3(0.04f), albedo, metallic);\n"
+    "  vec3 kRefl  = _FresnelSchlick(F0, VdotH);\n"
+    "  vec3 kRefr  = (vec3(1.f) - kRefl) * (1.f - metallic);\n"
+    "  // Cook-torrance BRDF\n"
+    "  float Dis  = _DistributionGGX(NdotH, roughness);\n"
+    "  float Vis  = _VisibilityGGXCorrelatedFast(NdotV, NdotL, roughness);\n"
+    "  // Outgoing radiance\n"
+    "  return (kRefr * albedo / PI + Dis * Vis * kRefl) * radiance * NdotL;\n"
+    "}\n"
+    "vec3 BRDFLighting_ambiante(vec3 albedo, vec3 ambiante, vec3 N, vec3 L, vec3 V, float metallic, float roughnessUser)\n"
+    "{\n"
+    "  float roughness = clamp(roughnessUser * roughnessUser, 1.e-3f, 1.f);\n"
+    "  float NdotL = 0.8f + 0.2f * dot(N, L); // pseudo AO\n"
+    "  float NdotV = max(dot(N, V), 0.f);\n"
+    "  // Material coef. of refraction and reflection\n"
+    "  vec3 F0     = mix(vec3(0.04f), albedo, metallic);\n"
+    "  vec3 F90    = mix(vec3(1.f), albedo, metallic);\n"
+    "  vec3 kRefl  = F0; // + (F90 - F0) * pow(1.f - NdotV, 5.f) * (0.7f - 0.5f * roughness); // TODO\n"
+    "  vec3 kRefr  = (F90 - kRefl) * (1.f - metallic);\n"
+    "  // Cook-torrance BRDF (intergrated)\n"
+    "  float Vis  = 1.f; //_VisibilityGGX(NdotV, 1.f, roughness); // TODO\n"
+    "  // Outgoing radiance\n"
+    "  return (kRefr * albedo + Vis * kRefl) * ambiante * NdotL;\n"
+    "}\n";
 }
 
 // ----------------------------------------------------------------------------
@@ -400,11 +441,8 @@ void shaderGenerator::createShaderFunction_Light(const int flags, std::string &g
       gatherLights += "  vec3 N = normalize((MView * vec4(pixelNormal, 0.f)).xyz);\n";
     }
 
-    if (flags & PRGM_MASK_BRDF)
-      gatherLights += (flags & PRGM_UNIBRDF) ? "  vec2 matMetalRough = uniBRDF;\n" : "  vec2 matMetalRough = texture(TexBRDF, pixelUV).xy;\n";
-    else
-      gatherLights += (flags & PRGM_UNIPHONG) ? "  vec3 matHardRemapSpec = uniPhong;\n" : "  vec3 matHardRemapSpec = vec3(3.f, 0.f, 1.f);\n";
-
+    if (flags & PRGM_MAPMAT) gatherLights += "  vec2 matMetalRough = texture(TexMat, pixelUV).xy;\n";
+    else                     gatherLights += "  vec2 matMetalRough = uniMat;\n";
   }
 
   if (flags & PRGM_LIGHT_SUN)
@@ -432,22 +470,23 @@ void shaderGenerator::createShaderFunction_Light(const int flags, std::string &g
     {
       gatherLights += "  float ambiantOcclusion = 1.f;\n";
     }
-    if (flags & PRGM_MASK_BRDF)
+    if (!(flags & PRGM_MODELPHONG))
     {
       gatherLights += "  vec3 lsun = BRDFLighting(albedo, m_sunlight.color,\n"
                       "                           N, L, V,\n"
                       "                           matMetalRough.x, matMetalRough.y);\n"
                       "  vec3 lamb = BRDFLighting_ambiante(albedo, ambiantOcclusion * m_sunlight.colorAmbiant,\n"
-                      "                                    N, V,\n"
+                      "                                    N, L, V,\n"
                       "                                    matMetalRough.x, matMetalRough.y);\n";
     }
     else
     {
       gatherLights += "  vec3 lsun = BlinnPhong(albedo, m_sunlight.color,\n"
                       "                         N, L, V,\n"
-                      "                         matHardRemapSpec.x, matHardRemapSpec.y, matHardRemapSpec.z);\n"
+                      "                         matMetalRough.x, matMetalRough.y);\n"
                       "  vec3 lamb = BlinnPhong_ambiante(albedo, ambiantOcclusion * m_sunlight.colorAmbiant,\n"
-                      "                                  N, L, matHardRemapSpec.y, matHardRemapSpec.z);\n";
+                      "                                  N, L, V,\n"
+                      "                                  matMetalRough.x, matMetalRough.y);\n";
     }
     if (!returnval.empty()) returnval += " + ";
     returnval += "lsun * islighted_sun + lamb";
@@ -472,7 +511,7 @@ void shaderGenerator::createShaderFunction_Light(const int flags, std::string &g
         gatherLights += "    if (m_ptslight.castsShadow[iL] == 0) lcolor *= ShadowOcclusion_pts(iL);\n";
     }
 
-    if (flags & PRGM_MASK_BRDF)
+    if (!(flags & PRGM_MODELPHONG))
     {
       gatherLights += "    lightColor_pts += BRDFLighting(albedo, lcolor,\n"
                       "                                   N, L, V,\n"
@@ -482,7 +521,7 @@ void shaderGenerator::createShaderFunction_Light(const int flags, std::string &g
     {
       gatherLights += "    lightColor_pts += BlinnPhong(albedo, lcolor,\n"
                       "                                 N, L, V,\n"
-                      "                                 matHardRemapSpec.x, matHardRemapSpec.y, matHardRemapSpec.z);\n";
+                      "                                 matMetalRough.x, matMetalRough.y);\n";
     }
     gatherLights += "  }\n";
     if (!returnval.empty()) returnval += " + ";;
@@ -656,8 +695,7 @@ void shaderGenerator::createShaderSource_Layout(std::string &sourceVertex, std::
   if (m_layout.hasUNI_MOrientation)  sourceVertex   += "uniform mat3 MOrientation;\n";
   if (m_layout.hasUNI_uniBlend)      sourceFragment += "uniform vec2 uniBlend;\n";
   if (m_layout.hasUNI_uniColor)      sourceFragment += "uniform vec4 uniColor;\n";
-  if (m_layout.hasUNI_uniBRDF)       sourceFragment += "uniform vec2 uniBRDF;\n";
-  if (m_layout.hasUNI_uniPhong)      sourceFragment += "uniform vec3 uniPhong;\n";
+  if (m_layout.hasUNI_uniMat)        sourceFragment += "uniform vec2 uniMat;\n";
   if (m_layout.hasUNI_AtlasInvDim)   sourceFragment += "uniform vec2 AtlasInvDim;\n";
   if (m_layout.hasUNI_SoftDistance)  sourceFragment += "uniform vec3 SoftDistance;\n";
   if (m_layout.hasSMP_Diffuse)       sourceFragment += "uniform sampler2D TexDiffuse;\n";
@@ -665,7 +703,7 @@ void shaderGenerator::createShaderSource_Layout(std::string &sourceVertex, std::
   if (m_layout.hasSMP_Cube)          sourceFragment += "uniform samplerCube TexCube;\n";
   if (m_layout.hasSMP_CubeB)         sourceFragment += "uniform samplerCube TexCubeB;\n";
   if (m_layout.hasSMP_Normal)        sourceFragment += "uniform sampler2D TexNormal;\n";
-  if (m_layout.hasSMP_BRDF)          sourceFragment += "uniform sampler2D TexBRDF;\n";
+  if (m_layout.hasSMP_Mat)           sourceFragment += "uniform sampler2D TexMat;\n";
   if (m_layout.hasSMP_ShadowSun && m_shadowSun_count >= 1) sourceFragment += "uniform sampler2D TexShadowSun0;\n";
   if (m_layout.hasSMP_ShadowSun && m_shadowSun_count >= 2) sourceFragment += "uniform sampler2D TexShadowSun1;\n";
   if (m_layout.hasSMP_ShadowSun && m_shadowSun_count >= 3) sourceFragment += "uniform sampler2D TexShadowSun2;\n";
@@ -730,10 +768,7 @@ void shaderGenerator::createShaderSource_Layout(std::string &sourceVertex, std::
   // generic functions
   if (m_layout.hasUBO_ptslight || m_layout.hasUBO_sunlight)
   {
-    if (m_layout.hasUNI_uniBRDF || m_layout.hasSMP_BRDF)
-      createShaderFunctions_Light_BRDF(sourceFragment);
-    else
-      createShaderFunctions_Light_BlinnPhong(sourceFragment);
+    createShaderFunctions_Light(sourceFragment);
 
     if (m_layout.hasSMP_ShadowSun || m_layout.hasSMP_ShadowPts)
       createShaderFunctions_Shadow(sourceFragment);

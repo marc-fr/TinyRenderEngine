@@ -25,25 +25,6 @@ namespace tre {
  * 8-9-10: --                  | instanceOrientation(mat3 -> 3 * vec3.xyz0)
  * 11: instanceRotation(float) | instanceRotation(float)
  *
- *
- * Uniform variables
- * Matrix(2D)    : MPVM(mat3)
- * Matrix(3D)    : MPVM(mat4), MView(mat4), MModel(mat4), MOrientation(mat3)
- * Color         : unicolor(vec4)
- * Texture       : AtlasInvDim(vec2), uniBlend(vec2)
- * Phong-lighting: uniPhong(vec3){hardness, normal-remap, spec-intensity}
- * BRDF-lighting : uniBRDF(vec2){metal, roughness}
- * Transparent   : SoftDistance(vec3){distance, near, far}
- *
- * Samplers
- * Diffuse       : TexDiffuse(sampler2D),TexDiffuseB(sample2D),
- *                 TexCube(sampleCube),TexCubeB(sampleCube)
- * Geometry      : TexNormal(sampler2D)
- * BRDF-lighting : TexBRDF(sample2D)
- * Shadow        : TexShadowSun[0-N](sampler2D), TexShadowPts[0-N](sampler3D)
- * AO            : TexAO(sample2D)
- * Self-Depth    : TexDepth(sample2D)
- *
  * Uniform-Buffer-Objects
  * - SunLight
  * - SunShadow
@@ -80,11 +61,9 @@ public:
     PRGM_NO_SELF_SHADOW = 0x010000, ///< disable self-shadowing (no-bias)
     PRGM_AO         = 0x020000, ///< enable Ambiant-Occlusion
     // options - material
-    PRGM_MASK_BRDF  = 0x000300,
-    PRGM_UNIBRDF    = 0x000100, ///< enable BRDF lighting, with material properties (metallic, roughness) as uniform variable
-    PRGM_MAPBRDF    = 0x000200, ///< enable BRDF lighting, with material properties (metallic, roughness) as map (2D-map only)
+    PRGM_MODELPHONG = 0x000800, ///< choose Phong-Blinn lighting, instead of GGX
+    PRGM_MAPMAT     = 0x000200, ///< have material properties (metallic, roughness) as map (2D-texture). Otherwise, as uniform.
     PRGM_MAPNORMAL  = 0x000400, ///< enable Normal map
-    PRGM_UNIPHONG   = 0x000800, ///< with Phong lighting, have metarieal properties (hardness, normalRemap) as uniform variable
     // options - texture
     PRGM_BLEND      = 0x000010, ///< enable texture blending (with PRGM_TEXTURED or PRGM_CUBEMAPED)
     PRGM_SOFT       = 0x000020, ///< enable soft-distance transparency.
@@ -120,8 +99,7 @@ public:
     bool hasUNI_MModel;
     bool hasUNI_MOrientation;
     bool hasUNI_uniColor;
-    bool hasUNI_uniBRDF;
-    bool hasUNI_uniPhong;
+    bool hasUNI_uniMat;
     bool hasUNI_uniBlend;
     bool hasUNI_AtlasInvDim;
     bool hasUNI_SoftDistance;
@@ -136,7 +114,7 @@ public:
     bool hasSMP_Cube;
     bool hasSMP_CubeB;
     bool hasSMP_Normal;
-    bool hasSMP_BRDF;
+    bool hasSMP_Mat;
     bool hasSMP_ShadowSun;
     bool hasSMP_ShadowPts;
     bool hasSMP_AO;
@@ -163,8 +141,7 @@ protected:
   static const unsigned SHADOW_SUN_MAX = 4;
   static const unsigned LIGHT_PTS_MAX = 8;
 
-  void createShaderFunctions_Light_BlinnPhong(std::string & outstring); ///< Generic functions for Blinn-Phong lighting
-  void createShaderFunctions_Light_BRDF(std::string & outstring); ///< Generic functions for BRDF lighting
+  void createShaderFunctions_Light(std::string & outstring); ///< Generic functions for BRDF lighting
   void createShaderFunctions_Shadow(std::string & outstring); ///< Generic functions for Shadowing
 
   void createShaderFunction_Diffuse(const int flags, std::string & gatherColors); ///< Part of createShaderSource_FragmentMain

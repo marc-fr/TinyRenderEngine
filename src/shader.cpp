@@ -15,9 +15,6 @@ bool shader::loadShader(e_category cat, int flags, const char *pname)
   if (flags & PRGM_SHADOW_SUN) flags |= PRGM_LIGHT_SUN;
   if (flags & PRGM_SHADOW_PTS) flags |= PRGM_LIGHT_PTS;
 
-  TRE_ASSERT(!(flags & PRGM_MASK_BRDF) || (flags & PRGM_MASK_LIGHT)); // cannot have BRDF-lghting without LIGHT
-  TRE_ASSERT(!(flags & PRGM_UNIPHONG) || (flags & PRGM_MASK_LIGHT)); // cannot have Phong-lghting without LIGHT
-
   m_layout = s_layout(cat, flags);
 
   //-- Create the shader source
@@ -255,8 +252,7 @@ GLint shader::getUniformLocation(const uniformname utype) const
   else if (utype==MOrientation)  *puloc = glGetUniformLocation(m_drawProgram, "MOrientation");
   else if (utype==uniBlend)      *puloc = glGetUniformLocation(m_drawProgram, "uniBlend");
   else if (utype==uniColor)      *puloc = glGetUniformLocation(m_drawProgram, "uniColor");
-  else if (utype==uniBRDF)       *puloc = glGetUniformLocation(m_drawProgram, "uniBRDF");
-  else if (utype==uniPhong)      *puloc = glGetUniformLocation(m_drawProgram, "uniPhong");
+  else if (utype==uniMat)        *puloc = glGetUniformLocation(m_drawProgram, "uniMat");
   else if (utype==AtlasInvDim)   *puloc = glGetUniformLocation(m_drawProgram, "AtlasInvDim");
   else if (utype==SoftDistance)  *puloc = glGetUniformLocation(m_drawProgram, "SoftDistance");
   else if (utype==TexDiffuse)    *puloc = glGetUniformLocation(m_drawProgram, "TexDiffuse");
@@ -264,7 +260,7 @@ GLint shader::getUniformLocation(const uniformname utype) const
   else if (utype==TexCube)       *puloc = glGetUniformLocation(m_drawProgram, "TexCube");
   else if (utype==TexCubeB)      *puloc = glGetUniformLocation(m_drawProgram, "TexCubeB");
   else if (utype==TexNormal)     *puloc = glGetUniformLocation(m_drawProgram, "TexNormal");
-  else if (utype==TexBRDF)       *puloc = glGetUniformLocation(m_drawProgram, "TexBRDF");
+  else if (utype==TexMat)        *puloc = glGetUniformLocation(m_drawProgram, "TexMat");
   else if (utype==TexShadowSun0) *puloc = glGetUniformLocation(m_drawProgram, "TexShadowSun0");
   else if (utype==TexShadowSun1) *puloc = glGetUniformLocation(m_drawProgram, "TexShadowSun1");
   else if (utype==TexShadowSun2) *puloc = glGetUniformLocation(m_drawProgram, "TexShadowSun2");
@@ -604,10 +600,10 @@ void shader::compute_name(e_category cat, int flags, const char * pname)
   if (flags & PRGM_ATLAS) m_name += "a";
   if (flags & PRGM_BLEND) m_name += "b";
 
-  if (flags & PRGM_MASK_BRDF) m_name += "_BRDF";
-  else if (flags & PRGM_MASK_LIGHT) m_name += "_Phong";
-  if (flags & PRGM_UNIBRDF) m_name += "u";
-  if (flags & PRGM_MAPBRDF) m_name += "m";
+  if (flags & PRGM_MASK_LIGHT) m_name += "_LIT";
+  if (flags & PRGM_MODELPHONG) m_name += "phong";
+  else                         m_name += "ggx";
+  if (flags & PRGM_MAPMAT) m_name += "m";
   if (flags & PRGM_MAPNORMAL) m_name += "n";
 
   std::string pre_light;
