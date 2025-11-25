@@ -21,11 +21,17 @@ bool windowContext::SDLInit(Uint32 sdl_init_flags, int gl_depth_bits)
                              nullptr);
     return false;
   }
-  // Version SDL version
 #ifdef TRE_PRINTS
+  // Version SDL version
   SDL_version v;
   SDL_GetVersion(&v);
   TRE_LOG("SDL Version: " << unsigned(v.major) << "." << unsigned(v.minor) << "." << unsigned(v.patch));
+  // Platform
+  {
+    const char *p = SDL_GetPlatform();
+    if (p != nullptr) { TRE_LOG("Platform: " << p); }
+    else              { TRE_LOG("Platform: (null)"); }
+  }
 #endif
   // Set OpenGL version
 #ifdef TRE_OPENGL_ES
@@ -84,9 +90,12 @@ bool windowContext::SDLEvent_onWindow(const SDL_Event & event, const bool catchK
       return true;
     }
     break;
+  case SDL_QUIT:
+  {
+    m_quit = true;
+    return true;
+  }
   case SDL_WINDOWEVENT:
-    // SDL_Window* win = SDL_GetWindowFromID(event->window.windowID);
-    // if (win == (SDL_Window*)data) ...
     if      (event.window.event == SDL_WINDOWEVENT_CLOSE)
     {
       m_quit = true;
@@ -439,9 +448,9 @@ void windowContext::s_view2D::treatControlEvent(const s_controls &control, const
     m_matView[2] = m_matViewPrev[2] + glm::vec3(- deltaMouse, 0.f);
 
 #if defined(TRE_EMSCRIPTEN) || defined(TRE_DEBUG)
-    if (SDL_GetMouseFocus() == m_parentWindow->m_window)
+    if (SDL_GetMouseFocus() != m_parentWindow->m_window)
     {
-      TRE_LOG("Mouse is unbound because the pointer-lock is not confirmed (or lost) from the web-browser, or other failure");
+      TRE_LOG("Mouse is unbound because the pointer-lock is not confirmed (or lost) from the web-browser, or other failure.");
       SDL_SetRelativeMouseMode(SDL_FALSE);
       m_mouseBound = false;
     }

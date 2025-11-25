@@ -34,7 +34,7 @@ namespace textgenerator
     const font   *m_font = nullptr;
     float        m_fontHeight = 1.f; ///< font-size
     float        m_lineHeight = 1.08f; ///< line-size
-    unsigned     m_fontPixelSize = -1u; ///< hint on font-size in pixel units. Used to select best font maps according to pixel size.
+    unsigned     m_fontPixelSize = 0; ///< hint on font-size in pixel units. Used to select best font maps according to pixel size.
     bool         m_boxExtendedToNextChar = false; ///< Extend the bounding box by the next character start position.
 
     void setupBasic(const font *font, const char *str, const glm::vec2 &pos = glm::vec2(0.f), const glm::vec4 &color = glm::vec4(1.f))

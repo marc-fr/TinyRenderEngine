@@ -408,7 +408,7 @@ struct s_sampler_Opus
       float    localCursor = localCursorOffset;
       while (localCursor < dataDecodedSampleCount && curSample < sampleCount)
       {
-        const int localCursorInt = localCursor; // implicit std::trunc + float-to-int
+        const int localCursorInt = int(localCursor); // implicit std::trunc + float-to-int
         const float valueL_0 = float(m_decompressedBuffer[2 * localCursorInt + 0]) * valueNormalizer;
         const float valueR_0 = float(m_decompressedBuffer[2 * localCursorInt + 1]) * valueNormalizer;
         const float valueL_1 = float(m_decompressedBuffer[2 * localCursorInt + 2]) * valueNormalizer;
@@ -525,8 +525,8 @@ public:
     if (m_control.m_cursor != unsigned(-1))
     {
       ac_control.m_cursor = m_control.m_cursor;
-      ac_samplerRaw.m_cursor = m_control.m_cursor;
-      ac_samplerOpus.m_cursor = m_control.m_cursor;
+      ac_samplerRaw.m_cursor = float(m_control.m_cursor);
+      ac_samplerOpus.m_cursor = float(m_control.m_cursor);
       m_control.m_cursor = unsigned(-1);
     }
 
@@ -571,7 +571,7 @@ public:
                                                  ac_samplerOpus.m_valueRMS    * ac_samplerOpus.m_valueRMS    * sampleCount                      ) /
                                                 (ac_feedback.m_playedSampleCount + sampleCount));
       ac_feedback.m_playedSampleCount += sampleCount;
-      ac_feedback.m_playedSampleCursor = ac_samplerOpus.m_cursor;
+      ac_feedback.m_playedSampleCursor = unsigned(ac_samplerOpus.m_cursor);
 
       return;
     }
@@ -589,7 +589,7 @@ public:
                                                  ac_samplerRaw.m_valueRMS     * ac_samplerRaw.m_valueRMS     * sampleCount                      ) /
                                                 (ac_feedback.m_playedSampleCount + sampleCount));
       ac_feedback.m_playedSampleCount += sampleCount;
-      ac_feedback.m_playedSampleCursor = ac_samplerRaw.m_cursor;
+      ac_feedback.m_playedSampleCursor = unsigned(ac_samplerRaw.m_cursor);
 
       return;
     }

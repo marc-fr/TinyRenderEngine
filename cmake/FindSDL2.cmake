@@ -80,8 +80,7 @@ FIND_PATH(SDL2_INCLUDE_DIR SDL.h
     i686-w64-mingw32/include/SDL2
     x86_64-w64-mingw32/include/SDL2
     PATHS
-    ~/Library/Frameworks
-    /Library/Frameworks
+    C:/Users
     /usr/local/include/SDL2
     /usr/include/SDL2
     /sw # Fink
@@ -226,7 +225,7 @@ endif()
 set(SDL2_LIBRARIES ${SDL2_LIBRARY})
 set(SDL2_INCLUDE_DIRS ${SDL2_INCLUDE_DIR})
 
-FIND_PACKAGE_HANDLE_STANDARD_ARGS(SDL
+FIND_PACKAGE_HANDLE_STANDARD_ARGS(SDL2
                                   REQUIRED_VARS SDL2_LIBRARIES SDL2_INCLUDE_DIRS
                                   VERSION_VAR SDL2_VERSION_STRING)
 
