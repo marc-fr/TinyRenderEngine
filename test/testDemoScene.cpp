@@ -83,7 +83,7 @@ static void _particleUpdate(s_particleStream &worldParticlesBBStream, s_particle
         const float rand1 = (rand() * 2.f / RAND_MAX) - 1.f;
         const float randL = rand() * 10.f / RAND_MAX;
         const float randR = rand() * 6.28f / RAND_MAX;
-        worldParticlesBBStream.m_pos[ip] = glm::vec4(0.f, 2.f, 0.f, 0.04f);
+        worldParticlesBBStream.m_pos[ip] = glm::vec4(0.f, 1.f, 0.f, 0.04f);
         worldParticlesBBStream.m_vel[ip] = glm::vec4(rand0 * 0.1f, 0.f, rand1 * 0.1f, 0.f);
         worldParticlesBBStream.m_life[ip] = glm::vec2(0.f, 1.f / randL);
         worldParticlesBBStream.m_rot[ip] = glm::vec4(randR, 0.f, 0.f, 0.f);
@@ -406,14 +406,15 @@ int main(int argc, char **argv)
 
   tre::modelRaw2D    worldHUDModel;
   {
-    static const char* txts[5] = { "FPS",
+    static const char* txts[6] = { "FPS",
                                    "right clic: lock/unlock camera",
                                    "F5: show/hide render-target",
-                                   "F6: enable/disable blur",
-                                   "F7: enable/disable MSAA"
+                                   "F6: enable/disable Bloom",
+                                   "F7: enable/disable MSAA",
+                                   "F8: enable/disable SSAO",
                                  };
 
-    for (uint it = 0; it < 5; ++it)
+    for (uint it = 0; it < 6; ++it)
     {
       tre::textgenerator::s_textInfo tInfo;
       tInfo.setupBasic(&worldHUDFont, txts[it], glm::vec2(0.f, -0.08f - 0.08f * it));
@@ -425,14 +426,17 @@ int main(int argc, char **argv)
 
     const float r = float(myWindow.m_resolutioncurrent.x) / float(myWindow.m_resolutioncurrent.y);
 
-    worldHUDModel.createPart(6);
-    worldHUDModel.fillDataRectangle(5, 0, glm::vec4(-r, -1.f, -r + 0.3f * r, -1.f + 0.3f), glm::vec4(1.f), glm::vec4(0.f, 0.f, 1.f, 1.f));
+    worldHUDModel.createPart(6); // blur-0
+    worldHUDModel.fillDataRectangle(6, 0, glm::vec4(-r, -1.f, -r + 0.3f * r, -1.f + 0.3f), glm::vec4(1.f), glm::vec4(0.f, 0.f, 1.f, 1.f));
 
-    worldHUDModel.createPart(6);
-    worldHUDModel.fillDataRectangle(6, 0, glm::vec4(-r, -1.f + 0.35f, -r + 0.3f * r, -1.f + 0.65f), glm::vec4(1.f), glm::vec4(0.f, 0.f, 1.f, 1.f));
+    worldHUDModel.createPart(6); // blur-1
+    worldHUDModel.fillDataRectangle(7, 0, glm::vec4(-r, -1.f + 0.35f, -r + 0.3f * r, -1.f + 0.65f), glm::vec4(1.f), glm::vec4(0.f, 0.f, 1.f, 1.f));
 
-    worldHUDModel.createPart(6);
-    worldHUDModel.fillDataRectangle(7, 0, glm::vec4(-r, -1.f + 0.70f, -r + 0.3f * r, -1.f + 1.00f), glm::vec4(1.f), glm::vec4(0.f, 0.f, 1.f, 1.f));
+    worldHUDModel.createPart(6); // blur-2
+    worldHUDModel.fillDataRectangle(8, 0, glm::vec4(-r, -1.f + 0.70f, -r + 0.3f * r, -1.f + 1.00f), glm::vec4(1.f), glm::vec4(0.f, 0.f, 1.f, 1.f));
+
+    worldHUDModel.createPart(6); // ssao
+    worldHUDModel.fillDataRectangle(9, 0, glm::vec4(r - 0.3f * r, -1.f, r, -1.f + 0.3f), glm::vec4(1.f), glm::vec4(0.f, 0.f, 1.f, 1.f));
 
     worldHUDModel.loadIntoGPU();
   }
@@ -449,7 +453,7 @@ int main(int argc, char **argv)
   shaderMaterialFlat.setShadowPtsSamplerCount(1);
   shaderMaterialFlat.loadShader(tre::shader::PRGM_3D,
                                tre::shader::PRGM_TEXTURED |
-                               tre::shader::PRGM_LIGHT_SUN | tre::shader::PRGM_SHADOW_SUN |
+                               tre::shader::PRGM_LIGHT_SUN | tre::shader::PRGM_SHADOW_SUN | tre::shader::PRGM_AO |
                                tre::shader::PRGM_LIGHT_PTS | tre::shader::PRGM_SHADOW_PTS |
                                tre::shader::PRGM_UNIBRDF);
 
@@ -457,7 +461,7 @@ int main(int argc, char **argv)
   shaderMaterialBumped.setShadowSunSamplerCount(1);
   shaderMaterialBumped.setShadowPtsSamplerCount(1);
   shaderMaterialBumped.loadShader(tre::shader::PRGM_3D,
-                                  tre::shader::PRGM_TEXTURED | tre::shader::PRGM_MAPNORMAL |
+                                  tre::shader::PRGM_TEXTURED | tre::shader::PRGM_MAPNORMAL | tre::shader::PRGM_AO |
                                   tre::shader::PRGM_LIGHT_SUN | tre::shader::PRGM_SHADOW_SUN |
                                   tre::shader::PRGM_LIGHT_PTS | tre::shader::PRGM_SHADOW_PTS |
                                   tre::shader::PRGM_UNIBRDF);
@@ -466,7 +470,7 @@ int main(int argc, char **argv)
   shaderMaterialBrdf.setShadowSunSamplerCount(1);
   shaderMaterialBrdf.setShadowPtsSamplerCount(1);
   shaderMaterialBrdf.loadShader(tre::shader::PRGM_3D,
-                                tre::shader::PRGM_TEXTURED |
+                                tre::shader::PRGM_TEXTURED | tre::shader::PRGM_AO |
                                 tre::shader::PRGM_LIGHT_SUN | tre::shader::PRGM_SHADOW_SUN |
                                 tre::shader::PRGM_LIGHT_PTS | tre::shader::PRGM_SHADOW_PTS |
                                 tre::shader::PRGM_MAPBRDF);
@@ -492,7 +496,10 @@ int main(int argc, char **argv)
                            "}\n";
 
     shaderMetarialDsidedMask.setShadowSunSamplerCount(1);
-    tre::shaderGenerator::s_layout sl(tre::shader::PRGM_3D, tre::shader::PRGM_TEXTURED | tre::shader::PRGM_LIGHT_SUN | tre::shader::PRGM_SHADOW_SUN | tre::shader::PRGM_UNIBRDF);
+    tre::shaderGenerator::s_layout sl(tre::shader::PRGM_3D, 
+                                      tre::shader::PRGM_TEXTURED |
+                                      tre::shader::PRGM_LIGHT_SUN | tre::shader::PRGM_SHADOW_SUN |
+                                      tre::shader::PRGM_UNIBRDF);
     shaderMetarialDsidedMask.loadCustomShader(sl, shSource, "3d_leaves");
   }
 
@@ -570,8 +577,14 @@ int main(int argc, char **argv)
   tre::renderTarget rtMultisampled(tre::renderTarget::RT_COLOR_AND_DEPTH | tre::renderTarget::RT_MULTISAMPLED | tre::renderTarget::RT_COLOR_HDR);
   const bool canMSAA = rtMultisampled.load(myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
 
-  tre::renderTarget rtResolveMSAA(tre::renderTarget::RT_COLOR_AND_DEPTH | tre::renderTarget::RT_SAMPLABLE | tre::renderTarget::RT_COLOR_HDR);
+  tre::renderTarget rtResolveMSAA(tre::renderTarget::RT_COLOR_AND_DEPTH | tre::renderTarget::RT_COLOR_SAMPLABLE | tre::renderTarget::RT_COLOR_HDR);
   rtResolveMSAA.load(myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
+
+  tre::renderTarget rtSceneDepth(tre::renderTarget::RT_DEPTH | tre::renderTarget::RT_SAMPLABLE);
+  rtSceneDepth.load(myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
+
+  tre::postFX_AmbiantOcclusion effectAO;
+  effectAO.load(myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
 
   tre::postFX_Blur postEffectBlur(3, true);
   postEffectBlur.load(myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
@@ -606,6 +619,7 @@ int main(int argc, char **argv)
   bool showMaps = false;
   bool withMSAA = false; //canMSAA; // issue with mesa driver (hangs on blit)
   bool withBlur = true;
+  bool withSSAO = true;
 
   // MAIN LOOP
 
@@ -631,6 +645,7 @@ int main(int argc, char **argv)
         if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_F5) showMaps = !showMaps;
         if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_F6) withBlur = !withBlur;
         if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_F7) withMSAA = !withMSAA && canMSAA;
+        if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_F8) withSSAO = !withSSAO;
       }
 
       if (myWindow.m_hasFocus)
@@ -643,6 +658,8 @@ int main(int argc, char **argv)
       {
         rtMultisampled.resize(myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
         rtResolveMSAA.resize(myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
+        rtSceneDepth.resize(myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
+        effectAO.resize(myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
         postEffectBlur.resize(myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
         tre::profiler_updateCameraInfo(myWindow.m_matProjection2D, myWindow.m_resolutioncurrent);
 
@@ -669,10 +686,8 @@ int main(int argc, char **argv)
         sunLight_Data.direction = glm::normalize( glm::vec3( 0.2f, -fabsf(cosf(sunTheta)), sinf(sunTheta) ) );
 
         const float ptsLightTheta = myTimings.scenetime*6.28f*0.11f;
-        const glm::vec3 ptsLightPos = glm::vec3(-3.f * cosf(ptsLightTheta), 3.f + 1.f * cosf(sunTheta), 3.f * sinf(ptsLightTheta));
-
         ptsLight_Data.col(0) = glm::vec4(1.0f, 1.0f, 0.2f, 9.0f);
-        ptsLight_Data.pos(0) = glm::vec4(ptsLightPos, 1.f);
+        ptsLight_Data.pos(0) = glm::vec4(-3.f * cosf(ptsLightTheta), 4.f, 3.f * sinf(ptsLightTheta), 1.f);
       }
 
       // spheres
@@ -778,7 +793,6 @@ int main(int argc, char **argv)
 
       glDisable(GL_BLEND);
       glEnable(GL_DEPTH_TEST);
-      glDepthMask(GL_TRUE);
 
       {
         sunLight_ShadowMap.bindForWritting();
@@ -847,6 +861,40 @@ int main(int argc, char **argv)
       tre::IsOpenGLok("shadow-cubemap render passes");
     }
 
+    // scene depth render pass ----------
+
+    {
+      rtSceneDepth.bindForWritting();
+      glClear(GL_DEPTH_BUFFER_BIT);
+
+      glUseProgram(shaderShadow.m_drawProgram);
+
+      shaderShadow.setUniformMatrix(mPV);
+
+      worldScene.mesh.drawcall(worldScene.partId_Main, 1, true);
+
+      shaderShadow.setUniformMatrix(mPV * worldScene.instance_Tower);
+      worldScene.mesh.drawcall(worldScene.partId_Tower, 1, false);
+
+      for (const auto &ti : worldScene.instances_Tree)
+      {
+        shaderShadow.setUniformMatrix(mPV * ti);
+        worldScene.mesh.drawcall(worldScene.partId_TreeTrunck, 1, false);
+        //worldScene.mesh.drawcall(worldScene.partId_TreeLeaves, 1, false);
+      }
+
+      for (const auto &si : worldScene.instances_Sphere)
+      {
+        shaderShadow.setUniformMatrix(mPV * si);
+        worldScene.mesh.drawcall(worldScene.partId_Sphere, 1, false);
+      }
+
+      if (withSSAO) effectAO.process(rtSceneDepth, myWindow.m_matProjection3D);
+      else          effectAO.bypass();
+
+      tre::IsOpenGLok("ssao render passes");
+    }
+
     // opaque render pass ----------------
 
     {
@@ -861,7 +909,6 @@ int main(int argc, char **argv)
 
       glDisable(GL_BLEND);
       glEnable(GL_DEPTH_TEST);
-      glDepthMask(GL_TRUE);
 
       glActiveTexture(GL_TEXTURE2);
       glBindTexture(GL_TEXTURE_2D,sunLight_ShadowMap.depthHandle());
@@ -890,12 +937,16 @@ int main(int argc, char **argv)
       glActiveTexture(GL_TEXTURE10);
       glBindTexture(GL_TEXTURE_2D,worldScene.texSteal_mr.m_handle);
 
+      glActiveTexture(GL_TEXTURE11);
+      glBindTexture(GL_TEXTURE_2D,effectAO.get_aoTextureUnit());
+
       tre::IsOpenGLok("opaque render pass - bind textures");
 
       glUseProgram(shaderMaterialFlat.m_drawProgram);
       glUniform1i(shaderMaterialFlat.getUniformLocation(tre::shader::TexShadowSun0),2);
       glUniform1i(shaderMaterialFlat.getUniformLocation(tre::shader::TexShadowPts0),3);
       glUniform1i(shaderMaterialFlat.getUniformLocation(tre::shader::TexDiffuse),4);
+      glUniform1i(shaderMaterialFlat.getUniformLocation(tre::shader::TexAO),11);
       glUniform2f(shaderMaterialFlat.getUniformLocation(tre::shader::uniBRDF), 0.f, 0.98f);
       shaderMaterialFlat.setUniformMatrix(mPV, glm::mat4(1.f), myView3D.m_matView);
       worldScene.mesh.drawcall(worldScene.partId_Main, 1, true);
@@ -905,6 +956,7 @@ int main(int argc, char **argv)
       glUniform1i(shaderMaterialBumped.getUniformLocation(tre::shader::TexShadowPts0),3);
       glUniform1i(shaderMaterialBumped.getUniformLocation(tre::shader::TexDiffuse),5);
       glUniform1i(shaderMaterialBumped.getUniformLocation(tre::shader::TexNormal),6);
+      glUniform1i(shaderMaterialBumped.getUniformLocation(tre::shader::TexAO),11);
       glUniform2f(shaderMaterialBumped.getUniformLocation(tre::shader::uniBRDF), 0.f, 0.5f);
       shaderMaterialBumped.setUniformMatrix(mPV * worldScene.instance_Tower, worldScene.instance_Tower, myView3D.m_matView);
       worldScene.mesh.drawcall(worldScene.partId_Tower, 1, false);
@@ -913,6 +965,7 @@ int main(int argc, char **argv)
       glUniform1i(shaderMaterialFlat.getUniformLocation(tre::shader::TexShadowSun0),2);
       glUniform1i(shaderMaterialFlat.getUniformLocation(tre::shader::TexShadowPts0),3);
       glUniform1i(shaderMaterialFlat.getUniformLocation(tre::shader::TexDiffuse),7);
+      glUniform1i(shaderMaterialFlat.getUniformLocation(tre::shader::TexAO),11);
       glUniform2f(shaderMaterialFlat.getUniformLocation(tre::shader::uniBRDF), 0.f, 0.9f);
       for (const auto &ti : worldScene.instances_Tree)
       {
@@ -936,6 +989,7 @@ int main(int argc, char **argv)
       glUniform1i(shaderMaterialBrdf.getUniformLocation(tre::shader::TexShadowPts0),3);
       glUniform1i(shaderMaterialBrdf.getUniformLocation(tre::shader::TexDiffuse),9);
       glUniform1i(shaderMaterialBrdf.getUniformLocation(tre::shader::TexBRDF),10);
+      glUniform1i(shaderMaterialFlat.getUniformLocation(tre::shader::TexAO),11);
       for (const auto &si : worldScene.instances_Sphere)
       {
         shaderMaterialBrdf.setUniformMatrix(mPV * si, si, myView3D.m_matView);
@@ -990,7 +1044,6 @@ int main(int argc, char **argv)
 
       glEnable(GL_BLEND);
       glEnable(GL_DEPTH_TEST);
-      glDepthMask(GL_FALSE); // uggly: we'll read the current FBO depth buffer, which is permitted when the writes to the depth buffer are disabled.
 
       rtResolveMSAA.bindForWritting();
 
@@ -1007,7 +1060,7 @@ int main(int argc, char **argv)
       glUniform3f(shaderInstancedBB.getUniformLocation(tre::shader::SoftDistance), 0.2f, myWindow.m_near, myWindow.m_far);
 
       glActiveTexture(GL_TEXTURE5);
-      glBindTexture(GL_TEXTURE_2D, rtResolveMSAA.depthHandle());
+      glBindTexture(GL_TEXTURE_2D, rtSceneDepth.depthHandle());
       glUniform1i(shaderInstancedBB.getUniformLocation(tre::shader::TexDepth),5);
 
       glm::mat3 invView = glm::mat3(myView3D.m_matView);
@@ -1050,7 +1103,6 @@ int main(int argc, char **argv)
       glViewport(0, 0, myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
 
       glDisable(GL_DEPTH_TEST);
-      glDepthMask(GL_FALSE);
 
       if (showMaps)
       {
@@ -1076,6 +1128,7 @@ int main(int argc, char **argv)
         worldHUDModel.colorizePart(2, showMaps ? glm::vec4(0.f, 1.f, 0.f, 1.f) : glm::vec4(0.8f));
         worldHUDModel.colorizePart(3, withBlur ? glm::vec4(0.f, 1.f, 0.f, 1.f) : glm::vec4(0.8f));
         worldHUDModel.colorizePart(4, canMSAA ? (withMSAA ? glm::vec4(0.f, 1.f, 0.f, 1.f) : glm::vec4(0.8f)) : glm::vec4(1.f, 0.3f, 0.3f, 1.f));
+        worldHUDModel.colorizePart(5, withSSAO ? glm::vec4(0.f, 1.f, 0.f, 1.f) : glm::vec4(0.8f));
 
         worldHUDModel.updateIntoGPU();
 
@@ -1092,7 +1145,7 @@ int main(int argc, char **argv)
         glBindTexture(GL_TEXTURE_2D,worldHUDFont.get_texture().m_handle);
         glUniform1i(shaderText2D.getUniformLocation(tre::shader::TexDiffuse),3);
 
-        worldHUDModel.drawcall(0, 5, true);
+        worldHUDModel.drawcall(0, 6, true);
       }
 
       if (showMaps && withBlur)
@@ -1105,13 +1158,26 @@ int main(int argc, char **argv)
         glActiveTexture(GL_TEXTURE3);
 
         glBindTexture(GL_TEXTURE_2D,postEffectBlur.get_blurTextureUnit(0));
-        worldHUDModel.drawcall(5, 1, false);
-
-        glBindTexture(GL_TEXTURE_2D,postEffectBlur.get_blurTextureUnit(1));
         worldHUDModel.drawcall(6, 1, false);
 
-        glBindTexture(GL_TEXTURE_2D,postEffectBlur.get_blurTextureUnit(2));
+        glBindTexture(GL_TEXTURE_2D,postEffectBlur.get_blurTextureUnit(1));
         worldHUDModel.drawcall(7, 1, false);
+
+        glBindTexture(GL_TEXTURE_2D,postEffectBlur.get_blurTextureUnit(2));
+        worldHUDModel.drawcall(8, 1, false);
+      }
+
+      if (showMaps && withSSAO)
+      {
+        glDisable(GL_BLEND);
+        glUseProgram(shaderText2D.m_drawProgram);
+        shaderText2D.setUniformMatrix(myWindow.m_matProjection2D);
+        glUniform1i(shaderText2D.getUniformLocation(tre::shader::TexDiffuse),3);
+
+        glActiveTexture(GL_TEXTURE3);
+
+        glBindTexture(GL_TEXTURE_2D,effectAO.get_aoTextureUnit());
+        worldHUDModel.drawcall(9, 1, false);
       }
 
       glEnable(GL_BLEND);
@@ -1172,6 +1238,8 @@ int main(int argc, char **argv)
   ptsLight_ShadowMap.clear();
   postEffectToneMapping.clear();
   postEffectBlur.clear();
+  effectAO.clear();
+  rtSceneDepth.clear();
   rtMultisampled.clear();
   rtResolveMSAA.clear();
 

@@ -41,6 +41,7 @@ namespace tre {
  * Geometry      : TexNormal(sampler2D)
  * BRDF-lighting : TexBRDF(sample2D)
  * Shadow        : TexShadowSun[0-N](sampler2D), TexShadowPts[0-N](sampler3D)
+ * AO            : TexAO(sample2D)
  * Self-Depth    : TexDepth(sample2D)
  *
  * Uniform-Buffer-Objects
@@ -63,34 +64,38 @@ public:
     PRGM_3D_DEPTH, ///< use 3D-layout and 3D-projection, but write in the depth buffer only
   };
 
-  // options - diffuse color
-  static const int PRGM_UNICOLOR   = 0x100000; ///< use an uniform-color multiply-mask
-  static const int PRGM_TEXTURED   = 0x200000; ///< use diffuse-color texture
-  static const int PRGM_CUBEMAPED  = 0x400000; ///< use cube-maped texture
-  static const int PRGM_COLOR      = 0x800000; ///< use color from array-buffer
-  // options - ligthing
-  static const int PRGM_MASK_LIGHT = 0x00F000;
-  static const int PRGM_LIGHT_SUN  = 0x001000; ///< enable uni-directional light
-  static const int PRGM_LIGHT_PTS  = 0x002000; ///< enable point lights
-  static const int PRGM_SHADOW_SUN = 0x004000; ///< enable shadow cast with PRGM_LIGHT_SUN
-  static const int PRGM_SHADOW_PTS = 0x008000; ///< enable shadow cast with PRGM_LIGHT_PTS
-  static const int PRGM_NO_SELF_SHADOW = 0x010000; ///< disable self-shadowing (no-bias)
-  // options - material
-  static const int PRGM_MASK_BRDF  = 0x000300;
-  static const int PRGM_UNIBRDF    = 0x000100; ///< enable BRDF lighting, with material properties (metallic, roughness) as uniform variable
-  static const int PRGM_MAPBRDF    = 0x000200; ///< enable BRDF lighting, with material properties (metallic, roughness) as map (2D-map only)
-  static const int PRGM_MAPNORMAL  = 0x000400; ///< enable Normal map
-  static const int PRGM_UNIPHONG   = 0x000800; ///< with Phong lighting, have metarieal properties (hardness, normalRemap) as uniform variable
-  // options - texture
-  static const int PRGM_BLEND      = 0x000010; ///< enable texture blending (with PRGM_TEXTURED or PRGM_CUBEMAPED)
-  static const int PRGM_SOFT       = 0x000020; ///< enable soft-distance transparency.
-  static const int PRGM_BACKGROUND = 0x000040; ///< enable write depth = 1 (often used with glDepthFunc(GL_LEQUAL))
-  // options - instanced
-  static const int PRGM_INSTANCED  = 0x000001;
-  static const int PRGM_ORIENTATION= 0x000002;
-  static const int PRGM_INSTCOLOR  = 0x000004;
-  static const int PRGM_ATLAS      = 0x000008; ///< enable texture atlas (with PRGM_INSTANCED and PRGM_TEXTURED)
-  static const int PRGM_ROTATION   = 0x000080; ///< enable instanced rotation (with PRGM_INSTANCED)
+  enum e_flags
+  {
+    // options - diffuse color
+    PRGM_UNICOLOR   = 0x100000, ///< use an uniform-color multiply-mask
+    PRGM_TEXTURED   = 0x200000, ///< use diffuse-color texture
+    PRGM_CUBEMAPED  = 0x400000, ///< use cube-maped texture
+    PRGM_COLOR      = 0x800000, ///< use color from array-buffer
+    // options - ligthing
+    PRGM_MASK_LIGHT = 0x00F000,
+    PRGM_LIGHT_SUN  = 0x001000, ///< enable uni-directional light
+    PRGM_LIGHT_PTS  = 0x002000, ///< enable point lights
+    PRGM_SHADOW_SUN = 0x004000, ///< enable shadow cast with PRGM_LIGHT_SUN
+    PRGM_SHADOW_PTS = 0x008000, ///< enable shadow cast with PRGM_LIGHT_PTS
+    PRGM_NO_SELF_SHADOW = 0x010000, ///< disable self-shadowing (no-bias)
+    PRGM_AO         = 0x020000, ///< enable Ambiant-Occlusion
+    // options - material
+    PRGM_MASK_BRDF  = 0x000300,
+    PRGM_UNIBRDF    = 0x000100, ///< enable BRDF lighting, with material properties (metallic, roughness) as uniform variable
+    PRGM_MAPBRDF    = 0x000200, ///< enable BRDF lighting, with material properties (metallic, roughness) as map (2D-map only)
+    PRGM_MAPNORMAL  = 0x000400, ///< enable Normal map
+    PRGM_UNIPHONG   = 0x000800, ///< with Phong lighting, have metarieal properties (hardness, normalRemap) as uniform variable
+    // options - texture
+    PRGM_BLEND      = 0x000010, ///< enable texture blending (with PRGM_TEXTURED or PRGM_CUBEMAPED)
+    PRGM_SOFT       = 0x000020, ///< enable soft-distance transparency.
+    PRGM_BACKGROUND = 0x000040, ///< enable write depth = 1 (often used with glDepthFunc(GL_LEQUAL))
+    // options - instanced
+    PRGM_INSTANCED  = 0x000001,
+    PRGM_ORIENTATION= 0x000002,
+    PRGM_INSTCOLOR  = 0x000004,
+    PRGM_ATLAS      = 0x000008, ///< enable texture atlas (with PRGM_INSTANCED and PRGM_TEXTURED)
+    PRGM_ROTATION   = 0x000080, ///< enable instanced rotation (with PRGM_INSTANCED)
+  };
 
   struct s_layout
   {
@@ -106,10 +111,9 @@ public:
     bool hasBUF_InstancedOrientation;
     bool hasBUF_InstancedRotation;
     // additional data (to be supplied to the fragment shader)
-    bool hasPIX_UVW;
     bool hasPIX_Position;
     bool hasPIX_Normal;
-    bool hasPIX_Position_clipspace;
+    bool hasPIX_PositionClipspace;
     // Uniforms
     bool hasUNI_MPVM;
     bool hasUNI_MView;
@@ -135,6 +139,7 @@ public:
     bool hasSMP_BRDF;
     bool hasSMP_ShadowSun;
     bool hasSMP_ShadowPts;
+    bool hasSMP_AO;
     bool hasSMP_Depth;
     // Output(s) of the fragment shader
     bool hasOUT_Color0;

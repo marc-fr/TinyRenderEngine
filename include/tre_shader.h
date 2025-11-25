@@ -53,7 +53,7 @@ public:
                      TexNormal, TexBRDF,
                      TexShadowSun0, TexShadowSun1, TexShadowSun2, TexShadowSun3,
                      TexShadowPts0,
-                     TexDepth,
+                     TexDepth, TexAO,
                      NCOMUNIFORMVAR };
   GLint getUniformLocation(const uniformname utype) const; ///< get very-common uniform variables
   GLint getUniformLocation(const char * uname) const; ///< get other uniform variables

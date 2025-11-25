@@ -271,6 +271,7 @@ GLint shader::getUniformLocation(const uniformname utype) const
   else if (utype==TexShadowSun3) *puloc = glGetUniformLocation(m_drawProgram, "TexShadowSun3");
   else if (utype==TexShadowPts0) *puloc = glGetUniformLocation(m_drawProgram, "TexShadowPts0");
   else if (utype==TexDepth)      *puloc = glGetUniformLocation(m_drawProgram, "TexDepth");
+  else if (utype==TexAO)         *puloc = glGetUniformLocation(m_drawProgram, "TexAO");
   else
   {
     TRE_FATAL("not reached");
@@ -612,6 +613,7 @@ void shader::compute_name(e_category cat, int flags, const char * pname)
   std::string pre_light;
   if (flags & PRGM_LIGHT_SUN) pre_light += "s";
   if (flags & PRGM_LIGHT_PTS) pre_light += "p";
+  if (flags & PRGM_AO) pre_light += "o";
   if (!pre_light.empty()) pre_light = "_LIGHT" + pre_light;
   m_name += pre_light;
 

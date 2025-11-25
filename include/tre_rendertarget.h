@@ -217,6 +217,41 @@ protected:
 // ============================================================================
 
 /**
+* @brief This class implements ambiant-occlusion pass.
+* ...
+*/
+class postFX_AmbiantOcclusion
+{
+public:
+  postFX_AmbiantOcclusion() : m_quadFullScreen(), m_renderAOraw(renderTarget::RT_COLOR | renderTarget::RT_COLOR_SAMPLABLE), m_renderAOfinal(renderTarget::RT_COLOR | renderTarget::RT_COLOR_SAMPLABLE) {}
+  ~postFX_AmbiantOcclusion() {}
+
+  bool load(const int pwidth, const int pheigth);
+  bool resize(const int pwidth, const int pheigth) { return m_renderAOraw.resize(pwidth, pheigth) && m_renderAOfinal.resize(pwidth, pheigth); }
+  void clear();
+
+  void process(GLuint depthTextureHandle, unsigned depthTextureWidth, unsigned depthTextureHeight, const glm::mat4 &matProj);
+  void process(const renderTarget &depthRt, const glm::mat4 &matProj) { process(depthRt.depthHandle(), depthRt.w(), depthRt.h(), matProj); }
+  void bypass();
+  GLuint get_aoTextureUnit() const { return m_renderAOfinal.colorHandle(); }
+
+  void set_radius(const float r) { m_params.x = r; }
+  void set_strength(const float st) { m_params.y = st; }
+  void set_power(const float pw) { m_params.z = pw; }
+
+protected:
+  modelRaw2D   m_quadFullScreen;
+  renderTarget m_renderAOraw;
+  renderTarget m_renderAOfinal;
+  shader       m_shaderAO;
+  shader       m_shaderBlur;
+  glm::vec3    m_params = glm::vec3(10.f, 1.f, 1.f); ///< packed parameters: (radius in world-space, strength, power)
+  bool         m_isAOValueCleared = false;
+};
+
+// ============================================================================
+
+/**
  * @brief This class implements a tone-mapping. A vignetting is also included.
  * Simple tone-mapping: colorMAPPED.rgb = 1.f - exp(-colorHDR.rgb * exposure)
  *                      colorOUT.rgb = pow(colorMAPPED.rgb, 1./gamma) if gamma != 1

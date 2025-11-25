@@ -26,10 +26,9 @@ shaderGenerator::s_layout::s_layout(const e_category cat, const int flags)
   hasBUF_InstancedOrientation = (flags & (PRGM_INSTANCED)) && (flags & (PRGM_ORIENTATION));
   hasBUF_InstancedRotation    = (flags & (PRGM_INSTANCED)) && (flags & (PRGM_ROTATION));
 
-  hasPIX_UVW                = flags & (PRGM_CUBEMAPED);
-  hasPIX_Position           = flags & (PRGM_MASK_LIGHT);
+  hasPIX_Position           = flags & (PRGM_MASK_LIGHT | PRGM_CUBEMAPED);
   hasPIX_Normal             = flags & (PRGM_MASK_LIGHT) || (flags & (PRGM_MAPNORMAL));
-  hasPIX_Position_clipspace = flags & (PRGM_SOFT);
+  hasPIX_PositionClipspace  = flags & (PRGM_SOFT | PRGM_SOFT | PRGM_AO);
 
   hasUNI_MPVM      = (flags != 0) || is3D();
   hasUNI_MView     = (flags & (PRGM_MASK_LIGHT)) || (flags & (PRGM_CUBEMAPED)) || (flags & (PRGM_MAPNORMAL));
@@ -56,6 +55,7 @@ shaderGenerator::s_layout::s_layout(const e_category cat, const int flags)
   hasSMP_ShadowSun = flags & (PRGM_SHADOW_SUN);
   hasSMP_ShadowPts = flags & (PRGM_SHADOW_PTS);
   hasSMP_Depth     = flags & (PRGM_SOFT);
+  hasSMP_AO        = flags & (PRGM_AO);
 
   hasOUT_Color0    = (flags != 0) && (cat != PRGM_3D_DEPTH);
   hasOUT_Color1    = false;
@@ -349,9 +349,9 @@ void shaderGenerator::createShaderFunction_Diffuse(const int flags, std::string 
     if (!isfirst) gatherColors += " * ";
     isfirst = false;
     if (flags & PRGM_BLEND)
-      returnValue += "(uniBlend.x * texture(TexCube, pixelUVW) + uniBlend.y * texture(TexCubeB, pixelUVW))";
+      returnValue += "(uniBlend.x * texture(TexCube, pixelPosition) + uniBlend.y * texture(TexCubeB, pixelPosition))";
     else
-      returnValue += "texture(TexCube, pixelUVW)";
+      returnValue += "texture(TexCube, pixelPosition)";
   }
 
   if (isfirst) returnValue += "vec4(1.f)";
@@ -422,12 +422,22 @@ void shaderGenerator::createShaderFunction_Light(const int flags, std::string &g
     {
       gatherLights += "  float islighted_sun = 1.f;\n";
     }
+    if (flags & PRGM_AO)
+    {
+      TRE_ASSERT(m_layout.hasPIX_PositionClipspace);
+      TRE_ASSERT(m_layout.hasSMP_AO);
+      gatherLights += "  float ambiantOcclusion = texture(TexAO, pixelPositionClipspace.xy / pixelPositionClipspace.w * 0.5f + 0.5f).r;\n";
+    }
+    else
+    {
+      gatherLights += "  float ambiantOcclusion = 1.f;\n";
+    }
     if (flags & PRGM_MASK_BRDF)
     {
       gatherLights += "  vec3 lsun = BRDFLighting(albedo, m_sunlight.color,\n"
                       "                           N, L, V,\n"
                       "                           matMetalRough.x, matMetalRough.y);\n"
-                      "  vec3 lamb = BRDFLighting_ambiante(albedo, m_sunlight.colorAmbiant,\n"
+                      "  vec3 lamb = BRDFLighting_ambiante(albedo, ambiantOcclusion * m_sunlight.colorAmbiant,\n"
                       "                                    N, V,\n"
                       "                                    matMetalRough.x, matMetalRough.y);\n";
     }
@@ -436,7 +446,7 @@ void shaderGenerator::createShaderFunction_Light(const int flags, std::string &g
       gatherLights += "  vec3 lsun = BlinnPhong(albedo, m_sunlight.color,\n"
                       "                         N, L, V,\n"
                       "                         matHardRemapSpec.x, matHardRemapSpec.y, matHardRemapSpec.z);\n"
-                      "  vec3 lamb = BlinnPhong_ambiante(albedo, m_sunlight.colorAmbiant,\n"
+                      "  vec3 lamb = BlinnPhong_ambiante(albedo, ambiantOcclusion * m_sunlight.colorAmbiant,\n"
                       "                                  N, L, matHardRemapSpec.y, matHardRemapSpec.z);\n";
     }
     if (!returnval.empty()) returnval += " + ";
@@ -498,6 +508,9 @@ void shaderGenerator::createShaderFunction_Transparent(const int flags, std::str
 
   if (flags & PRGM_SOFT)
   {
+    TRE_ASSERT(m_layout.hasPIX_PositionClipspace);
+    TRE_ASSERT(m_layout.hasSMP_Depth);
+
     transparent += "float LinearDepth(float inDepth)\n"
                    "{\n"
                    "  float n = SoftDistance.y;\n"
@@ -507,8 +520,9 @@ void shaderGenerator::createShaderFunction_Transparent(const int flags, std::str
 
     transparent += "float Transparent(float inW)\n"
                    "{\n"
-                   "  float fragDepth = LinearDepth(pixelPosition_clipspace.z * 0.5f + 0.5f);\n"
-                   "  float sceneDepth01 = texture(TexDepth, pixelPosition_clipspace.xy * 0.5f + 0.5f).r;\n"
+                   "  vec4  posClipSpaceDiv = pixelPositionClipspace / pixelPositionClipspace.w;\n"
+                   "  float fragDepth = LinearDepth(posClipSpaceDiv.z * 0.5f + 0.5f);\n"
+                   "  float sceneDepth01 = texture(TexDepth, posClipSpaceDiv.xy * 0.5f + 0.5f).r;\n"
                    "  float sceneDepth = LinearDepth(sceneDepth01);\n"
                    "  float alpha = clamp((sceneDepth - fragDepth) / SoftDistance.x, 0.f, 1.f);\n"
                    "  return alpha * inW;\n"
@@ -615,11 +629,6 @@ void shaderGenerator::createShaderSource_Layout(std::string &sourceVertex, std::
     sourceVertex += "layout(location = 11) in float instancedRotation;\n";
   }
 
-  if (m_layout.hasPIX_UVW)
-  {
-    sourceVertex += "out vec3 " + prefixOut + "UVW;\n";
-    sourceFragment += "in vec3 " "pixel" "UVW;\n";
-  }
   if (m_layout.hasPIX_Position)
   {
     sourceVertex += "out vec3 " + prefixOut + "Position;\n";
@@ -630,10 +639,10 @@ void shaderGenerator::createShaderSource_Layout(std::string &sourceVertex, std::
     sourceVertex += "out vec3 " + prefixOut + "Normal;\n";
     sourceFragment += "in vec3 " "pixel" "Normal;\n";
   }
-  if (m_layout.hasPIX_Position_clipspace)
+  if (m_layout.hasPIX_PositionClipspace)
   {
-    sourceVertex += "out vec3 " + prefixOut + "Position_clipspace;\n";
-    sourceFragment += "in vec3 " "pixel" "Position_clipspace;\n";
+    sourceVertex += "out vec4 " + prefixOut + "PositionClipspace;\n";
+    sourceFragment += "in vec4 " "pixel" "PositionClipspace;\n";
   }
 
   // uniform
@@ -663,6 +672,7 @@ void shaderGenerator::createShaderSource_Layout(std::string &sourceVertex, std::
   if (m_layout.hasSMP_ShadowSun && m_shadowSun_count >= 4) sourceFragment += "uniform sampler2D TexShadowSun3;\n";
   if (m_layout.hasSMP_ShadowPts && m_shadowPts_count >= 1) sourceFragment += "uniform samplerCube TexShadowPts0;\n";
   if (m_layout.hasSMP_Depth)         sourceFragment += "uniform sampler2D TexDepth;\n";
+  if (m_layout.hasSMP_AO)            sourceFragment += "uniform sampler2D TexAO;\n";
 
   TRE_ASSERT(m_layout.hasOUT_Color0 || m_layout.hasOUT_Color1 || m_layout.hasOUT_Depth);
   if (m_layout.hasOUT_Color0)
@@ -822,7 +832,6 @@ void shaderGenerator::createShaderSource_VertexMain(std::string &sourceVertex)
   else
   {
     TRE_ASSERT(m_layout.category == PRGM_2D);
-    TRE_ASSERT(!m_layout.hasPIX_Position_clipspace);
     sourceVertex += "  gl_Position = vec4(vertexPosition,0.1f,1.f);\n";
   }
 
@@ -832,8 +841,8 @@ void shaderGenerator::createShaderSource_VertexMain(std::string &sourceVertex)
     else                 sourceVertex += "  " + prefixOut + "Position = (MModel * vec4(out_Position, 1.f)).xyz;\n";
   }
 
-  if (m_layout.hasPIX_Position_clipspace)
-    sourceVertex += "  " + prefixOut + "Position_clipspace = gl_Position.xyz / gl_Position.w;\n";
+  if (m_layout.hasPIX_PositionClipspace)
+    sourceVertex += "  " + prefixOut + "PositionClipspace = gl_Position;\n";
 
   if (m_layout.hasOPT_DepthOne)
     sourceVertex += "  gl_Position.z = gl_Position.w;\n";
@@ -898,8 +907,6 @@ void shaderGenerator::createShaderSource_VertexMain(std::string &sourceVertex)
 
   if (m_layout.hasBUF_InstancedAtlasBlend) sourceVertex += "  " + prefixOut + "AtlasBlend = instancedAtlasBlend;\n";
 
-  if (m_layout.hasPIX_UVW) sourceVertex += "  " + prefixOut + "UVW = vertexPosition.xyz;\n";
-
   sourceVertex += "}\n";
 }
 
@@ -944,10 +951,6 @@ void shaderGenerator::createShaderSource_GeomWireframe(std::string & sourceGeom)
   {
     EMITDECL("vec4", "AtlasBlend");
   }
-  if (m_layout.hasPIX_UVW)
-  {
-    EMITDECL("vec3", "UVW");
-  }
   if (m_layout.hasPIX_Position)
   {
     EMITDECL("vec3", "Position");
@@ -956,9 +959,9 @@ void shaderGenerator::createShaderSource_GeomWireframe(std::string & sourceGeom)
   {
     EMITDECL("vec3", "Normal");
   }
-  if (m_layout.hasPIX_Position_clipspace)
+  if (m_layout.hasPIX_PositionClipspace)
   {
-    EMITDECL("vec3", "Position_clipspace");
+    EMITDECL("vec3", "PositionClipspace");
   }
 
 #undef EMITDECL
@@ -996,10 +999,6 @@ void shaderGenerator::createShaderSource_GeomWireframe(std::string & sourceGeom)
     {
       EMITVAR("AtlasBlend"); // can be done only once
     }
-    if (m_layout.hasPIX_UVW)
-    {
-      EMITVAR("UVW");
-    }
     if (m_layout.hasPIX_Position)
     {
       EMITVAR("Position");
@@ -1008,9 +1007,9 @@ void shaderGenerator::createShaderSource_GeomWireframe(std::string & sourceGeom)
     {
       EMITVAR("Normal");
     }
-    if (m_layout.hasPIX_Position_clipspace)
+    if (m_layout.hasPIX_PositionClipspace)
     {
-      EMITVAR("Position_clipspace");
+      EMITVAR("PositionClipspace");
     }
 
     sourceGeom +="  EmitVertex();\n";

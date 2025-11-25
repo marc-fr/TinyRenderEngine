@@ -276,7 +276,8 @@ void renderTarget::bindForReading() const
 void renderTarget::resolve(const int outwidth, const int outheigth, const bool withDepth) const
 {
   TRE_ASSERT(m_drawFBO != 0);
-  TRE_ASSERT(!isHDR()); // glBlitFramebuffer: buffer(color & depth) must have same format.
+  TRE_ASSERT(!isHDR()); // glBlitFramebuffer: buffer (color) must have same format.
+  TRE_ASSERT(!withDepth || isNativeDepth());  // glBlitFramebuffer: buffer (depth) must have same format.
 
   glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
   glBindFramebuffer(GL_READ_FRAMEBUFFER, m_drawFBO);
@@ -293,7 +294,7 @@ void renderTarget::resolve(renderTarget &targetFBO) const
 {
   TRE_ASSERT(m_drawFBO != 0);
   TRE_ASSERT(isMultisampled() || !targetFBO.isMultisampled());
-  TRE_ASSERT(isHDR() == targetFBO.isHDR()); // glBlitFramebuffer: buffer(color & depth) must have same format.
+  TRE_ASSERT(isHDR() == targetFBO.isHDR()); // glBlitFramebuffer: buffer(color) must have same format.
 
   glBindFramebuffer(GL_DRAW_FRAMEBUFFER, targetFBO.m_drawFBO);
   glBindFramebuffer(GL_READ_FRAMEBUFFER, m_drawFBO);
@@ -574,6 +575,7 @@ void renderTarget_GBuffer::bindForWritting() const
 {
   TRE_ASSERT(m_drawFBO != 0);
   glBindFramebuffer(GL_DRAW_FRAMEBUFFER, m_drawFBO);
+  glViewport(0, 0, m_w, m_h);
 }
 
 // ----------------------------------------------------------------------------
@@ -604,8 +606,8 @@ static const char * SourcePostProcess_FragMain_BlurDownPass =
 "  }\n"
 "  else // downsample with Gaussian filter\n"
 "  {\n"
-"    float x = AtlasInvDim.x;\n"
-"    float y = AtlasInvDim.y;\n"
+"    float x = 2. * AtlasInvDim.x;\n"
+"    float y = 2. * AtlasInvDim.y;\n"
 "    vec3 a = texture(TexDiffuse, vec2(pixelUV.x - 2.f*x, pixelUV.y + 2.f*y)).rgb;\n"
 "    vec3 b = texture(TexDiffuse, vec2(pixelUV.x,         pixelUV.y + 2.f*y)).rgb;\n"
 "    vec3 c = texture(TexDiffuse, vec2(pixelUV.x + 2.f*x, pixelUV.y + 2.f*y)).rgb;\n"
@@ -628,12 +630,12 @@ static const char * SourcePostProcess_FragMain_BlurDownPass =
 "}\n";
 
 static const char * SourcePostProcess_FragMain_BlurUpPass =
-"// uniColor = { radiusH., ., combineStrength, withCombine}\n"
+"// uniColor = { radiusH, ., combineStrength, withCombine}\n"
 "// AtlasInvDim = {1/src-width, 1/src-height}\n"
 "void main()\n"
 "{\n"
-"  float x = uniColor.x * AtlasInvDim.y;\n"
-"  float y = uniColor.x * AtlasInvDim.y;\n"
+"  float x = uniColor.x * 2. * AtlasInvDim.y;\n"
+"  float y = uniColor.x * 2. * AtlasInvDim.y;\n"
 "  // Use a 3x3 kernel around the center pixel e\n"
 "  vec3 a = texture(TexDiffuse, vec2(pixelUV.x - x, pixelUV.y + y)).rgb;\n"
 "  vec3 b = texture(TexDiffuse, vec2(pixelUV.x,     pixelUV.y + y)).rgb;\n"
@@ -693,7 +695,7 @@ bool postFX_Blur::load(const int pwidth, const int pheigth)
   m_quadFullScreen.fillDataRectangle(partId, 0, pos, color, uv);
   status &= m_quadFullScreen.loadIntoGPU();
 
-  return status && resize(pwidth, pheigth);
+  return status;
 }
 
 // ----------------------------------------------------------------------------
@@ -740,7 +742,6 @@ void postFX_Blur::processBlur(GLuint inputTextureHandle, const bool withFinalCom
   glDisable(GL_BLEND);
   {
     m_renderDownsample[0].bindForWritting();
-    glClear(GL_COLOR_BUFFER_BIT);
 
     glUseProgram(m_shaderDownPass.m_drawProgram);
     glUniform1i(m_shaderDownPass.getUniformLocation(tre::shader::TexDiffuse),0);
@@ -788,6 +789,176 @@ void postFX_Blur::processBlur(GLuint inputTextureHandle, const bool withFinalCom
   }
 
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA); // restore the default blending function.
+}
+
+// ============================================================================
+static const char * SourcePostProcess_FragMain_AO =
+"// uniColor = { near, far, invProj00, invProj11 }\n"
+"// SoftDistance = { radius, strength, power }\n"
+"// AtlasInvDim = {1/src-width, 1/src-height}\n"
+"float noise2D(vec2 uv)\n"
+"{\n"
+"  return fract(sin(dot(uv,vec2(12.9898,78.233))) * 43758.5453123);\n"
+"}\n"
+"float noise3D(vec3 p)\n"
+"{\n"
+"  return fract(sin(dot(p ,vec3(12.9898,78.233,126.7235))) * 43758.5453);\n"
+"}\n"
+"float linearDepth(float inDepth)\n"
+"{\n"
+"  float n = uniColor.x;\n"
+"  float f = uniColor.y;\n"
+"  return n * f / (f + inDepth * (n - f));\n"
+"}\n"
+"vec3 getViewRay(vec2 uv) // in OpenGL view-space (with Z backward)\n"
+"{\n"
+"  float n = uniColor.x;\n"
+"  float f = uniColor.y;\n"
+"  float invProj00 = uniColor.z;\n"
+"  float invProj11 = uniColor.w;\n"
+"  vec4 temp = vec4(invProj00 * (uv.x * 2. - 1.), invProj11 * (uv.y * 2. - 1.), -1.f, 1.f / n);\n"
+"  vec3 ret = temp.xyz; //normalize(temp.xyz / temp.w);\n"
+"  ret /= (-ret.z);\n"
+"  return ret;\n"
+"}\n"
+"const vec2  kSamplesDir[8] = { vec2(0.,1.), vec2(0.7071,0.7071), vec2(1.,0.), vec2(-0.7071,0.7071), vec2(-1.,0.), vec2(-0.7071,-0.7071), vec2(0.,-1.), vec2(0.7071,-0.7071) };\n"
+"const float kSamplesScale[8] = { 4., 13., 9., 5., 11., 3., 6., 9. };\n"
+"const float paramZBias = 1.e-3; // [1/m]\n"
+"\n"
+"void main()\n"
+"{\n"
+"  float radius = SoftDistance.x;\n"
+"  float strength = SoftDistance.y;\n"
+"  float pw = SoftDistance.z;\n"
+"  float zC = linearDepth(texture(TexDiffuse, pixelUV).r);\n"
+"  vec3 posC = zC * getViewRay(pixelUV);\n"
+"  //color.xyz = vec3(posC.x, posC.y, -1.f / posC.z); return;\n"
+"  vec3 nC = normalize(cross(dFdx(posC),dFdy(posC)));\n"
+"  //color.xyz = 0.5 + 0.5 * nC; return;\n"
+"  float accum = 0.;\n"
+"  int ioffset = int(noise2D(pixelUV) * 8.);\n"
+"  //int ioffset = int(noise3D(posC) * 8.);\n"
+"  for (int is = 0; is < 8; ++is)\n"
+"  {\n"
+"    vec2 uvDelta = kSamplesScale[(is + ioffset) % 8] * kSamplesDir[is] * AtlasInvDim * clamp(radius / abs(zC), 1., 10.);\n"
+"    vec2 uv = pixelUV + uvDelta;\n"
+"    if (uv.x < 0.f || uv.x > 1.f) uv.x = pixelUV.x - uvDelta.x;\n"
+"    if (uv.y < 0.f || uv.y > 1.f) uv.y = pixelUV.y - uvDelta.y;\n"
+"    vec3 pos = linearDepth(texture(TexDiffuse, uv).r) * getViewRay(uv);\n"
+"    vec3 dpos = pos - posC;\n"
+"    accum += max(0, dot(nC, dpos) + paramZBias * pos.z) / (0.01 + dot(dpos, dpos));"
+"  }\n"
+"  float ao = pow(max(1. - 2. * strength * accum / float(8), 0.), pw);\n"
+"  color.xyz = vec3(ao, ao, ao);\n"
+"  color.w = 1.f;\n"
+"}\n";
+
+bool postFX_AmbiantOcclusion::load(const int pwidth, const int pheigth)
+{
+  bool status = true;
+
+  // FBOs
+  status &= m_renderAOraw.load(pwidth, pheigth);
+  status &= m_renderAOfinal.load(pwidth, pheigth);
+
+  // Shaders
+  {
+    shader::s_layout shaderLayout(shader::PRGM_2D);
+    shaderLayout.hasBUF_UV = true;
+    shaderLayout.hasSMP_Diffuse = true;
+    shaderLayout.hasOUT_Color0 = true;
+    shaderLayout.hasUNI_uniColor = true; // to pass projection-matrix data (4 floats)
+    shaderLayout.hasUNI_SoftDistance = true; // to pass parmaters (3 floats)
+    shaderLayout.hasUNI_AtlasInvDim = true; // to pass texture dimension (2 floats)
+    status &= m_shaderAO.loadCustomShader(shaderLayout, SourcePostProcess_FragMain_AO, "PostProcess_AO");
+  }
+
+  {
+    shader::s_layout shaderLayout(shader::PRGM_2D);
+    shaderLayout.hasBUF_UV = true;
+    shaderLayout.hasSMP_Diffuse = true;
+    shaderLayout.hasOUT_Color0 = true;
+    shaderLayout.hasUNI_uniColor = true; // to pass blur parameters (4 floats)
+    shaderLayout.hasUNI_AtlasInvDim = true; // to pass texture dimension (2 floats)
+    status &= m_shaderBlur.loadCustomShader(shaderLayout, SourcePostProcess_FragMain_BlurDownPass, "PostProcess_Blur_DownPass");
+  }
+
+  // Model
+  const glm::vec4 pos(-1.f, -1.f, 1.f, 1.f);
+  const glm::vec4 uv(0.f, 0.f, 1.f, 1.f);
+  const glm::vec4 color(1.f);
+  const std::size_t partId = m_quadFullScreen.createPart(6);
+  m_quadFullScreen.fillDataRectangle(partId, 0, pos, color, uv);
+  status &= m_quadFullScreen.loadIntoGPU();
+
+  return status;
+}
+
+void postFX_AmbiantOcclusion::clear()
+{
+  // FBOs
+  m_renderAOraw.clear();
+  m_renderAOfinal.clear();
+  // Shaders
+  m_shaderAO.clearShader();
+  m_shaderBlur.clearShader();
+  // Model
+  m_quadFullScreen.clearGPU();
+}
+
+void postFX_AmbiantOcclusion::process(GLuint depthTextureHandle, unsigned depthTextureWidth, unsigned depthTextureHeight, const glm::mat4 &matProj)
+{
+  TRE_ASSERT(depthTextureWidth == m_renderAOraw.w());
+  TRE_ASSERT(depthTextureHeight == m_renderAOraw.h());
+
+  const float invProj00 = 1.f / matProj[0][0];
+  const float invProj11 = 1.f / matProj[1][1];
+  const float near = matProj[3][2] / (matProj[2][2] - 1.f);
+  const float far = matProj[3][2] / (matProj[2][2] + 1.f);
+  // inverse(matProj) * vec4(u,v, p,q) = vec4(invProj00 * u, invProj11 * v, -q, p * (near-far)/(2 near far) + q * (near+far)/(2 near far));
+  // inverse(matProj) * vec4(u,v, -1, 1) = vec4(invProj00 * u, invProj11 * v, -1, 1 / near);
+
+  //const glm::mat4 posFar_ViewSpace = glm::vec4(0.02f, 0.02f, -far, 1.f);
+  //const glm::vec4 posFar_ClipSpace = glm::inverse(matProj) * posFar_ViewSpace;
+
+  glDisable(GL_BLEND);
+
+  glActiveTexture(GL_TEXTURE0);
+
+  m_renderAOraw.bindForWritting();
+  glUseProgram(m_shaderAO.m_drawProgram);
+  glUniform1i(m_shaderAO.getUniformLocation(tre::shader::TexDiffuse),0);
+  glUniform4f(m_shaderAO.getUniformLocation(tre::shader::uniColor), near, far, invProj00, invProj11);
+  glUniform3fv(m_shaderAO.getUniformLocation(tre::shader::SoftDistance), 1, glm::value_ptr(m_params));
+  glUniform2f(m_shaderAO.getUniformLocation(tre::shader::AtlasInvDim), 1.f / float(depthTextureWidth), 1.f / float(depthTextureHeight));
+  glBindTexture(GL_TEXTURE_2D, depthTextureHandle);
+  m_quadFullScreen.drawcallAll(true);
+
+  m_renderAOfinal.bindForWritting();
+  glUseProgram(m_shaderBlur.m_drawProgram);
+  glUniform1i(m_shaderBlur.getUniformLocation(tre::shader::TexDiffuse),0);
+  glUniform4f(m_shaderBlur.getUniformLocation(tre::shader::uniColor), 0.f, 0.f, 0.f, 0.f);
+  glUniform2f(m_shaderBlur.getUniformLocation(tre::shader::AtlasInvDim), 1.f / float(m_renderAOraw.w()), 1.f / float(m_renderAOraw.h()));
+  glBindTexture(GL_TEXTURE_2D, m_renderAOraw.colorHandle());
+  m_quadFullScreen.drawcallAll(false);
+
+  m_isAOValueCleared = false;
+}
+
+void postFX_AmbiantOcclusion::bypass()
+{
+  if (m_isAOValueCleared) return;
+
+  GLfloat bkColor[4];
+  glGetFloatv(GL_COLOR_CLEAR_VALUE, bkColor);
+
+  m_renderAOfinal.bindForWritting();
+  glClearColor(1.f, 1.f, 1.f, 1.f);
+  glClear(GL_COLOR_BUFFER_BIT);
+
+  glClearColor(bkColor[0], bkColor[1], bkColor[2], bkColor[3]);
+
+  m_isAOValueCleared = true;
 }
 
 // ============================================================================
@@ -878,7 +1049,6 @@ void postFX_ToneMapping::resolveToneMapping(GLuint inputTextureHandle, renderTar
   glDisable(GL_DEPTH_TEST);
 
   targetFBO.bindForWritting();
-  glViewport(0, 0, targetFBO.w(), targetFBO.h());
 
   glActiveTexture(GL_TEXTURE0);
   glBindTexture(GL_TEXTURE_2D, inputTextureHandle);
