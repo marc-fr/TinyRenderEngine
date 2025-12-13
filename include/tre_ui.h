@@ -129,6 +129,7 @@ public:
   widget_DECLAREATTRIBUTE(widget,bool,isactive,= false, Data) ///< When true, the widget receives events and can trigger callbacks
   widget_DECLAREATTRIBUTE(widget,bool,iseditable,= false, Data) ///< When true, the widget is editable from events
   widget_DECLAREATTRIBUTE(widget,bool,ishighlighted, = false, Data) ///< read & write attribute: "acceptEvent" modifies the value; user can change the value, but no callback will be triggered in this case.
+  widget_DECLAREATTRIBUTE(widget,float,heightModifier,= 1.f, Layout) ///< height factor in regards with the default widget's height.
   /// @}
 
   /// @name callbacks
@@ -239,7 +240,6 @@ class widgetText : public widget
   widget_DECLARECONSTRUCTORS(widgetText)
   widget_DECLARECOMMUNMETHODS()
   widget_DECLAREATTRIBUTE(widgetText,std::string,text,= "", Address) ///< Text to be drawn. Note: it makes a local copy of the text (safe but copy data).
-  widget_DECLAREATTRIBUTE(widgetText,float,fontsizeModifier,= 1.f, Layout) ///< Font-size factor in regards with the parent window's font-size.
   widget_DECLAREATTRIBUTE(widgetText,bool,withborder,= false, Address) ///< True if a border will be drawn
   widget_DECLAREATTRIBUTE(widgetText,glm::vec4,colorBackground,= glm::vec4(-1.f), Data) ///< Overwrite the background color
 
@@ -299,7 +299,6 @@ class widgetPicture : public widget
   widget_DECLARECOMMUNMETHODS()
   widget_DECLAREATTRIBUTE(widgetPicture,uint,texId,= uint(-1), Address)
   widget_DECLAREATTRIBUTE(widgetPicture,glm::vec4,texUV,= glm::vec4(0.f,0.f,1.f,1.f), Layout)
-  widget_DECLAREATTRIBUTE(widgetPicture,float,heightModifier,= 1.f, Layout) ///< height factor in regards with the default cell's height.
   widget_DECLAREATTRIBUTE(widgetPicture,bool,snapPixels, = false, Data) ///< snap pixels to entire zoom factor
 
   glm::vec4 resolveColorFill() const;
@@ -313,8 +312,7 @@ class widgetBar : public widget
   widget_DECLAREATTRIBUTE(widgetBar,float,valuemax,= 1.f, Data)
   widget_DECLAREATTRIBUTE(widgetBar,float,value,= 0.f, Data)
   widget_DECLAREATTRIBUTE(widgetBar,bool,withborder,= true, Address) ///< True if a border must to be drawn
-  widget_DECLAREATTRIBUTE(widgetBar,bool,withthreshold,= false, Address)
-  widget_DECLAREATTRIBUTE(widgetBar,float,valuethreshold,= 1.f, Data)
+  widget_DECLAREATTRIBUTE(widgetBar,float,valuethreshold,= -std::numeric_limits<float>::infinity(), Data)
   widget_DECLAREATTRIBUTE(widgetBar,bool,withtext,= false, Address)
   widget_DECLAREATTRIBUTE(widgetBar,float,snapInterval, = 0.f, Data) ///< Negative or zero value means no snapping
   widget_DECLAREATTRIBUTE(widgetBar,float,widthFactor, = 5.f, Data) ///< Width/Height ratio
@@ -346,16 +344,27 @@ class widgetSlider : public widget
   widget_DECLAREATTRIBUTE(widgetSlider,float,valuemax,= 1.f, Data)
   widget_DECLAREATTRIBUTE(widgetSlider,float,value,= 0.f, Data)
   widget_DECLAREATTRIBUTE(widgetSlider,float,widthFactor, = 5.f, Data) ///< Width/Height ratio
+  widget_DECLAREATTRIBUTE(widgetSlider,bool,withtext,= false, Address)
+  widget_DECLAREATTRIBUTE(widgetSlider,bool,fillLeft,= false, Data)
+
+public:
+  std::function<std::string(float value)>  wcb_valuePrinter;
 };
 
 class widgetSliderInt : public widget
 {
   widget_DECLARECONSTRUCTORS(widgetSliderInt)
   widget_DECLARECOMMUNMETHODS()
-  widget_DECLAREATTRIBUTE(widgetSliderInt, int, valuemin, = 0, Data)
-  widget_DECLAREATTRIBUTE(widgetSliderInt, int, valuemax, = 10, Data)
-  widget_DECLAREATTRIBUTE(widgetSliderInt, int, value, = 0, Data)
-  widget_DECLAREATTRIBUTE(widgetSliderInt, float, widthFactor, = 5.f, Data) ///< Width/Height ratio
+  widget_DECLAREATTRIBUTE(widgetSliderInt,int,valuemin, = 0, Data)
+  widget_DECLAREATTRIBUTE(widgetSliderInt,int,valuemax, = 10, Data)
+  widget_DECLAREATTRIBUTE(widgetSliderInt,int,value, = 0, Data)
+  widget_DECLAREATTRIBUTE(widgetSliderInt,float,widthFactor, = 5.f, Data) ///< Width/Height ratio
+  widget_DECLAREATTRIBUTE(widgetSliderInt,bool,withtext,= false, Address)
+  widget_DECLAREATTRIBUTE(widgetSliderInt,bool,withMarkers,= true, Address)
+  widget_DECLAREATTRIBUTE(widgetSliderInt,bool,fillLeft,= false, Data)
+
+public:
+  std::function<std::string(int value)>  wcb_valuePrinter;
 };
 
 class widgetBoxCheck : public widget

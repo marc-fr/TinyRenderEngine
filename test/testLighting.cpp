@@ -178,7 +178,7 @@ int main(int argc, char **argv)
     }
     worldWin->set_layoutGrid(16,2);
 
-    worldWin->create_widgetText(0, 0)->set_text("model (F1:F4):")->set_fontsizeModifier(1.2f)->set_color(glm::vec4(1.f, 1.f, 0.2f, 1.f));
+    worldWin->create_widgetText(0, 0)->set_text("model (F1:F4):")->set_heightModifier(1.2f)->set_color(glm::vec4(1.f, 1.f, 0.2f, 1.f));
     worldWin->create_widgetText(0, 1); // model name
 
     worldWin->create_widgetText(1, 0)->set_text("diffuse R");
@@ -199,10 +199,10 @@ int main(int argc, char **argv)
     worldWin->create_widgetText(5, 0)->set_text("normal Map");
     worldWin->create_widgetBoxCheck(5, 1)->set_value(false);
 
-    worldWin->create_widgetText(6, 0)->set_text("shader (F5:F8):")->set_fontsizeModifier(1.2f)->set_color(glm::vec4(1.f, 1.f, 0.2f, 1.f));
+    worldWin->create_widgetText(6, 0)->set_text("shader (F5:F8):")->set_heightModifier(1.2f)->set_color(glm::vec4(1.f, 1.f, 0.2f, 1.f));
     worldWin->create_widgetText(6, 1); // shader name
 
-    worldWin->create_widgetText(7, 0, 1, 2)->set_text("material:")->set_fontsizeModifier(1.2f)->set_color(glm::vec4(1.f, 1.f, 0.2f, 1.f));
+    worldWin->create_widgetText(7, 0, 1, 2)->set_text("material:")->set_heightModifier(1.2f)->set_color(glm::vec4(1.f, 1.f, 0.2f, 1.f));
 
     worldWin->create_widgetText(8, 0)->set_text("metalness");
     tre::ui::widget * wMM = worldWin->create_widgetBar(8, 1)->set_value(materialMetalness)->set_withtext(true)->set_withborder(true)->set_iseditable(true)->set_isactive(true);
@@ -212,7 +212,7 @@ int main(int argc, char **argv)
     tre::ui::widget * wMR = worldWin->create_widgetBar(9, 1)->set_value(materialRoughness)->set_withtext(true)->set_withborder(true)->set_iseditable(true)->set_isactive(true);
     wMR->wcb_modified_ongoing = [&materialRoughness](tre::ui::widget* myself) { materialRoughness = static_cast<tre::ui::widgetBar*>(myself)->get_value(); };
 
-    worldWin->create_widgetText(10, 0, 1, 2)->set_text("environment (F9:F12):")->set_fontsizeModifier(1.2f)->set_color(glm::vec4(1.f, 1.f, 0.2f, 1.f));
+    worldWin->create_widgetText(10, 0, 1, 2)->set_text("environment (F9:F12):")->set_heightModifier(1.2f)->set_color(glm::vec4(1.f, 1.f, 0.2f, 1.f));
 
     worldWin->create_widgetText(11, 0)->set_text("gamma correction");
     tre::ui::widget * wGC = worldWin->create_widgetBoxCheck(11, 1)->set_value(true)->set_iseditable(true)->set_isactive(true);

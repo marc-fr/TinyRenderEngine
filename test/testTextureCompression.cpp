@@ -134,13 +134,13 @@ static int app_init(int argc, char **argv)
     }
     worldWin->set_layoutGrid(3,2);
 
-    if (texturePathFromArg.empty()) worldWin->create_widgetText(0, 0)->set_text("texture (F1:F4):")->set_fontsizeModifier(1.2f)->set_color(glm::vec4(1.f, 1.f, 0.2f, 1.f));
+    if (texturePathFromArg.empty()) worldWin->create_widgetText(0, 0)->set_text("texture (F1:F4):")->set_heightModifier(1.2f)->set_color(glm::vec4(1.f, 1.f, 0.2f, 1.f));
     worldWin->create_widgetText(0, 1); // texture name
 
-    worldWin->create_widgetText(1, 0)->set_text("visualization (F5:F8):")->set_fontsizeModifier(1.2f)->set_color(glm::vec4(1.f, 1.f, 0.2f, 1.f));
+    worldWin->create_widgetText(1, 0)->set_text("visualization (F5:F8):")->set_heightModifier(1.2f)->set_color(glm::vec4(1.f, 1.f, 0.2f, 1.f));
     worldWin->create_widgetText(1, 1); // visu name
 
-    worldWin->create_widgetText(2, 0)->set_text("status:")->set_fontsizeModifier(1.2f)->set_color(glm::vec4(1.f, 1.f, 0.2f, 1.f));
+    worldWin->create_widgetText(2, 0)->set_text("status:")->set_heightModifier(1.2f)->set_color(glm::vec4(1.f, 1.f, 0.2f, 1.f));
     worldWin->create_widgetText(2, 1); // status
 
     // load

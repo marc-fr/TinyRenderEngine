@@ -23,7 +23,7 @@ struct s_sceneOption
 {
   float m_ui_alpha = 0.8f;     // main window's transparency
   float m_ui_backalpha = 0.5f; // main window's background transparency
-  int   m_ui_sizePixel = 12;   // main window's font-size (in pixels)
+  int   m_ui_sizePixel = 16;   // main window's font-size (in pixels)
   int   m_ui_cellMargin = 1;   // main window's cells margin
   int   m_ui_col0Spacing = 0;  // main window's spacing between column 0 and 1
   uint  m_ui_colorTheme = 0;   // (all) windows' color theme
@@ -227,20 +227,20 @@ bool s_uiManager::load(const s_loadArgs &args)
     menuWmain->create_widgetPicture(1,2)->set_texId(pic1_Slot)->set_isactive(true);
 
     menuWmain->create_widgetText(2,0)->set_text("- widget Bar:");
-    menuWmain->create_widgetBar(2,1)->set_withborder(false);
-    menuWmain->create_widgetBar(2,2)->set_withborder(false)->set_isactive(true);
-    menuWmain->create_widgetBar(2,3)->set_withborder(false)->set_isactive(true)->set_iseditable(true);
+    menuWmain->create_widgetBar(2,1)->set_valuethreshold(0.5f)->set_withborder(false);
+    menuWmain->create_widgetBar(2,2)->set_valuethreshold(0.5f)->set_withborder(false)->set_isactive(true);
+    menuWmain->create_widgetBar(2,3)->set_valuethreshold(0.5f)->set_withborder(false)->set_isactive(true)->set_iseditable(true);
 
     menuWmain->create_widgetText(3,0)->set_text("- widget Bar:");
-    menuWmain->create_widgetBar(3,1)->set_withthreshold(true)->set_valuethreshold(0.5f)->set_withtext(true)->set_value(0.4f);
-    menuWmain->create_widgetBar(3,2)->set_withthreshold(true)->set_valuethreshold(0.5f)->set_withtext(true)->set_value(0.4f)->set_isactive(true);
-    menuWmain->create_widgetBar(3,3)->set_withthreshold(true)->set_valuethreshold(0.5f)->set_withtext(true)->set_value(0.4f)->set_isactive(true)->set_iseditable(true);
+    menuWmain->create_widgetBar(3,1)->set_withtext(true)->set_value(0.4f);
+    menuWmain->create_widgetBar(3,2)->set_withtext(true)->set_value(0.4f)->set_isactive(true);
+    menuWmain->create_widgetBar(3,3)->set_withtext(true)->set_value(0.4f)->set_isactive(true)->set_iseditable(true);
     menuWmain->get_widgetBar(3,3)->wcb_valuePrinter = [](float v) { std::string t(' ', 16); std::snprintf(const_cast<char*>(t.data()), 15, "e:%.1f", v); return t; };
 
     menuWmain->create_widgetText(4,0)->set_text("- widget Slider:");
-    menuWmain->create_widgetSlider(4,1)->set_value(0.3f);
-    menuWmain->create_widgetSlider(4,2)->set_value(0.3f)->set_isactive(true);
-    menuWmain->create_widgetSlider(4,3)->set_value(0.3f)->set_isactive(true)->set_iseditable(true);
+    menuWmain->create_widgetSlider(4,1)->set_withtext(true)->set_value(0.3f);
+    menuWmain->create_widgetSlider(4,2)->set_withtext(true)->set_value(0.3f)->set_isactive(true);
+    menuWmain->create_widgetSlider(4,3)->set_withtext(true)->set_value(0.3f)->set_isactive(true)->set_iseditable(true);
 
     menuWmain->create_widgetText(5,0)->set_text("- widget Line select:");
     menuWmain->create_widgetLineChoice(5,1)->set_values({"Value 1", "2nd", "End"});
@@ -292,7 +292,7 @@ bool s_uiManager::load(const s_loadArgs &args)
     hudWmain->set_layoutGrid(3,2);
 
     hudWmain->create_widgetText(0, 0)->set_text("Control bar");
-    hudWmain->create_widgetBar(0,1)->set_value(0.2f)->set_valuethreshold(0.3f)->set_withthreshold(true)->set_iseditable(true)->set_isactive(true);
+    hudWmain->create_widgetBar(0,1)->set_value(0.2f)->set_valuethreshold(0.3f)->set_iseditable(true)->set_isactive(true);
 
     hudWmain->create_widgetText(1, 0)->set_text("Control slider");
     hudWmain->create_widgetSlider(1,1)->set_value(0.4f)->set_valuemin(-0.8f)->set_iseditable(true)->set_isactive(true);
@@ -314,7 +314,7 @@ bool s_uiManager::load(const s_loadArgs &args)
     hudWfixedSize->set_layoutGrid(3,2);
 
     hudWfixedSize->create_widgetText(0, 0)->set_text("Control bar");
-    hudWfixedSize->create_widgetBar(0,1)->set_value(0.2f)->set_valuethreshold(0.3f)->set_withthreshold(true)->set_iseditable(true)->set_isactive(true);
+    hudWfixedSize->create_widgetBar(0,1)->set_value(0.2f)->set_valuethreshold(0.3f)->set_iseditable(true)->set_isactive(true);
 
     hudWfixedSize->create_widgetText(1, 0)->set_text("Control slider");
     hudWfixedSize->create_widgetSlider(1,1)->set_value(0.4f)->set_valuemin(-0.8f)->set_iseditable(true)->set_isactive(true);
@@ -422,34 +422,34 @@ bool s_uiManager::load(const s_loadArgs &args)
     menuWoption->set_layoutGrid(20,2);
     menuWoption->set_colAlignment(1, tre::ui::ALIGN_MASK_CENTERED);
 
-    menuWoption->create_widgetText(0,0, 1,2)->set_text("Main window controls")->set_fontsizeModifier(1.1f)->set_color(glm::vec4(1.f, 0.f, 1.f, 1.f));
+    menuWoption->create_widgetText(0,0, 1,2)->set_text("Main window controls")->set_heightModifier(1.1f)->set_color(glm::vec4(1.f, 0.f, 1.f, 1.f));
 
     menuWoption->create_widgetText(1,0)->set_text("transparency");
-    tre::ui::widget *wAlpha = menuWoption->create_widgetBar(1,1)->set_value(m_sceneOption.m_ui_alpha)->set_isactive(true)->set_iseditable(true);
+    tre::ui::widget *wAlpha = menuWoption->create_widgetSlider(1,1)->set_value(m_sceneOption.m_ui_alpha)->set_isactive(true)->set_iseditable(true);
     wAlpha->wcb_modified_ongoing = [this] (tre::ui::widget *self)
     {
-      this->m_sceneOption.m_ui_alpha = static_cast<tre::ui::widgetBar*>(self)->get_value();
+      this->m_sceneOption.m_ui_alpha = static_cast<tre::ui::widgetSlider*>(self)->get_value();
       this->applySceneOptions();
     };
 
     menuWoption->create_widgetText(2,0)->set_text("background");
-    tre::ui::widget *wBackalpha = menuWoption->create_widgetBar(2,1)->set_value(m_sceneOption.m_ui_backalpha)->set_isactive(true)->set_iseditable(true);
+    tre::ui::widget *wBackalpha = menuWoption->create_widgetSlider(2,1)->set_value(m_sceneOption.m_ui_backalpha)->set_isactive(true)->set_iseditable(true);
     wBackalpha->wcb_modified_ongoing = [this] (tre::ui::widget *self)
     {
-      this->m_sceneOption.m_ui_backalpha = static_cast<tre::ui::widgetBar*>(self)->get_value();
+      this->m_sceneOption.m_ui_backalpha = static_cast<tre::ui::widgetSlider*>(self)->get_value();
       this->applySceneOptions();
     };
 
     menuWoption->create_widgetText(3,0)->set_text("size (in Pixel)");
-    tre::ui::widget *wSize = menuWoption->create_widgetBar(3,1)->set_value(m_sceneOption.m_ui_sizePixel)->set_valuemin(4.f)->set_valuemax(30.f)->set_snapInterval(1.f)->set_withtext(true)->set_isactive(true)->set_iseditable(true);
+    tre::ui::widget *wSize = menuWoption->create_widgetSliderInt(3,1)->set_value(m_sceneOption.m_ui_sizePixel)->set_valuemin(4)->set_valuemax(30)->set_withtext(true)->set_isactive(true)->set_iseditable(true);
     wSize->wcb_modified_ongoing = [this] (tre::ui::widget *self)
     {
-      this->m_sceneOption.m_ui_sizePixel = int(static_cast<tre::ui::widgetBar*>(self)->get_value());
+      this->m_sceneOption.m_ui_sizePixel = int(static_cast<tre::ui::widgetSliderInt*>(self)->get_value());
       this->applySceneOptions();
     };
 
     menuWoption->create_widgetText(4,0)->set_text("cell margin (in Pixel)");
-    tre::ui::widget *wCellMargin = menuWoption->create_widgetSliderInt(4,1)->set_value(m_sceneOption.m_ui_cellMargin)->set_valuemin(0)->set_valuemax(16)->set_isactive(true)->set_iseditable(true);
+    tre::ui::widget *wCellMargin = menuWoption->create_widgetSliderInt(4,1)->set_value(m_sceneOption.m_ui_cellMargin)->set_valuemin(0)->set_valuemax(16)->set_withtext(true)->set_isactive(true)->set_iseditable(true);
     wCellMargin->wcb_modified_ongoing = [this] (tre::ui::widget *self)
     {
       this->m_sceneOption.m_ui_cellMargin = static_cast<tre::ui::widgetSliderInt*>(self)->get_value();
@@ -457,14 +457,14 @@ bool s_uiManager::load(const s_loadArgs &args)
     };
 
     menuWoption->create_widgetText(6,0)->set_text("col-0 spacing (in Pixel)");
-    tre::ui::widget *wCol0Spacing = menuWoption->create_widgetSliderInt(6,1)->set_value(m_sceneOption.m_ui_col0Spacing)->set_valuemin(0)->set_valuemax(16)->set_isactive(true)->set_iseditable(true);
+    tre::ui::widget *wCol0Spacing = menuWoption->create_widgetSliderInt(6,1)->set_value(m_sceneOption.m_ui_col0Spacing)->set_valuemin(0)->set_valuemax(16)->set_withtext(true)->set_isactive(true)->set_iseditable(true);
     wCol0Spacing->wcb_modified_ongoing = [this] (tre::ui::widget *self)
     {
       this->m_sceneOption.m_ui_col0Spacing = static_cast<tre::ui::widgetSliderInt*>(self)->get_value();
       this->applySceneOptions();
     };
 
-    menuWoption->create_widgetText(7,0, 1,2)->set_text("Scene controls")->set_fontsizeModifier(1.1f)->set_color(glm::vec4(1.f, 0.f, 1.f, 1.f));
+    menuWoption->create_widgetText(7,0, 1,2)->set_text("Scene controls")->set_heightModifier(1.1f)->set_color(glm::vec4(1.f, 0.f, 1.f, 1.f));
 
     menuWoption->create_widgetText(8,0)->set_text("gizmo local");
     tre::ui::widget *wGizmoLocal = menuWoption->create_widgetBoxCheck(8,1)->set_value(true)->set_isactive(true)->set_iseditable(true);
@@ -484,7 +484,7 @@ bool s_uiManager::load(const s_loadArgs &args)
     tre::ui::widget *wFeedBackFontSize = new widgetTextAndReport;
     menuWoption->set_widget(wFeedBackFontSize, 10,0, 1,55);
 
-    menuWoption->create_widgetText(12,0, 1,2)->set_text("Window controls")->set_fontsizeModifier(1.1f)->set_color(glm::vec4(1.f, 0.f, 1.f, 1.f));
+    menuWoption->create_widgetText(12,0, 1,2)->set_text("Window controls")->set_heightModifier(1.1f)->set_color(glm::vec4(1.f, 0.f, 1.f, 1.f));
 
     menuWoption->create_widgetText(13,0)->set_text("show main");
     tre::ui::widget *wShowMain = menuWoption->create_widgetBoxCheck(13,1)->set_value(true)->set_isactive(true)->set_iseditable(true);

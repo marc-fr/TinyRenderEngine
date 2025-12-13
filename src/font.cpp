@@ -61,7 +61,8 @@ font::s_fontCache font::loadFromTTF(const std::string &filename, const uint font
   err = FT_Init_FreeType(&library);
   if (err != 0)
   {
-    TRE_LOG("font::loadFromTTF: failed to init the Free-Type library (" << FT_Error_String(err) << ")");
+    const char *errMsg = FT_Error_String(err);
+    TRE_LOG("font::loadFromTTF: failed to init the Free-Type library (" << (errMsg != nullptr ? errMsg : "null error") << ")");
     return ret;
   }
 
@@ -69,7 +70,8 @@ font::s_fontCache font::loadFromTTF(const std::string &filename, const uint font
   err = FT_New_Face(library, filename.c_str(), 0, &face);
   if (err != 0)
   {
-    TRE_LOG("font::loadFromTTF: failed to load the font " << filename << " (" << FT_Error_String(err) << ")");
+    const char *errMsg = FT_Error_String(err);
+    TRE_LOG("font::loadFromTTF: failed to load the font " << filename << " (" << (errMsg != nullptr ? errMsg : "null error") << ")");
     FT_Done_FreeType(library);
     return ret;
   }
@@ -77,7 +79,8 @@ font::s_fontCache font::loadFromTTF(const std::string &filename, const uint font
   err = FT_Set_Pixel_Sizes(face, 0, fontSizePixel);
   if (err != 0)
   {
-    TRE_LOG("font::loadFromTTF: failed to set the font-size of " << filename << " (" << FT_Error_String(err) << ")");
+    const char *errMsg = FT_Error_String(err);
+    TRE_LOG("font::loadFromTTF: failed to set the font-size of " << filename << " (" << (errMsg != nullptr ? errMsg : "null error") << ")");
     FT_Done_Face(face);
     FT_Done_FreeType(library);
     return ret;

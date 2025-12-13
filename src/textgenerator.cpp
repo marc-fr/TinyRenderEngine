@@ -29,7 +29,7 @@ void generate(const s_textInfo &info, modelRaw2D *outMesh, unsigned outPartId, u
   maxboxsize.x = 0.f;
   maxboxsize.y = info.m_lineHeight;
   float posx = info.m_zone.x;
-  float posy = info.m_zone.w + 0.5f * (info.m_fontHeight - info.m_lineHeight);
+  float posy = info.m_zone.w + 0.6f * (info.m_fontHeight - info.m_lineHeight);
   uint vidx = outOffset;
   for (std::size_t ich = 0, iLen = std::strlen(info.m_text); ich < iLen; ++ich)
   {

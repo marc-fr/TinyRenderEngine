@@ -39,10 +39,10 @@ LDFLAGS = -sUSE_SDL=2 -sFULL_ES3=1 -sINITIAL_MEMORY=256Mb -sSTACK_SIZE=1Mb -sWAS
 
 default : all
 
-all : $(OBJDIR) $(OPUS_RULE) testBasic.html testAudioMixer.html testTextureCompression.html
+all : $(OBJDIR) $(OPUS_RULE) testBasic.html testDemoScene.html testAudioMixer.html testTextureCompression.html
 
 clean :
-	@rm -f $(OBJDIR)/*.o testBasic.* testAudioMixer.* testTextureCompression.*
+	@rm -f $(OBJDIR)/*.o testBasic.* testDemoScene.* testAudioMixer.* testTextureCompression.*
 
 #-
 

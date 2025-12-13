@@ -86,8 +86,8 @@ widget::s_drawElementCount widgetText::get_drawElementCount() const
 }
 glm::vec2 widgetText::get_zoneSizeDefault(const s_drawData &dd) const
 {
-  const float hLine = wfontsizeModifier * dd.resolve_sizeH(m_parentWindow->get_lineHeight());
-  const float fsize = wfontsizeModifier * dd.resolve_sizeH(m_parentWindow->get_fontHeight());
+  const float hLine = wheightModifier * dd.resolve_sizeH(m_parentWindow->get_lineHeight());
+  const float fsize = wheightModifier * dd.resolve_sizeH(m_parentWindow->get_fontHeight());
   textgenerator::s_textInfo tInfo;
   textgenerator::s_textInfoOut tOut;
   tInfo.setupBasic(m_parentWindow->get_parentUI()->get_defaultFont(), wtext.c_str());
@@ -122,8 +122,8 @@ void widgetText::compute_data(s_drawData &dd)
     fillLine(dd.m_bufferLine, pt01, pt00, colLine);
   }
 
-  const float hLine = wfontsizeModifier * dd.resolve_sizeH(m_parentWindow->get_lineHeight());
-  const float fsize = wfontsizeModifier * dd.resolve_sizeH(m_parentWindow->get_fontHeight());
+  const float hLine = wheightModifier * dd.resolve_sizeH(m_parentWindow->get_lineHeight());
+  const float fsize = wheightModifier * dd.resolve_sizeH(m_parentWindow->get_fontHeight());
   const float pad = 0.5f * (hLine - fsize);
 
   textgenerator::s_textInfo tInfo;
@@ -166,8 +166,8 @@ widget::s_drawElementCount widgetTextTranslatate::get_drawElementCount() const
 }
 glm::vec2 widgetTextTranslatate::get_zoneSizeDefault(const s_drawData &dd) const
 {
-  const float hLine = wfontsizeModifier * dd.resolve_sizeH(m_parentWindow->get_lineHeight());
-  const float fsize = wfontsizeModifier * dd.resolve_sizeH(m_parentWindow->get_fontHeight());
+  const float hLine = wheightModifier * dd.resolve_sizeH(m_parentWindow->get_lineHeight());
+  const float fsize = wheightModifier * dd.resolve_sizeH(m_parentWindow->get_fontHeight());
 
   textgenerator::s_textInfo tInfo;
   textgenerator::s_textInfoOut tOut;
@@ -236,8 +236,8 @@ widget::s_drawElementCount widgetTextEdit::get_drawElementCount() const
 }
 glm::vec2 widgetTextEdit::get_zoneSizeDefault(const s_drawData &dd) const
 {
-  const float hLine = wfontsizeModifier * dd.resolve_sizeH(m_parentWindow->get_lineHeight());
-  const float fsize = wfontsizeModifier * dd.resolve_sizeH(m_parentWindow->get_fontHeight());
+  const float hLine = wheightModifier * dd.resolve_sizeH(m_parentWindow->get_lineHeight());
+  const float fsize = wheightModifier * dd.resolve_sizeH(m_parentWindow->get_fontHeight());
 
   textgenerator::s_textInfo tInfo;
   textgenerator::s_textInfoOut tOut;
@@ -276,8 +276,8 @@ void widgetTextEdit::compute_data(s_drawData &dd)
     }
   }
 
-  const float hLine = wfontsizeModifier * dd.resolve_sizeH(m_parentWindow->get_lineHeight());
-  const float fsize = wfontsizeModifier * dd.resolve_sizeH(m_parentWindow->get_fontHeight());
+  const float hLine = wheightModifier * dd.resolve_sizeH(m_parentWindow->get_lineHeight());
+  const float fsize = wheightModifier * dd.resolve_sizeH(m_parentWindow->get_fontHeight());
 
   textgenerator::s_textInfo tInfo;
   textgenerator::s_textInfoOut tOut;
@@ -501,7 +501,7 @@ glm::vec2 widgetPicture::get_zoneSizeDefault(const s_drawData &dd) const
   const float ratioWoH = ( tex->m_w * fabsf(wtexUV[2]-wtexUV[0]) ) /
                          ( tex->m_h * fabsf(wtexUV[3]-wtexUV[1]) ) ;
 
-  const float h = dd.resolve_sizeH(m_parentWindow->get_lineHeight()) * wheightModifier;
+  const float h = wheightModifier * dd.resolve_sizeH(m_parentWindow->get_lineHeight());
 
   // TODO : 1-1 pixel or equivalent (see snapPixel)
 
@@ -533,13 +533,13 @@ widget::s_drawElementCount widgetBar::get_drawElementCount() const
 {
   s_drawElementCount res;
   res.m_vcountSolid = 6 * 2;
-  res.m_vcountLine = ((wwithborder==true)*4+(wwiththreshold==true)*1) * 2;
+  res.m_vcountLine = ((wwithborder==true ? 4 : 0) + 1) * 2;
   res.m_vcountText = (wwithtext ? 16 * 6 : 0);
   return res;
 }
 glm::vec2 widgetBar::get_zoneSizeDefault(const s_drawData &dd) const
 {
-  const float h = dd.resolve_sizeH(m_parentWindow->get_lineHeight());
+  const float h = wheightModifier * dd.resolve_sizeH(m_parentWindow->get_lineHeight());
   return glm::vec2(wwidthFactor * h, h);
 }
 void widgetBar::compute_data(s_drawData &dd)
@@ -555,11 +555,14 @@ void widgetBar::compute_data(s_drawData &dd)
   fillRect(dd.m_bufferSolid, m_zone, colorPlain);
   fillRect(dd.m_bufferSolid, zoneBar, colorFill);
 
-  if (wwiththreshold)
+  if (wvaluethreshold >= wvaluemin && wvaluethreshold <= wvaluemax)
   {
     const float valxt = m_zone.x + (m_zone.z-m_zone.x) * (wvaluethreshold-wvaluemin) / (wvaluemax-wvaluemin);
-
-    fillLine(dd.m_bufferLine, glm::vec2(valxt,m_zone.y), glm::vec2(valxt,m_zone.w), colorLine);
+    fillLine(dd.m_bufferLine, glm::vec2(valxt,0.8f * m_zone.y + 0.2f * m_zone.w), glm::vec2(valxt,0.2f * m_zone.y + 0.8f * m_zone.w), colorLine);
+  }
+  else
+  {
+    fillNull(dd.m_bufferLine, 2);
   }
   if (wwithborder)
   {
@@ -568,11 +571,11 @@ void widgetBar::compute_data(s_drawData &dd)
     const glm::vec2 pt11(m_zone.z, m_zone.w);
     const glm::vec2 pt10(m_zone.z, m_zone.y);
 
-    glm::vec4 colorBorder = transformColor(colorLine, COLORTHEME_LIGHTNESS, (!wisactive || wishighlighted) ? -0.2f : 0.2f);
+    glm::vec4 colorBorder = transformColor(colorLine, COLORTHEME_LIGHTNESS, (!wisactive || wishighlighted) ? -0.1f : 0.1f);
     fillLine(dd.m_bufferLine, pt00, pt10, colorBorder);
     fillLine(dd.m_bufferLine, pt10, pt11, colorBorder);
 
-    colorBorder = transformColor(colorLine, COLORTHEME_LIGHTNESS, wishighlighted ? 0.2f : -0.2f);
+    colorBorder = transformColor(colorLine, COLORTHEME_LIGHTNESS, wishighlighted ? 0.1f : -0.1f);
     fillLine(dd.m_bufferLine, pt11, pt01, colorBorder);
     fillLine(dd.m_bufferLine, pt01, pt00, colorBorder);
   }
@@ -594,8 +597,8 @@ void widgetBar::compute_data(s_drawData &dd)
     textgenerator::s_textInfoOut tOut;
     tInfo.setupBasic(m_parentWindow->get_parentUI()->get_defaultFont(), curtxt.data());
 
-    const float hLine = dd.resolve_sizeH(m_parentWindow->get_lineHeight());
-    const float fsize = dd.resolve_sizeH(m_parentWindow->get_fontHeight());
+    const float hLine = wheightModifier * dd.resolve_sizeH(m_parentWindow->get_lineHeight());
+    const float fsize = wheightModifier * dd.resolve_sizeH(m_parentWindow->get_fontHeight());
     tInfo.setupSize(hLine, fsize);
     tInfo.m_fontPixelSize = unsigned(fsize / dd.m_pixelSize.y);
 
@@ -659,7 +662,7 @@ glm::vec4 widgetBar::resolveColorFill() const
   const auto &colorTheme = m_parentWindow->get_colortheme();
   const auto colorMask = m_parentWindow->get_colormask() * glm::vec4(1.f, 1.f, 1.f, wcolorAlpha);
   const glm::vec4 &colorBase = (wcolor.a >= 0.f) ? wcolor : colorTheme.m_colorPrimary;
-  return colorTheme.resolveColor(colorBase, wishighlighted ? 0.2f : 0.f) * colorMask;
+  return colorTheme.resolveColor(colorBase, wishighlighted ? 0.1f : 0.f) * colorMask;
 }
 glm::vec4 widgetBar::resolveColorOutLine() const
 {
@@ -702,83 +705,140 @@ void widgetBarZero::compute_data(s_drawData &dd)
 
 // widgetSlider ===============================================================
 
+static constexpr int kSliderCursorRaster = 12;
+
+static void _sliderGenCursor(const glm::vec2 &pos, const float radius,
+                             const glm::vec4 &colorSolid, const glm::vec4 &colorLine,
+                             glm::vec4 * __restrict &bufferSolid, glm::vec4 * __restrict &bufferLine)
+{
+  static_assert(kSliderCursorRaster % 2 == 0, "kSliderCursorRaster must be even");
+  for (unsigned ip = 0; ip < kSliderCursorRaster / 2; ++ip)
+  {
+    const float aA = (float(ip      ) / float(kSliderCursorRaster)) * 2.f * 3.14159265f;
+    const float aB = (float(ip + 1.f) / float(kSliderCursorRaster)) * 2.f * 3.14159265f;
+    const float cA = radius * std::cos(aA);
+    const float sA = radius * std::sin(aA);
+    const float cB = radius * std::cos(aB);
+    const float sB = radius * std::sin(aB);
+
+    *bufferSolid++ = glm::vec4(pos.x     , pos.y     , 0.f, 0.f); *bufferSolid++ = colorSolid;
+    *bufferSolid++ = glm::vec4(pos.x + cA, pos.y + sA, 0.f, 0.f); *bufferSolid++ = colorSolid;
+    *bufferSolid++ = glm::vec4(pos.x + cB, pos.y + sB, 0.f, 0.f); *bufferSolid++ = colorSolid;
+
+    *bufferSolid++ = glm::vec4(pos.x     , pos.y     , 0.f, 0.f); *bufferSolid++ = colorSolid;
+    *bufferSolid++ = glm::vec4(pos.x - cA, pos.y - sA, 0.f, 0.f); *bufferSolid++ = colorSolid;
+    *bufferSolid++ = glm::vec4(pos.x - cB, pos.y - sB, 0.f, 0.f); *bufferSolid++ = colorSolid;
+
+    *bufferLine++ = glm::vec4(pos.x + cA, pos.y + sA, 0.f, 0.f); *bufferLine++ = colorLine;
+    *bufferLine++ = glm::vec4(pos.x + cB, pos.y + sB, 0.f, 0.f); *bufferLine++ = colorLine;
+
+    *bufferLine++ = glm::vec4(pos.x - cA, pos.y - sA, 0.f, 0.f); *bufferLine++ = colorLine;
+    *bufferLine++ = glm::vec4(pos.x - cB, pos.y - sB, 0.f, 0.f); *bufferLine++ = colorLine;
+  }
+}
+
+// ---------------------------------------------------------------------------
+
 widget::s_drawElementCount widgetSlider::get_drawElementCount() const
 {
   s_drawElementCount res;
-  res.m_vcountSolid = 10 * 3;
-  res.m_vcountLine = 8 * 2;
+  res.m_vcountSolid = 2 * 6 + kSliderCursorRaster * 3;
+  res.m_vcountLine = 4 * 2 + kSliderCursorRaster * 2;
+  res.m_vcountText = (wwithtext ? 16 * 6 : 0);
   return res;
 }
 glm::vec2 widgetSlider::get_zoneSizeDefault(const s_drawData &dd) const
 {
-  const float h = dd.resolve_sizeH(m_parentWindow->get_lineHeight());
+  const float h = wheightModifier * dd.resolve_sizeH(m_parentWindow->get_lineHeight());
   return glm::vec2(wwidthFactor * h, h);
 }
 void widgetSlider::compute_data(s_drawData &dd)
 {
   const auto &colorTheme = m_parentWindow->get_colortheme();
   const auto colorMask = m_parentWindow->get_colormask() * glm::vec4(1.f, 1.f, 1.f, wcolorAlpha);
-  const glm::vec4 colorBack = colorTheme.resolveColor(colorTheme.m_colorSurface, wishighlighted ? 0.2f : 0.f) * colorMask;
+  const glm::vec4 colorBack = colorTheme.resolveColor(colorTheme.m_colorSurface, wishighlighted ? 0.07f : 0.f) * colorMask;
   const glm::vec4 &colorBaseRaw = (wcolor.a >= 0.f) ? wcolor : colorTheme.m_colorPrimary;
   const glm::vec4 colorBase = colorTheme.resolveColor(colorBaseRaw, wishighlighted ? 0.2f : 0.f) * colorMask;
-  const glm::vec4 colorFront = colorTheme.resolveColor(colorTheme.m_colorOnSurface, wishighlighted ? 0.2f : 0.f) * colorMask;
+  const glm::vec4 colorLine = colorTheme.resolveColor(colorTheme.m_colorOnSurface, wishighlighted ? 0.2f : 0.f) * colorMask;
 
-  const float cursorRadius = 0.35f * (m_zone.w - m_zone.y);
+  const float cursorRadius = 0.35f * (m_zone.w - m_zone.y); // TODO: align 0.15*r with pixel-size
+  const float xBase = m_zone.x + cursorRadius;
+  const float xVal  = m_zone.x + cursorRadius + (m_zone.z - m_zone.x - 2.f * cursorRadius) * (wvalue - wvaluemin) / (wvaluemax - wvaluemin);
   const float ycenter = 0.5f * (m_zone.y + m_zone.w);
 
   const glm::vec4 zoneBack = glm::vec4(m_zone.x + cursorRadius,
                                        ycenter - 0.15f * cursorRadius,
                                        m_zone.z - cursorRadius,
                                        ycenter + 0.15f * cursorRadius);
-  fillRect(dd.m_bufferSolid, zoneBack, colorBack);
 
-  const float xBase = m_zone.x + cursorRadius;
-  const float xVal  = m_zone.x + cursorRadius + (m_zone.z - m_zone.x - 2.f * cursorRadius) * (wvalue - wvaluemin) / (wvaluemax - wvaluemin);
-  if (xBase < xVal - cursorRadius)
-    fillRect(dd.m_bufferSolid, glm::vec4(xBase, zoneBack.y, xVal - cursorRadius, zoneBack.w), colorFront);
-  else
-    fillRect(dd.m_bufferSolid, glm::vec4(0.f), glm::vec4(0.f));
+  const float r15 = cursorRadius * (1.f - std::tan(0.15f));
+  float xVal1 = std::max(xVal - r15, zoneBack.x);
+  float xVal2 = std::min(xVal + r15, zoneBack.z);
 
-  static const float sqrtHalf = 0.707f;
-  const float        cursorIn = cursorRadius * sqrtHalf;
+  fillRect(dd.m_bufferSolid, glm::vec4(zoneBack.x, zoneBack.y, xVal1, zoneBack.w), wfillLeft ? colorBase : colorBack);
+  fillRect(dd.m_bufferSolid, glm::vec4(xVal2, zoneBack.y, zoneBack.z, zoneBack.w), colorBack);
 
+  _sliderGenCursor(glm::vec2(xVal, ycenter), cursorRadius, colorBase, colorLine, dd.m_bufferSolid, dd.m_bufferLine);
+
+  if (wwithtext)
   {
-    fillRect(dd.m_bufferSolid, glm::vec4(xVal - cursorIn, ycenter - cursorIn, xVal + cursorIn, ycenter + cursorIn), colorFront);
+    std::string curtxt;
+    if (wcb_valuePrinter)
+    {
+      curtxt = wcb_valuePrinter(wvalue);
+      if (!curtxt.empty()) curtxt = curtxt.substr(0, 16); // limit to 16 characters
+    }
+    else
+    {
+      curtxt.resize(16);
+      std::snprintf(const_cast<char*>(curtxt.data()), 15, "%.1f", wvalue);
+    }
 
-    *dd.m_bufferSolid++ = glm::vec4(xVal - cursorIn, ycenter - cursorIn    , 0.f, 0.f); *dd.m_bufferSolid++ = colorFront;
-    *dd.m_bufferSolid++ = glm::vec4(xVal + cursorIn, ycenter - cursorIn    , 0.f, 0.f); *dd.m_bufferSolid++ = colorFront;
-    *dd.m_bufferSolid++ = glm::vec4(xVal           , ycenter - cursorRadius, 0.f, 0.f); *dd.m_bufferSolid++ = colorFront;
+    textgenerator::s_textInfo tInfo;
+    textgenerator::s_textInfoOut tOut;
+    tInfo.setupBasic(m_parentWindow->get_parentUI()->get_defaultFont(), curtxt.data());
 
-    *dd.m_bufferSolid++ = glm::vec4(xVal - cursorIn, ycenter + cursorIn    , 0.f, 0.f); *dd.m_bufferSolid++ = colorFront;
-    *dd.m_bufferSolid++ = glm::vec4(xVal + cursorIn, ycenter + cursorIn    , 0.f, 0.f); *dd.m_bufferSolid++ = colorFront;
-    *dd.m_bufferSolid++ = glm::vec4(xVal           , ycenter + cursorRadius, 0.f, 0.f); *dd.m_bufferSolid++ = colorFront;
+    const float hLine = wheightModifier * dd.resolve_sizeH(m_parentWindow->get_lineHeight());
+    const float fsize = wheightModifier * dd.resolve_sizeH(m_parentWindow->get_fontHeight());
+    tInfo.setupSize(hLine, fsize);
+    tInfo.m_fontPixelSize = unsigned(fsize / dd.m_pixelSize.y);
 
-    *dd.m_bufferSolid++ = glm::vec4(xVal - cursorIn    , ycenter - cursorIn, 0.f, 0.f); *dd.m_bufferSolid++ = colorFront;
-    *dd.m_bufferSolid++ = glm::vec4(xVal - cursorIn    , ycenter + cursorIn, 0.f, 0.f); *dd.m_bufferSolid++ = colorFront;
-    *dd.m_bufferSolid++ = glm::vec4(xVal - cursorRadius, ycenter           , 0.f, 0.f); *dd.m_bufferSolid++ = colorFront;
+    tInfo.m_zone = m_zone;
+    tInfo.m_color = colorLine;
 
-    *dd.m_bufferSolid++ = glm::vec4(xVal + cursorIn    , ycenter - cursorIn, 0.f, 0.f); *dd.m_bufferSolid++ = colorFront;
-    *dd.m_bufferSolid++ = glm::vec4(xVal + cursorIn    , ycenter + cursorIn, 0.f, 0.f); *dd.m_bufferSolid++ = colorFront;
-    *dd.m_bufferSolid++ = glm::vec4(xVal + cursorRadius, ycenter           , 0.f, 0.f); *dd.m_bufferSolid++ = colorFront;
+    textgenerator::generate(tInfo, nullptr, 0, 0, &tOut);
+    const glm::vec2 txtSize = tOut.m_maxboxsize;
+    const float dxCT = 1.5f * cursorRadius;
+    if (xVal + dxCT + txtSize.x < m_zone.z)
+    {
+      tInfo.m_zone = glm::vec4(xVal + dxCT, m_zone.y, m_zone.z, m_zone.w);
+      xVal2 = std::min(xVal + dxCT + 1.1f * txtSize.x, zoneBack.z);
+    }
+    else if (m_zone.x + txtSize.x < xVal - dxCT)
+    {
+      tInfo.m_zone = glm::vec4(xVal - dxCT - txtSize.x, m_zone.y, xVal - dxCT + 1.1f * txtSize.x, m_zone.w);
+      xVal1 = std::max(xVal - dxCT - 1.1f * txtSize.x, zoneBack.x);
+    }
+    else if (m_zone.x + txtSize.x < m_zone.z)
+    {
+      const float centerX = 0.5f * (m_zone.z + m_zone.x);
+      tInfo.m_zone = glm::vec4(centerX - 0.5f * txtSize.x,m_zone.y, centerX + 0.6f * txtSize.x, m_zone.w);
+      xVal1 = std::max(xVal - 0.55f * txtSize.x, zoneBack.x);
+      xVal2 = std::min(xVal + 0.55f * txtSize.x, zoneBack.z);
+    }
+
+    fillNull(dd.m_bufferText, 16 * 6);
+    textgenerator::generate(tInfo, & dd.m_model, m_adrText.part, m_adrText.offset, nullptr);
   }
 
-  const glm::vec4 colorBorderTop = transformColor(colorFront, COLORTHEME_LIGHTNESS, wishighlighted ?  0.2f : -0.2f);
-  const glm::vec4 colorBorderBot = transformColor(colorFront, COLORTHEME_LIGHTNESS, (!wisactive || wishighlighted) ? -0.2f :  0.2f);
-
-  const float xVal1 = std::max(xVal - cursorRadius, zoneBack.x);
-  const float xVal2 = std::min(xVal + cursorRadius, zoneBack.z);
+  const glm::vec4 colorBorderTop = transformColor(colorBase, COLORTHEME_LIGHTNESS, wishighlighted ?  0.1f : -0.1f);
+  const glm::vec4 colorBorderBot = transformColor(colorBase, COLORTHEME_LIGHTNESS, (!wisactive || wishighlighted) ? -0.1f :  0.1f);
 
   fillLine(dd.m_bufferLine, glm::vec2(zoneBack.x, zoneBack.w), glm::vec2(xVal1, zoneBack.w), colorBorderTop);
   fillLine(dd.m_bufferLine, glm::vec2(xVal2, zoneBack.w), glm::vec2(zoneBack.z, zoneBack.w), colorBorderTop);
 
   fillLine(dd.m_bufferLine, glm::vec2(zoneBack.x, zoneBack.y), glm::vec2(xVal1, zoneBack.y), colorBorderBot);
   fillLine(dd.m_bufferLine, glm::vec2(xVal2, zoneBack.y), glm::vec2(zoneBack.z, zoneBack.y), colorBorderBot);
-
-  fillLine(dd.m_bufferLine, glm::vec2(xVal - cursorIn, ycenter + cursorIn), glm::vec2(xVal, ycenter + cursorRadius), colorBorderTop);
-  fillLine(dd.m_bufferLine, glm::vec2(xVal + cursorIn, ycenter + cursorIn), glm::vec2(xVal, ycenter + cursorRadius), colorBorderTop);
-
-  fillLine(dd.m_bufferLine, glm::vec2(xVal - cursorIn, ycenter - cursorIn), glm::vec2(xVal, ycenter - cursorRadius), colorBorderBot);
-  fillLine(dd.m_bufferLine, glm::vec2(xVal + cursorIn, ycenter - cursorIn), glm::vec2(xVal, ycenter - cursorRadius), colorBorderBot);
 }
 void widgetSlider::acceptEvent(s_eventIntern &event)
 {
@@ -820,80 +880,120 @@ void widgetSlider::acceptEvent(s_eventIntern &event)
 widget::s_drawElementCount widgetSliderInt::get_drawElementCount() const
 {
   s_drawElementCount res;
-  res.m_vcountSolid = 10 * 3;
-  res.m_vcountLine = 8 * 2;
+  res.m_vcountSolid = 2 * 6 + kSliderCursorRaster * 3;
+  res.m_vcountLine = 4 * 2 + kSliderCursorRaster * 2;
+  res.m_vcountText = (wwithtext ? 16 * 6 : 0);
+  if (wwithMarkers)
+  {
+    const int nMarkers = wvaluemax - wvaluemin + 1;
+    res.m_vcountLine += nMarkers * 2;
+  }
   return res;
 }
 glm::vec2 widgetSliderInt::get_zoneSizeDefault(const s_drawData &dd) const
 {
-  const float h = dd.resolve_sizeH(m_parentWindow->get_lineHeight());
+  const float h = wheightModifier * dd.resolve_sizeH(m_parentWindow->get_lineHeight());
   return glm::vec2(wwidthFactor * h, h);
 }
 void widgetSliderInt::compute_data(s_drawData &dd)
 {
   const auto &colorTheme = m_parentWindow->get_colortheme();
   const auto colorMask = m_parentWindow->get_colormask() * glm::vec4(1.f, 1.f, 1.f, wcolorAlpha);
-  const glm::vec4 colorBack = colorTheme.resolveColor(colorTheme.m_colorSurface, wishighlighted ? 0.2f : 0.f) * colorMask;
+  const glm::vec4 colorBack = colorTheme.resolveColor(colorTheme.m_colorSurface, wishighlighted ? 0.07f : 0.f) * colorMask;
   const glm::vec4 &colorBaseRaw = (wcolor.a >= 0.f) ? wcolor : colorTheme.m_colorPrimary;
   const glm::vec4 colorBase = colorTheme.resolveColor(colorBaseRaw, wishighlighted ? 0.2f : 0.f) * colorMask;
   const glm::vec4 colorFront = colorTheme.resolveColor(colorTheme.m_colorOnSurface, wishighlighted ? 0.2f : 0.f) * colorMask;
+  const glm::vec4 colorLine = colorTheme.m_colorOnSurface * colorMask;
 
-  const float cursorRadius = 0.35f * (m_zone.w - m_zone.y);
+  const float cursorRadius = 0.35f * (m_zone.w - m_zone.y); // TODO: align 0.15*r with pixel-size
+  const float xBase = m_zone.x + cursorRadius;
+  const float xVal  = m_zone.x + cursorRadius + (m_zone.z - m_zone.x - 2.f * cursorRadius) * (wvalue - wvaluemin) / (wvaluemax - wvaluemin);
   const float ycenter = 0.5f * (m_zone.y + m_zone.w);
 
   const glm::vec4 zoneBack = glm::vec4(m_zone.x + cursorRadius,
                                        ycenter - 0.15f * cursorRadius,
                                        m_zone.z - cursorRadius,
                                        ycenter + 0.15f * cursorRadius);
-  fillRect(dd.m_bufferSolid, zoneBack, colorBack);
 
-  const float xBase = m_zone.x + cursorRadius;
-  const float xVal  = m_zone.x + cursorRadius + (m_zone.z - m_zone.x - 2.f * cursorRadius) * (wvalue - wvaluemin) / (wvaluemax - wvaluemin);
-  if (xBase < xVal - cursorRadius)
-    fillRect(dd.m_bufferSolid, glm::vec4(xBase, zoneBack.y, xVal - cursorRadius, zoneBack.w), colorFront);
-  else
-    fillRect(dd.m_bufferSolid, glm::vec4(0.f), glm::vec4(0.f));
+  const float r15 = cursorRadius * (1.f - std::tan(0.15f));
+  float xVal1 = std::max(xVal - r15, zoneBack.x);
+  float xVal2 = std::min(xVal + r15, zoneBack.z);
 
-  static const float sqrtHalf = 0.707f;
-  const float        cursorIn = cursorRadius * sqrtHalf;
+  fillRect(dd.m_bufferSolid, glm::vec4(zoneBack.x, zoneBack.y, xVal1, zoneBack.w), wfillLeft ? colorFront : colorBack);
+  fillRect(dd.m_bufferSolid, glm::vec4(xVal2, zoneBack.y, zoneBack.z, zoneBack.w), colorBack);
 
+  _sliderGenCursor(glm::vec2(xVal, ycenter), cursorRadius, colorBase, colorLine, dd.m_bufferSolid, dd.m_bufferLine);
+
+  if (wwithtext)
   {
-    fillRect(dd.m_bufferSolid, glm::vec4(xVal - cursorIn, ycenter - cursorIn, xVal + cursorIn, ycenter + cursorIn), colorFront, glm::vec4(0.f));
+    std::string curtxt;
+    if (wcb_valuePrinter)
+    {
+      curtxt = wcb_valuePrinter(wvalue);
+      if (!curtxt.empty()) curtxt = curtxt.substr(0, 16); // limit to 16 characters
+    }
+    else
+    {
+      curtxt.resize(16);
+      std::snprintf(const_cast<char*>(curtxt.data()), 15, "%d", wvalue);
+    }
 
-    *dd.m_bufferSolid++ = glm::vec4(xVal - cursorIn, ycenter - cursorIn    , 0.f, 0.f); *dd.m_bufferSolid++ = colorFront;
-    *dd.m_bufferSolid++ = glm::vec4(xVal + cursorIn, ycenter - cursorIn    , 0.f, 0.f); *dd.m_bufferSolid++ = colorFront;
-    *dd.m_bufferSolid++ = glm::vec4(xVal           , ycenter - cursorRadius, 0.f, 0.f); *dd.m_bufferSolid++ = colorFront;
+    textgenerator::s_textInfo tInfo;
+    textgenerator::s_textInfoOut tOut;
+    tInfo.setupBasic(m_parentWindow->get_parentUI()->get_defaultFont(), curtxt.data());
 
-    *dd.m_bufferSolid++ = glm::vec4(xVal - cursorIn, ycenter + cursorIn    , 0.f, 0.f); *dd.m_bufferSolid++ = colorFront;
-    *dd.m_bufferSolid++ = glm::vec4(xVal + cursorIn, ycenter + cursorIn    , 0.f, 0.f); *dd.m_bufferSolid++ = colorFront;
-    *dd.m_bufferSolid++ = glm::vec4(xVal           , ycenter + cursorRadius, 0.f, 0.f); *dd.m_bufferSolid++ = colorFront;
+    const float hLine = wheightModifier * dd.resolve_sizeH(m_parentWindow->get_lineHeight());
+    const float fsize = wheightModifier * dd.resolve_sizeH(m_parentWindow->get_fontHeight());
+    tInfo.setupSize(hLine, fsize);
+    tInfo.m_fontPixelSize = unsigned(fsize / dd.m_pixelSize.y);
 
-    *dd.m_bufferSolid++ = glm::vec4(xVal - cursorIn    , ycenter - cursorIn, 0.f, 0.f); *dd.m_bufferSolid++ = colorFront;
-    *dd.m_bufferSolid++ = glm::vec4(xVal - cursorIn    , ycenter + cursorIn, 0.f, 0.f); *dd.m_bufferSolid++ = colorFront;
-    *dd.m_bufferSolid++ = glm::vec4(xVal - cursorRadius, ycenter           , 0.f, 0.f); *dd.m_bufferSolid++ = colorFront;
+    tInfo.m_zone = m_zone;
+    tInfo.m_color = colorLine;
 
-    *dd.m_bufferSolid++ = glm::vec4(xVal + cursorIn    , ycenter - cursorIn, 0.f, 0.f); *dd.m_bufferSolid++ = colorFront;
-    *dd.m_bufferSolid++ = glm::vec4(xVal + cursorIn    , ycenter + cursorIn, 0.f, 0.f); *dd.m_bufferSolid++ = colorFront;
-    *dd.m_bufferSolid++ = glm::vec4(xVal + cursorRadius, ycenter           , 0.f, 0.f); *dd.m_bufferSolid++ = colorFront;
+    textgenerator::generate(tInfo, nullptr, 0, 0, &tOut);
+    const glm::vec2 txtSize = tOut.m_maxboxsize;
+    const float dxCT = 1.5f * cursorRadius;
+    if (xVal + dxCT + txtSize.x < m_zone.z)
+    {
+      tInfo.m_zone = glm::vec4(xVal + dxCT, m_zone.y, m_zone.z, m_zone.w);
+      xVal2 = std::min(xVal + dxCT + 1.1f * txtSize.x, zoneBack.z);
+    }
+    else if (m_zone.x + txtSize.x < xVal - dxCT)
+    {
+      tInfo.m_zone = glm::vec4(xVal - dxCT - txtSize.x, m_zone.y, xVal - dxCT + 1.1f * txtSize.x, m_zone.w);
+      xVal1 = std::max(xVal - dxCT - 1.1f * txtSize.x, zoneBack.x);
+    }
+    else if (m_zone.x + txtSize.x < m_zone.z)
+    {
+      const float centerX = 0.5f * (m_zone.z + m_zone.x);
+      tInfo.m_zone = glm::vec4(centerX - 0.5f * txtSize.x,m_zone.y, centerX + 0.6f * txtSize.x, m_zone.w);
+      xVal1 = std::max(xVal - 0.55f * txtSize.x, zoneBack.x);
+      xVal2 = std::min(xVal + 0.55f * txtSize.x, zoneBack.z);
+    }
+
+    fillNull(dd.m_bufferText, 16 * 6);
+    textgenerator::generate(tInfo, & dd.m_model, m_adrText.part, m_adrText.offset, nullptr);
   }
 
-  const glm::vec4 colorBorderTop = transformColor(colorFront, COLORTHEME_LIGHTNESS, wishighlighted ?  0.2f : -0.2f);
-  const glm::vec4 colorBorderBot = transformColor(colorFront, COLORTHEME_LIGHTNESS, (!wisactive || wishighlighted) ? -0.2f :  0.2f);
+  if (wwithMarkers)
+  {
+    const int nMarkers = wvaluemax - wvaluemin + 1;
+    for (int i = 0; i < nMarkers; ++i)
+    {
+      const float xMarker = m_zone.x + cursorRadius + (m_zone.z - m_zone.x - 2.f * cursorRadius) * float(i) / float(nMarkers - 1);
+      const glm::vec4 cMarker = (wvaluemin + i == wvalue || (xVal1 <= xMarker && xMarker <= xVal2)) ? glm::vec4(0.f) : colorBack;
+      fillLine(dd.m_bufferLine, glm::vec2(xMarker, ycenter - 0.8f * cursorRadius), glm::vec2(xMarker, ycenter + 0.8f * cursorRadius), cMarker);
+    }
+  }
 
-  const float xVal1 = std::max(xVal - cursorRadius, zoneBack.x);
-  const float xVal2 = std::min(xVal + cursorRadius, zoneBack.z);
+  const glm::vec4 colorBorderTop = transformColor(colorBase, COLORTHEME_LIGHTNESS, wishighlighted ?  0.1f : -0.1f);
+  const glm::vec4 colorBorderBot = transformColor(colorBase, COLORTHEME_LIGHTNESS, (!wisactive || wishighlighted) ? -0.1f :  0.1f);
 
   fillLine(dd.m_bufferLine, glm::vec2(zoneBack.x, zoneBack.w), glm::vec2(xVal1, zoneBack.w), colorBorderTop);
   fillLine(dd.m_bufferLine, glm::vec2(xVal2, zoneBack.w), glm::vec2(zoneBack.z, zoneBack.w), colorBorderTop);
 
   fillLine(dd.m_bufferLine, glm::vec2(zoneBack.x, zoneBack.y), glm::vec2(xVal1, zoneBack.y), colorBorderBot);
   fillLine(dd.m_bufferLine, glm::vec2(xVal2, zoneBack.y), glm::vec2(zoneBack.z, zoneBack.y), colorBorderBot);
-
-  fillLine(dd.m_bufferLine, glm::vec2(xVal - cursorIn, ycenter + cursorIn), glm::vec2(xVal, ycenter + cursorRadius), colorBorderTop);
-  fillLine(dd.m_bufferLine, glm::vec2(xVal + cursorIn, ycenter + cursorIn), glm::vec2(xVal, ycenter + cursorRadius), colorBorderTop);
-
-  fillLine(dd.m_bufferLine, glm::vec2(xVal - cursorIn, ycenter - cursorIn), glm::vec2(xVal, ycenter - cursorRadius), colorBorderBot);
-  fillLine(dd.m_bufferLine, glm::vec2(xVal + cursorIn, ycenter - cursorIn), glm::vec2(xVal, ycenter - cursorRadius), colorBorderBot);
 }
 void widgetSliderInt::acceptEvent(s_eventIntern &event)
 {
@@ -941,7 +1041,7 @@ widget::s_drawElementCount widgetBoxCheck::get_drawElementCount() const
 }
 glm::vec2 widgetBoxCheck::get_zoneSizeDefault(const s_drawData &dd) const
 {
-  const float h = dd.resolve_sizeH(m_parentWindow->get_lineHeight());
+  const float h = wheightModifier * dd.resolve_sizeH(m_parentWindow->get_lineHeight());
   return glm::vec2(h, h);
 }
 void widgetBoxCheck::compute_data(s_drawData &dd)
@@ -980,10 +1080,10 @@ void widgetBoxCheck::compute_data(s_drawData &dd)
     const glm::vec2 pt01(m_zone.x, m_zone.w);
     const glm::vec2 pt11(m_zone.z, m_zone.w);
     const glm::vec2 pt10(m_zone.z, m_zone.y);
-    glm::vec4 colorB = transformColor(colorBorder, COLORTHEME_LIGHTNESS, wishighlighted ? 0.2f : -0.2f);
+    glm::vec4 colorB = transformColor(colorBorder, COLORTHEME_LIGHTNESS, wishighlighted ? 0.1f : -0.1f);
     fillLine(dd.m_bufferLine, pt11, pt01, colorB);
     fillLine(dd.m_bufferLine, pt01, pt00, colorB);
-    if (wisactive) colorB = transformColor(colorBorder, COLORTHEME_LIGHTNESS, wishighlighted ? -0.2f : 0.2f);
+    if (wisactive) colorB = transformColor(colorBorder, COLORTHEME_LIGHTNESS, wishighlighted ? -0.1f : 0.1f);
     fillLine(dd.m_bufferLine, pt00, pt10, colorBorder);
     fillLine(dd.m_bufferLine, pt10, pt11, colorBorder);
   }
@@ -1021,8 +1121,8 @@ widget::s_drawElementCount widgetLineChoice::get_drawElementCount() const
 }
 glm::vec2 widgetLineChoice::get_zoneSizeDefault(const s_drawData &dd) const
 {
-  const float hLine = dd.resolve_sizeH(m_parentWindow->get_lineHeight());
-  const float fsize = dd.resolve_sizeH(m_parentWindow->get_fontHeight());
+  const float hLine = wheightModifier * dd.resolve_sizeH(m_parentWindow->get_lineHeight());
+  const float fsize = wheightModifier * dd.resolve_sizeH(m_parentWindow->get_fontHeight());
 
   textgenerator::s_textInfo tInfo;
   textgenerator::s_textInfoOut tOut;
@@ -1046,7 +1146,7 @@ void widgetLineChoice::compute_data(s_drawData &dd)
   const auto &colorTheme = m_parentWindow->get_colortheme();
   const auto colorMask = m_parentWindow->get_colormask() * glm::vec4(1.f, 1.f, 1.f, wcolorAlpha);
 
-  const glm::vec4 colorFront = colorTheme.resolveColor(wcolor.a >= 0.f ? wcolor : colorTheme.m_colorOnSurface, wishighlighted ? 0.2f : 0.f) * colorMask;
+  const glm::vec4 colorText = colorTheme.resolveColor(wcolor.a >= 0.f ? wcolor : colorTheme.m_colorOnSurface, wishighlighted ? 0.2f : 0.f) * colorMask;
   const glm::vec4 colorSelectors = (wcolor.a >= 0.f ? wcolor : colorTheme.m_colorOnObject) * colorMask;
 
   const float yCenter = 0.5f * (m_zone.y + m_zone.w);
@@ -1066,9 +1166,8 @@ void widgetLineChoice::compute_data(s_drawData &dd)
 
   fillNull(dd.m_bufferText, get_drawElementCount().m_vcountText);
 
-  const float hLine = dd.resolve_sizeH(m_parentWindow->get_lineHeight());
-  const float fsize = dd.resolve_sizeH(m_parentWindow->get_fontHeight());
-  const float pad = 0.5f * (hLine - fsize);
+  const float hLine = wheightModifier * dd.resolve_sizeH(m_parentWindow->get_lineHeight());
+  const float fsize = wheightModifier * dd.resolve_sizeH(m_parentWindow->get_fontHeight());
 
   textgenerator::s_textInfo tInfo;
   textgenerator::s_textInfoOut tOut;
@@ -1079,8 +1178,8 @@ void widgetLineChoice::compute_data(s_drawData &dd)
   textgenerator::generate(tInfo, nullptr, 0, 0, &tOut);
   const float xCenter = 0.5f * (m_zone.x + m_zone.z);
   const glm::vec2 textSize = tOut.m_maxboxsize;
-  tInfo.m_zone = glm::vec4(xCenter - 0.5f * textSize.x, m_zone.y, xCenter + 0.55f * textSize.x, m_zone.w - pad);
-  tInfo.m_color = colorFront;
+  tInfo.m_zone = glm::vec4(xCenter - 0.5f * textSize.x, m_zone.y, xCenter + 0.55f * textSize.x, m_zone.w);
+  tInfo.m_color = colorText;
   textgenerator::generate(tInfo, & dd.m_model, m_adrText.part, m_adrText.offset, nullptr);
 }
 void widgetLineChoice::acceptEvent(s_eventIntern &event)
