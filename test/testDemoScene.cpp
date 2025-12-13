@@ -8,6 +8,11 @@
 #include "tre_font.h"
 #include "tre_windowContext.h"
 
+#ifdef TRE_EMSCRIPTEN
+#include <emscripten.h>
+#include <emscripten/html5.h>
+#endif
+
 #include <math.h>
 #include <stdlib.h> // rand,srand
 #include <time.h>   // time
@@ -52,6 +57,8 @@ struct s_particleStream
   }
 };
 
+static float rand01() { return float(rand()) / float(RAND_MAX); }
+
 static void _particleUpdate(s_particleStream &worldParticlesBBStream, s_particleStream &worldParticlesMeshStream, float sceneDt)
 {
   // particle evolve
@@ -79,10 +86,10 @@ static void _particleUpdate(s_particleStream &worldParticlesBBStream, s_particle
     {
       if (worldParticlesBBStream.m_life[ip].x >= 1.f)
       {
-        const float rand0 = (rand() * 2.f / RAND_MAX) - 1.f;
-        const float rand1 = (rand() * 2.f / RAND_MAX) - 1.f;
-        const float randL = rand() * 10.f / RAND_MAX;
-        const float randR = rand() * 6.28f / RAND_MAX;
+        const float rand0 = 2.f * rand01() - 1.f;
+        const float rand1 = 2.f * rand01() - 1.f;
+        const float randL = rand01() * 10.f;
+        const float randR = rand01() * 6.28f;
         worldParticlesBBStream.m_pos[ip] = glm::vec4(0.f, 1.f, 0.f, 0.04f);
         worldParticlesBBStream.m_vel[ip] = glm::vec4(rand0 * 0.1f, 0.f, rand1 * 0.1f, 0.f);
         worldParticlesBBStream.m_life[ip] = glm::vec2(0.f, 1.f / randL);
@@ -93,9 +100,9 @@ static void _particleUpdate(s_particleStream &worldParticlesBBStream, s_particle
     {
       if (worldParticlesMeshStream.m_life[ip].x >= 1.f)
       {
-        const float rand0 = (rand() * 2.f / RAND_MAX) - 1.f;
-        const float rand1 = (rand() * 2.f / RAND_MAX) - 1.f;
-        const float randL = rand() * 10.f / RAND_MAX;
+        const float rand0 = 2.f * rand01() - 1.f;
+        const float rand1 = 2.f * rand01() - 1.f;
+        const float randL = rand01() * 10.f;
         worldParticlesMeshStream.m_pos[ip] = glm::vec4(4.f, 6.f, 4.f, 0.1f);
         worldParticlesMeshStream.m_vel[ip] = glm::vec4(rand0 * 0.1f, 0.5f * (rand0*rand0 + rand1*rand1), rand1 * 0.1f, 0.f);
         worldParticlesMeshStream.m_rot[ip] = glm::vec4(cosf(rand0) * cosf(rand1), sinf(rand0) * cosf(rand1), 0.f, sinf(rand1));
@@ -262,20 +269,63 @@ struct s_worldScene
 };
 
 // ============================================================================
-// MAIN
 
-int main(int argc, char **argv)
+tre::windowContext             myWindow;
+tre::windowContext::s_controls myControls;
+tre::windowContext::s_timer    myTimings;
+tre::windowContext::s_view3D   myView3D(&myWindow);
+
+tre::modelStaticIndexed3D worldSkyboxModel;
+s_worldScene worldScene;
+
+tre::texture worldSkyBoxTex;
+bool         withSkyBox = true;
+
+tre::modelInstancedBillboard worldParticlesBB;
+tre::modelInstancedMesh      worldParticlesMesh;
+tre::texture  worldParticlesTex;
+
+s_particleStream worldParticlesBBStream(true, false, false);
+s_particleStream worldParticlesMeshStream(true, true, true);
+
+tre::shader shaderSkybox;
+tre::shader shaderMaterialFlat;
+tre::shader shaderMaterialBumped;
+tre::shader shaderMaterialBrdf;
+tre::shader shaderMetarialDsidedMask;
+
+tre::shader shaderShadow;
+tre::shader shaderInstancedBB;
+tre::shader shaderInstancedMesh;
+tre::shader shaderText2D;
+
+tre::font          worldHUDFont;
+tre::modelRaw2D    worldHUDModel;
+
+s_shadowDebug sunShadow_debug;
+
+tre::renderTarget_ShadowMap sunLight_ShadowMap;
+tre::renderTarget_ShadowCubeMap ptsLight_ShadowMap;
+tre::renderTarget rtMultisampled(tre::renderTarget::RT_COLOR_AND_DEPTH | tre::renderTarget::RT_MULTISAMPLED | tre::renderTarget::RT_COLOR_HDR);
+tre::renderTarget rtResolveMSAA(tre::renderTarget::RT_COLOR_AND_DEPTH | tre::renderTarget::RT_COLOR_SAMPLABLE | tre::renderTarget::RT_COLOR_HDR);
+tre::renderTarget rtSceneDepth(tre::renderTarget::RT_DEPTH | tre::renderTarget::RT_SAMPLABLE);
+tre::postFX_AmbiantOcclusion effectAO;
+tre::postFX_Blur postEffectBlur(3, true);
+tre::postFX_ToneMapping postEffectToneMapping;
+
+bool canMSAA = true;
+
+// ============================================================================
+
+int app_init()
 {
-  (void)argc;
-  (void)argv;
-
-  tre::windowContext myWindow;
-  tre::windowContext::s_controls myControls;
-  tre::windowContext::s_timer myTimings;
-  tre::windowContext::s_view3D myView3D(&myWindow);
-
-  if (!myWindow.SDLInit(SDL_INIT_VIDEO) || !myWindow.SDLImageInit(IMG_INIT_JPG))
+  if (!myWindow.SDLInit(SDL_INIT_VIDEO))
     return -1;
+
+#ifdef TRE_WITH_SDL2_IMAGE
+  if (!myWindow.SDLImageInit(IMG_INIT_JPG))
+    return -1;
+ #endif
 
   // Retreive display information
   SDL_DisplayMode currentdm;
@@ -294,11 +344,8 @@ int main(int argc, char **argv)
 
   // load meshes
 
-  tre::modelStaticIndexed3D worldSkyboxModel;
   worldSkyboxModel.createPartFromPrimitive_box(glm::mat4(1.f), 10.f);
   worldSkyboxModel.loadIntoGPU();
-
-  s_worldScene worldScene;
 
   {
     worldScene.mesh.setFlags(tre::modelStaticIndexed3D::VB_NORMAL | tre::modelStaticIndexed3D::VB_TANGENT | tre::modelStaticIndexed3D::VB_UV);
@@ -341,8 +388,6 @@ int main(int argc, char **argv)
 
   TRE_LOG("... loading textures ...");
 
-  tre::texture worldSkyBoxTex;
-  bool         withSkyBox = true;
   {
     // The textures are generated from "testTextureSampling", with TRE_WITH_SDL2_IMAGE and TRE_WITH_TIFF enabled
     const std::array<SDL_Surface*, 6> cubeFaces = { tre::texture::loadTextureFromFile("imageTIFF.1024.inside.xpos.png"),
@@ -377,34 +422,28 @@ int main(int argc, char **argv)
 
   // load Particles
 
-  tre::modelInstancedBillboard worldParticlesBB(tre::modelInstanced::VI_COLOR | tre::modelInstanced::VI_ROTATION);
+  worldParticlesBB.setFlagsInstanced(tre::modelInstanced::VI_COLOR | tre::modelInstanced::VI_ROTATION);
   worldParticlesBB.createBillboard();
   worldParticlesBB.loadIntoGPU();
 
-  tre::modelInstancedMesh worldParticlesMesh(tre::modelInstancedMesh::VB_NORMAL, tre::modelInstanced::VI_ORIENTATION | tre::modelInstanced::VI_COLOR);
+  worldParticlesMesh.setFlags(tre::modelInstancedMesh::VB_NORMAL);
+  worldParticlesMesh.setFlagsInstanced(tre::modelInstanced::VI_ORIENTATION | tre::modelInstanced::VI_COLOR);
   worldParticlesMesh.createPartFromPrimitive_box(glm::mat4(1.f), 0.5f);
   worldParticlesMesh.createPartFromPrimitive_uvtrisphere(glm::mat4(1.f), 0.5f, 6, 6);
   worldParticlesMesh.loadIntoGPU();
 
-  tre::texture  worldParticlesTex;
   if (!worldParticlesTex.load(tre::texture::loadTextureFromFile(TESTIMPORTPATH "resources/quad.png"), tre::texture::MMASK_MIPMAP | tre::texture::MMASK_FORCE_NO_ALPHA, true))
     worldParticlesTex.loadWhite();
 
-  s_particleStream worldParticlesBBStream(true, false, false);
   worldParticlesBBStream.resize(1024);
-
-  s_particleStream worldParticlesMeshStream(true, true, true);
   worldParticlesMeshStream.resize(512);
 
   // load HUD
 
   TRE_LOG("... loading HUD ...");
 
-  tre::font          worldHUDFont;
-
   worldHUDFont.load({ tre::font::loadFromBMPandFNT(TESTIMPORTPATH "resources/font_arial_88") }, true);
 
-  tre::modelRaw2D    worldHUDModel;
   {
     static const char* txts[6] = { "FPS",
                                    "right clic: lock/unlock camera",
@@ -445,10 +484,8 @@ int main(int argc, char **argv)
 
   TRE_LOG("... loading material (shaders) ...");
 
-  tre::shader  shaderSkybox;
   shaderSkybox.loadShader(tre::shader::PRGM_3D, tre::shader::PRGM_CUBEMAPED | tre::shader::PRGM_BACKGROUND);
 
-  tre::shader shaderMaterialFlat;
   shaderMaterialFlat.setShadowSunSamplerCount(1);
   shaderMaterialFlat.setShadowPtsSamplerCount(1);
   shaderMaterialFlat.loadShader(tre::shader::PRGM_3D,
@@ -456,7 +493,6 @@ int main(int argc, char **argv)
                                tre::shader::PRGM_LIGHT_SUN | tre::shader::PRGM_SHADOW_SUN | tre::shader::PRGM_AO |
                                tre::shader::PRGM_LIGHT_PTS | tre::shader::PRGM_SHADOW_PTS);
 
-  tre::shader shaderMaterialBumped;
   shaderMaterialBumped.setShadowSunSamplerCount(1);
   shaderMaterialBumped.setShadowPtsSamplerCount(1);
   shaderMaterialBumped.loadShader(tre::shader::PRGM_3D,
@@ -464,7 +500,6 @@ int main(int argc, char **argv)
                                   tre::shader::PRGM_LIGHT_SUN | tre::shader::PRGM_SHADOW_SUN |
                                   tre::shader::PRGM_LIGHT_PTS | tre::shader::PRGM_SHADOW_PTS);
 
-  tre::shader shaderMaterialBrdf;
   shaderMaterialBrdf.setShadowSunSamplerCount(1);
   shaderMaterialBrdf.setShadowPtsSamplerCount(1);
   shaderMaterialBrdf.loadShader(tre::shader::PRGM_3D,
@@ -473,7 +508,6 @@ int main(int argc, char **argv)
                                 tre::shader::PRGM_LIGHT_PTS | tre::shader::PRGM_SHADOW_PTS |
                                 tre::shader::PRGM_MAPMAT);
 
-  tre::shader shaderMetarialDsidedMask;
   {
     const char *shSource = "void main()\n"
                            "{\n"
@@ -487,7 +521,7 @@ int main(int argc, char **argv)
                            "float tanTheta = tan(acos(clamp(dot(rawN,normalize(-m_sunlight.direction)), 1.e-3f, 1.f)));\n"
                            "float islighted_sun = ShadowOcclusion_sun(tanTheta, rawN);\n"
                            "vec3 lsun = BRDFLighting(cDiffuse, m_sunlight.color, Ndsided, L, V, uniMat.x, uniMat.y);\n"
-                           "vec3 lamb = BRDFLighting_ambiante(cDiffuse, m_sunlight.colorAmbiant, Ndsided, V, uniMat.x, uniMat.y);\n"
+                           "vec3 lamb = BRDFLighting_ambiante(cDiffuse, m_sunlight.colorAmbiant, Ndsided, L, V, uniMat.x, uniMat.y);\n"
                            " color.xyz = lsun * islighted_sun + lamb;\n"
                            " color.w = 1.f;\n"
                            "}\n";
@@ -499,22 +533,8 @@ int main(int argc, char **argv)
     shaderMetarialDsidedMask.loadCustomShader(sl, shSource, "3d_leaves");
   }
 
-  tre::shader::s_UBOdata_sunLight sunLight_Data;
-  sunLight_Data.color = glm::vec3(1.8f);
-  sunLight_Data.colorAmbiant = glm::vec3(0.1f);
-
-  tre::shader::s_UBOdata_sunShadow sunShadow_Data;
-  sunShadow_Data.nShadow = 1;
-
-  tre::shader::s_UBOdata_ptstLight ptsLight_Data;
-  ptsLight_Data.nLight = 1;
-
-  tre::shader::s_UBOdata_ptsShadow ptsShadow_Data;
-
-  tre::shader shaderShadow;
   shaderShadow.loadShader(tre::shader::PRGM_3D_DEPTH,0);
 
-  tre::shader shaderInstancedBB;
   shaderInstancedBB.setShadowSunSamplerCount(1);
   shaderInstancedBB.loadShader(tre::shader::PRGM_2Dto3D,
                                tre::shader::PRGM_TEXTURED |
@@ -523,19 +543,15 @@ int main(int argc, char **argv)
                                tre::shader::PRGM_INSTANCED | tre::shader::PRGM_INSTCOLOR | tre::shader::PRGM_ROTATION |
                                tre::shader::PRGM_SOFT);
 
-  tre::shader shaderInstancedMesh;
   shaderInstancedMesh.setShadowSunSamplerCount(1);
   shaderInstancedMesh.loadShader(tre::shader::PRGM_3D,
                                  tre::shader::PRGM_LIGHT_SUN | tre::shader::PRGM_SHADOW_SUN | tre::shader::PRGM_NO_SELF_SHADOW |
                                  tre::shader::PRGM_MODELPHONG |
                                  tre::shader::PRGM_INSTANCED | tre::shader::PRGM_INSTCOLOR | tre::shader::PRGM_ORIENTATION);
 
-  tre::shader shaderText2D;
   shaderText2D.loadShader(tre::shader::PRGM_2D, tre::shader::PRGM_COLOR | tre::shader::PRGM_TEXTURED);
 
   // debug shadow
-
-  s_shadowDebug sunShadow_debug;
 
   sunShadow_debug.load();
 
@@ -562,30 +578,22 @@ int main(int argc, char **argv)
 
   TRE_LOG("... loading post-effects ...");
 
-  tre::renderTarget_ShadowMap sunLight_ShadowMap;
   sunLight_ShadowMap.load(2048,2048);
   sunLight_ShadowMap.setSceneBox(worldScene.getBoundingBox());
 
-  tre::renderTarget_ShadowCubeMap ptsLight_ShadowMap;
   ptsLight_ShadowMap.load(1024);
   ptsLight_ShadowMap.setRenderingLimits(0.2f, 20.f);
 
-  tre::renderTarget rtMultisampled(tre::renderTarget::RT_COLOR_AND_DEPTH | tre::renderTarget::RT_MULTISAMPLED | tre::renderTarget::RT_COLOR_HDR);
-  const bool canMSAA = rtMultisampled.load(myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
+  canMSAA = rtMultisampled.load(myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
 
-  tre::renderTarget rtResolveMSAA(tre::renderTarget::RT_COLOR_AND_DEPTH | tre::renderTarget::RT_COLOR_SAMPLABLE | tre::renderTarget::RT_COLOR_HDR);
   rtResolveMSAA.load(myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
 
-  tre::renderTarget rtSceneDepth(tre::renderTarget::RT_DEPTH | tre::renderTarget::RT_SAMPLABLE);
   rtSceneDepth.load(myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
 
-  tre::postFX_AmbiantOcclusion effectAO;
   effectAO.load(myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
 
-  tre::postFX_Blur postEffectBlur(3, true);
   postEffectBlur.load(myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
 
-  tre::postFX_ToneMapping postEffectToneMapping;
   postEffectToneMapping.set_gamma(2.2f);
   postEffectToneMapping.set_exposure(1.1f);
   postEffectToneMapping.load();
@@ -594,32 +602,50 @@ int main(int argc, char **argv)
 
   TRE_LOG("... loading completed");
 
-  tre::IsOpenGLok("main: initialization");
-
   tre::checkLayoutMatch_Shader_Model(&shaderShadow, &worldScene.mesh);
   tre::checkLayoutMatch_Shader_Model(&shaderSkybox, &worldSkyboxModel);
   tre::checkLayoutMatch_Shader_Model(&shaderMaterialBumped, &worldScene.mesh);
   tre::checkLayoutMatch_Shader_Model(&shaderInstancedBB, &worldParticlesBB);
   tre::checkLayoutMatch_Shader_Model(&shaderInstancedMesh, &worldParticlesMesh);
 
-  // - event and time variables
-
-  SDL_Event event;
-
-  myTimings.initialize();
+  tre::IsOpenGLok("main: initialization");
 
   myView3D.m_matView[3] = glm::vec4(0.f, -3.f, -9.8f, 1.f);
   myView3D.setScreenBoundsMotion(true);
   myView3D.setKeyBinding(true);
 
-  bool showMaps = false;
-  bool withMSAA = false; //canMSAA; // issue with mesa driver (hangs on blit)
-  bool withBlur = true;
-  bool withSSAO = true;
+  myTimings.initialize();
 
-  // MAIN LOOP
+  return 0;
+}
 
-  while(!myWindow.m_quit && !myControls.m_quit)
+// ============================================================================
+
+bool showMaps = false;
+bool withMSAA = false; //canMSAA; // issue with mesa driver (hangs on blit)
+bool withBlur = true;
+bool withSSAO = true;
+
+void app_update()
+{
+  // - global
+
+  tre::shader::s_UBOdata_sunLight sunLight_Data;
+  sunLight_Data.color = glm::vec3(1.8f);
+  sunLight_Data.colorAmbiant = glm::vec3(0.1f);
+
+  tre::shader::s_UBOdata_sunShadow sunShadow_Data;
+  sunShadow_Data.nShadow = 1;
+
+  tre::shader::s_UBOdata_ptstLight ptsLight_Data;
+  ptsLight_Data.nLight = 1;
+
+  tre::shader::s_UBOdata_ptsShadow ptsShadow_Data;
+
+  // - start frame
+
+  SDL_Event event;
+
   {
     myWindow.SDLEvent_newFrame();
     myControls.newFrame();
@@ -1194,7 +1220,12 @@ int main(int argc, char **argv)
 
     SDL_GL_SwapWindow( myWindow.m_window );
   }
+}
 
+// ============================================================================
+
+void app_quit()
+{
   TRE_LOG("Main loop exited");
   TRE_LOG("Average work elapsed-time needed for each frame: " << myTimings.worktime_average * 1000 << " ms");
   TRE_LOG("Average frame elapsed-time needed for each frame (Vsync enabled): " << myTimings.frametime_average * 1000 << " ms");
@@ -1244,6 +1275,33 @@ int main(int argc, char **argv)
   myWindow.SDLQuit();
 
   TRE_LOG("Program finalized with success");
+}
+
+// =============================================================================
+
+int main(int argc, char **argv)
+{
+  (void)argc;
+  (void)argv;
+
+  if (app_init() != 0)
+    return -1;
+
+#ifdef TRE_EMSCRIPTEN
+  //emscripten_request_animation_frame_loop(app_update, nullptr);
+  emscripten_set_main_loop(app_update, 0, true);
+
+  // emscripten_set_fullscreenchange_callback
+  // emscripten_set_canvas_element_size
+#else
+  while(!myWindow.m_quit && !myControls.m_quit)
+  {
+    app_update();
+  }
+
+  app_quit();
+
+#endif
 
   return 0;
 }
