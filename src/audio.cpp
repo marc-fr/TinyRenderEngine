@@ -772,10 +772,10 @@ void audioContext::s_audioCallbackContext::run(uint8_t * stream, int len)
 
 #ifdef TRE_PROFILE
   const systemclock::time_point tickEnd =  systemclock::now();
-  const double timeElapsed = std::chrono::duration<double>(tickEnd - tickStart).count();
+  const double timeElapsed = std::chrono::duration<double, std::micro>(tickEnd - tickStart).count();
   ac_perftime_nbrCall += 1;
   ac_perftime_nbrSample += sampleCount;
-  ac_perftime_total += float(timeElapsed);
+  ac_perftime_total += float(timeElapsed * 1.e-6);
 #endif
 }
 

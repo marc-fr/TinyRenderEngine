@@ -151,7 +151,7 @@ protected:
   unsigned m_perftime_nbrCall = 0;
   unsigned m_perftime_nbrSample = 0;
 public:
-  float    getPerfTime_Total() const { return m_perftime_total; }
+  float    getPerfTime_Total() const { return m_perftime_total; } ///< Elapsed time spent in the audio callback (in seconds)
   unsigned getPerfTime_nbrCall() const { return m_perftime_nbrCall; }
   unsigned getPerfTime_nbrSample() const { return m_perftime_nbrSample; }
 #else
