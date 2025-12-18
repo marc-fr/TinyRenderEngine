@@ -23,9 +23,9 @@ public:
   struct s_charInfo
   {
     float cax, cay, cbx, cby, xoffs, yoffs, xadvance;
-    int flag; ///< flag
+    int flag = 0; ///< flag
 
-    s_charInfo() : flag(0) {}
+    bool valid() const { return flag != 0; }
   };
 
   struct s_fontMap

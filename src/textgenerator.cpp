@@ -65,6 +65,7 @@ void generate(const s_textInfo &info, modelRaw2D *outMesh, unsigned outPartId, u
     }
 
     const font::s_charInfo & charMap = fontMap.m_charMap[idchar];
+    if (!charMap.valid()) continue;
 
     glm::vec4 quadPos( posx + scale.x * charMap.xoffs,
                        posy - scale.y * charMap.yoffs - scale.y * (charMap.cby-charMap.cay),
