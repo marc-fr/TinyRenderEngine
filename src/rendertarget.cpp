@@ -79,8 +79,6 @@ static void createDepthAttachment(int w, int h, int depthSize, bool isMultisampl
     else if (depthSize == 24) glTexImage2D(GL_TEXTURE_2D,0,GL_DEPTH_COMPONENT24 ,w,h,0,GL_DEPTH_COMPONENT,GL_UNSIGNED_INT,nullptr);
     else if (depthSize == 32) glTexImage2D(GL_TEXTURE_2D,0,GL_DEPTH_COMPONENT32F,w,h,0,GL_DEPTH_COMPONENT,GL_FLOAT,nullptr);
 
-    // GL_DEPTH_COMPONENT16 is required on WebGL (TODO: check this !)
-
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);
 
@@ -606,8 +604,8 @@ static const char * SourcePostProcess_FragMain_BlurDownPass =
 "  }\n"
 "  else // downsample with Gaussian filter\n"
 "  {\n"
-"    float x = 2. * AtlasInvDim.x;\n"
-"    float y = 2. * AtlasInvDim.y;\n"
+"    float x = AtlasInvDim.x;\n"
+"    float y = AtlasInvDim.y;\n"
 "    vec3 a = texture(TexDiffuse, vec2(pixelUV.x - 2.f*x, pixelUV.y + 2.f*y)).rgb;\n"
 "    vec3 b = texture(TexDiffuse, vec2(pixelUV.x,         pixelUV.y + 2.f*y)).rgb;\n"
 "    vec3 c = texture(TexDiffuse, vec2(pixelUV.x + 2.f*x, pixelUV.y + 2.f*y)).rgb;\n"
@@ -830,11 +828,13 @@ static const char * SourcePostProcess_FragMain_AO =
 "  float radius = SoftDistance.x;\n"
 "  float strength = SoftDistance.y;\n"
 "  float pw = SoftDistance.z;\n"
-"  float zC = linearDepth(texture(TexDiffuse, pixelUV).r);\n"
+"  float zRaw = texture(TexDiffuse, pixelUV).r;\n"
+"  float zC = linearDepth(zRaw);\n"
 "  vec3 posC = zC * getViewRay(pixelUV);\n"
 "  //color.xyz = vec3(posC.x, posC.y, -1.f / posC.z); return;\n"
 "  vec3 nC = normalize(cross(dFdx(posC),dFdy(posC)));\n"
 "  //color.xyz = 0.5 + 0.5 * nC; return;\n"
+"  if (zRaw >= 1.) { color = vec4(1.,1.,1.,1.); return; }\n"
 "  float accum = 0.;\n"
 "  int ioffset = int(noise2D(pixelUV) * 8.);\n"
 "  //int ioffset = int(noise3D(posC) * 8.);\n"
@@ -844,7 +844,9 @@ static const char * SourcePostProcess_FragMain_AO =
 "    vec2 uv = pixelUV + uvDelta;\n"
 "    if (uv.x < 0.f || uv.x > 1.f) uv.x = pixelUV.x - uvDelta.x;\n"
 "    if (uv.y < 0.f || uv.y > 1.f) uv.y = pixelUV.y - uvDelta.y;\n"
-"    vec3 pos = linearDepth(texture(TexDiffuse, uv).r) * getViewRay(uv);\n"
+"    float depthRaw = texture(TexDiffuse, uv).r;\n"
+"    if (depthRaw >= 1.) continue;\n"
+"    vec3 pos = linearDepth(depthRaw) * getViewRay(uv);\n"
 "    vec3 dpos = pos - posC;\n"
 "    accum += max(0., dot(nC, dpos) + paramZBias * pos.z) / (0.01 + dot(dpos, dpos));"
 "  }\n"
@@ -859,7 +861,7 @@ bool postFX_AmbiantOcclusion::load(const int pwidth, const int pheigth)
 
   // FBOs
   status &= m_renderAOraw.load(pwidth, pheigth);
-  status &= m_renderAOfinal.load(pwidth, pheigth);
+  status &= m_renderAOfinal.load(pwidth / 2, pheigth / 2);
 
   // Shaders
   {
@@ -917,9 +919,6 @@ void postFX_AmbiantOcclusion::process(GLuint depthTextureHandle, unsigned depthT
   const float far = matProj[3][2] / (matProj[2][2] + 1.f);
   // inverse(matProj) * vec4(u,v, p,q) = vec4(invProj00 * u, invProj11 * v, -q, p * (near-far)/(2 near far) + q * (near+far)/(2 near far));
   // inverse(matProj) * vec4(u,v, -1, 1) = vec4(invProj00 * u, invProj11 * v, -1, 1 / near);
-
-  //const glm::mat4 posFar_ViewSpace = glm::vec4(0.02f, 0.02f, -far, 1.f);
-  //const glm::vec4 posFar_ClipSpace = glm::inverse(matProj) * posFar_ViewSpace;
 
   glDisable(GL_BLEND);
 

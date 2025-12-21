@@ -227,7 +227,7 @@ public:
   ~postFX_AmbiantOcclusion() {}
 
   bool load(const int pwidth, const int pheigth);
-  bool resize(const int pwidth, const int pheigth) { return m_renderAOraw.resize(pwidth, pheigth) && m_renderAOfinal.resize(pwidth, pheigth); }
+  bool resize(const int pwidth, const int pheigth) { return m_renderAOraw.resize(pwidth, pheigth) && m_renderAOfinal.resize(pwidth / 2, pheigth / 2); }
   void clear();
 
   void process(GLuint depthTextureHandle, unsigned depthTextureWidth, unsigned depthTextureHeight, const glm::mat4 &matProj);
