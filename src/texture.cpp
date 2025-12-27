@@ -355,7 +355,7 @@ bool texture::loadCube(const std::array<SDL_Surface *, 6> &cubeFaces, int modema
       }
       glCompressedTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X+iface, 0, internalformat, surfLocal.w, surfLocal.h, 0, bufferByteSize, surfLocal.pixels);
   #else
-      glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X+iface,0,internalformat,surflocal.w,surflocal.h,0,externalformat,GL_UNSIGNED_BYTE,surflocal.pixels);
+      glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X+iface,0,internalformat,surfLocal.w,surfLocal.h,0,externalformat,GL_UNSIGNED_BYTE,surfLocal.pixels);
   #endif
     }
     else
@@ -378,7 +378,7 @@ bool texture::loadCube(const std::array<SDL_Surface *, 6> &cubeFaces, int modema
 
 //-----------------------------------------------------------------------------
 
-bool texture::load3D(const uint8_t *data, int w, int h, int d, bool formatFloat, uint components, int modemask)
+bool texture::load3D(const uint8_t *data, int w, int h, int d, uint components, int modemask)
 {
   m_type = TI_3D;
   m_mask = modemask;
@@ -404,12 +404,44 @@ bool texture::load3D(const uint8_t *data, int w, int h, int d, bool formatFloat,
 
   glGenTextures(1, &m_handle);
 
-  const bool success = update3D(data, w, h, d, formatFloat, components, false);
+  const bool success = update3D(data, w, h, d, components, false);
 
   if (success) set_parameters();
 
   glBindTexture(GL_TEXTURE_3D, 0);
   return IsOpenGLok("texture::load3D - complete texture");
+}
+
+//-----------------------------------------------------------------------------
+
+bool texture::loadFloat(float * __restrict data, int w, int h, int modemask)
+{
+  m_type = TI_2D;
+  m_mask = modemask;
+  m_w = w;
+  m_h = h;
+  m_components = 4;
+
+  if (useCompress())
+  {
+    TRE_LOG("Cannot compress float-textures. Skip compression.");
+    m_mask &= ~MMASK_COMPRESS;
+  }
+
+  if (modemask & (MMASK_FORCE_NO_ALPHA | MMASK_RG_ONLY | MMASK_ALPHA_ONLY))
+  {
+    TRE_LOG("Cannot apply modifiers on float-textures, because RGBA is forced. loadFloat failed.");
+    return false;
+  }
+
+  glGenTextures(1, &m_handle);
+
+  const bool success = updateFloat(data, w, h, false);
+
+  if (success) set_parameters();
+
+  glBindTexture(GL_TEXTURE_2D, 0);
+  return IsOpenGLok("texture::loadFloat - complete texture");
 }
 
 //-----------------------------------------------------------------------------
@@ -593,10 +625,9 @@ bool texture::updateArray(SDL_Surface* surface, int depthIndex, const bool freeS
 
 //-----------------------------------------------------------------------------
 
-bool texture::update3D(const uint8_t* data, int w, int h, int d, bool formatFloat, uint components, const bool unbind /* = true */)
+bool texture::update3D(const uint8_t* data, int w, int h, int d, uint components, const bool unbind /* = true */)
 {
   if (m_handle == 0) return false;
-  if (formatFloat) return false; // no supported yet
 
   TRE_ASSERT(w == m_w);
   TRE_ASSERT(h == m_h);
@@ -622,6 +653,28 @@ bool texture::update3D(const uint8_t* data, int w, int h, int d, bool formatFloa
   if (unbind) glBindTexture(GL_TEXTURE_3D, 0);
 
   return IsOpenGLok("texture::update3D - upload pixels");
+}
+
+//-----------------------------------------------------------------------------
+
+bool texture::updateFloat(float * __restrict data, int w, int h, const bool unbind /* = true */)
+{
+  if (m_handle == 0) return false;
+
+  TRE_ASSERT(w == m_w);
+  TRE_ASSERT(h == m_h);
+
+  // upload
+
+  glBindTexture(GL_TEXTURE_2D, m_handle);
+
+  {
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, w, h, 0, GL_RGBA, GL_FLOAT, data);
+  }
+
+  if (unbind) glBindTexture(GL_TEXTURE_2D, 0);
+
+  return IsOpenGLok("texture::updateFloat - upload pixels");
 }
 
 //-----------------------------------------------------------------------------
@@ -907,9 +960,9 @@ bool texture::writeCube(std::ostream &outbuffer, const std::array<SDL_Surface *,
 
 //-----------------------------------------------------------------------------
 
-bool texture::write3D(std::ostream &outbuffer, const uint8_t *data, int w, int h, int d, bool formatFloat, uint components, int modemask)
+bool texture::write3D(std::ostream &outbuffer, const uint8_t *data, int w, int h, int d, uint components, int modemask)
 {
-  const bool isValid = (data != nullptr) && (formatFloat == false) && (components >= 1) && (components <= 4);
+  const bool isValid = (data != nullptr) && (components >= 1) && (components <= 4);
   if (!isValid) { h = d = 0; }
   TRE_ASSERT((modemask & MMASK_ALPHA_ONLY) == 0); // alpha-only modifier not supported
   TRE_ASSERT((modemask & MMASK_FORCE_NO_ALPHA) == 0); // no-alpha modifier not supported
@@ -1071,7 +1124,7 @@ bool texture::read(std::istream &inbuffer)
     readBuffer.resize(dataSize);
     TRE_ASSERT(readBuffer.size() == dataSize);
     inbuffer.read(readBuffer.data(), int(dataSize));
-    success &= update3D(reinterpret_cast<const uint8_t*>(readBuffer.data()), m_w, m_h, m_d, false, m_components, false);
+    success &= update3D(reinterpret_cast<const uint8_t*>(readBuffer.data()), m_w, m_h, m_d, m_components, false);
     set_parameters();
     success &= tre::IsOpenGLok("texture::read (TI_3D) complete texture");
     glBindTexture(GL_TEXTURE_3D,0);
@@ -1109,7 +1162,7 @@ void texture::set_parameters()
   if (useMipmap())                glTexParameteri(target,GL_TEXTURE_MIN_FILTER,GL_LINEAR_MIPMAP_LINEAR);
   else if (useMagFilterNearest()) glTexParameteri(target,GL_TEXTURE_MIN_FILTER,GL_NEAREST);
   else                            glTexParameteri(target,GL_TEXTURE_MIN_FILTER,GL_LINEAR);
-  if (m_components==1 && m_type != TI_3D)
+  if (m_components == 1)
   {
 #ifdef TRE_OPENGL_ES
     glTexParameteri(target, GL_TEXTURE_SWIZZLE_R, GL_ONE);

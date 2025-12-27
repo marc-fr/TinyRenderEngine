@@ -273,6 +273,10 @@ public:
   void set_gamma(const float gamma) { m_params.y = gamma; }
   void set_saturation(const float saturation) { m_params.z = saturation; }
 
+  float exposure() const { return m_params.x; }
+  float gamma() const { return m_params.y; }
+  float saturation() const { return m_params.z; }
+
   void set_vignetteColor(const glm::vec3 &color) { m_vignetteColor = color; }
   void set_vignettingColorIntensity(const float intensity) { m_vignettingParams.x = intensity; }
   void set_vignettingDesaturationIntensity(const float intensity) { m_vignettingParams.y = intensity; }

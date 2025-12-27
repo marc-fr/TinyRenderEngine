@@ -307,7 +307,7 @@ s_shadowDebug sunShadow_debug;
 tre::renderTarget_ShadowMap sunLight_ShadowMap;
 tre::renderTarget_ShadowCubeMap ptsLight_ShadowMap;
 tre::renderTarget rtMultisampled(tre::renderTarget::RT_COLOR_AND_DEPTH | tre::renderTarget::RT_MULTISAMPLED | tre::renderTarget::RT_COLOR_HDR);
-tre::renderTarget rtResolveMSAA(tre::renderTarget::RT_COLOR_AND_DEPTH | tre::renderTarget::RT_COLOR_SAMPLABLE | tre::renderTarget::RT_COLOR_HDR);
+tre::renderTarget rtMain(tre::renderTarget::RT_COLOR_AND_DEPTH | tre::renderTarget::RT_COLOR_SAMPLABLE | tre::renderTarget::RT_COLOR_HDR);
 tre::renderTarget rtSceneDepth(tre::renderTarget::RT_DEPTH | tre::renderTarget::RT_SAMPLABLE);
 tre::postFX_AmbiantOcclusion effectAO;
 tre::postFX_Blur postEffectBlur(3, true);
@@ -586,7 +586,7 @@ int app_init()
 
   canMSAA = rtMultisampled.load(myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
 
-  rtResolveMSAA.load(myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
+  rtMain.load(myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
 
   rtSceneDepth.load(myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
 
@@ -679,7 +679,7 @@ void app_update()
       if (myWindow.m_viewportResized)
       {
         rtMultisampled.resize(myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
-        rtResolveMSAA.resize(myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
+        rtMain.resize(myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
         rtSceneDepth.resize(myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
         effectAO.resize(myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
         postEffectBlur.resize(myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
@@ -925,7 +925,7 @@ void app_update()
       if (withMSAA)
         rtMultisampled.bindForWritting();
       else
-        rtResolveMSAA.bindForWritting();
+        rtMain.bindForWritting();
 
       glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -1058,7 +1058,7 @@ void app_update()
     {
       // in the transparent pass, we may need to read the depth-buffer.
       // So we resolve the MSAA now.
-      rtMultisampled.resolve(rtResolveMSAA);
+      rtMultisampled.resolve(rtMain);
     }
 
     {
@@ -1067,7 +1067,7 @@ void app_update()
       glEnable(GL_BLEND);
       glEnable(GL_DEPTH_TEST);
 
-      rtResolveMSAA.bindForWritting();
+      rtMain.bindForWritting();
 
       glUseProgram(shaderInstancedBB.m_drawProgram);
 
@@ -1105,12 +1105,12 @@ void app_update()
 
       if (withBlur)
       {
-        postEffectBlur.processBlur(rtResolveMSAA.colorHandle(), true);
+        postEffectBlur.processBlur(rtMain.colorHandle(), true);
         postEffectToneMapping.resolveToneMapping(postEffectBlur.get_blurTextureUnit(), myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
       }
       else
       {
-        postEffectToneMapping.resolveToneMapping(rtResolveMSAA.colorHandle(), myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
+        postEffectToneMapping.resolveToneMapping(rtMain.colorHandle(), myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
       }
 
       tre::IsOpenGLok("post-effect pass");
@@ -1268,7 +1268,7 @@ void app_quit()
   effectAO.clear();
   rtSceneDepth.clear();
   rtMultisampled.clear();
-  rtResolveMSAA.clear();
+  rtMain.clear();
 
   myWindow.OpenGLQuit();
   myWindow.SDLImageQuit();

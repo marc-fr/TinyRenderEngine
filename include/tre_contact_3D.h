@@ -7,7 +7,8 @@
 
 namespace tre {
 
-struct s_boundbox; // foward decl.
+struct s_boundbox; // forward decl.
+template <class _t> class span; // forward decl.
 
 //=============================================================================
 
@@ -21,6 +22,32 @@ public:
   glm::vec3 pt;     ///< contact central point
   glm::vec3 normal; ///< outside-normal of the obstacle
   float penet;      ///< penetration along the normal
+
+  // ===============================================================
+
+  typedef std::vector<glm::vec3> s_skin;
+  typedef span<glm::vec3>        s_skinArg;
+
+  /// Kd-Tree for mesh's skin sampling
+  struct s_skinKdTree
+  {
+    s_skin skin;
+
+    struct s_node
+    {
+      uint32_t flags = 0; ///< encodes: nodeLeft or triangle-range [15bits], nodeRight or triangle-range [15bits], split-direction (1:x,2:y,3:z) [2bits]
+      float    split = 0.f; ///< split coordinate
+
+      unsigned getDir() const { return flags & 0x3; }
+      unsigned getLeft() const { return flags >> 17; }
+      unsigned getRight() const { return (flags >> 2) & 0x7FFF; }
+    };
+    std::vector<s_node> tree;
+
+    static constexpr unsigned kMaxDepth = 14;
+
+    void computeTree();
+  };
 
   // ===============================================================
   /// @name (0D in 3D) Simple penetration test of a point in a volume
@@ -49,12 +76,12 @@ public:
 
   /// Check penetration of a point and a convexe mesh [mesh's skin: list of triangles (warning: in-face culling)] => no contact info
   static bool point_skin(const glm::vec3 & point,
-                         const std::vector<glm::vec3> & pts);
+                         const s_skin & pts);
 
   /// Check penetration of a point and a convexe mesh [mesh's skin: list of triangles (warning: in-face culling)]
   static bool point_skin(s_contact3D & cntSkin,
                          const glm::vec3 & point,
-                         const std::vector<glm::vec3> & pts);
+                         const s_skin & pts);
 
   /// Check penetration of a point and a sphere (center, radius) => no contact info
   static bool point_sphere(const glm::vec3 &point,
@@ -99,7 +126,7 @@ public:
   /// Check intersection of a box and a convexe mesh [mesh's skin: list of triangles (warning: in-face culling)]
   static bool box_skin(s_contact3D & cntBox,
                        const s_boundbox & box,
-                       const std::vector<glm::vec3> &pts);
+                       const s_skin &pts);
 
   /// Check intersection of a box and a sphere (center, radius) => no contact info
   static bool box_sphere(const s_boundbox & box,
@@ -112,22 +139,17 @@ public:
 
   /// Check intersection of a circle and a convexe mesh [mesh's skin: list of triangles (warning: in-face culling)] => no contact info
   static bool sphere_skin(const glm::vec3 & center, const float radius,
-                          const std::vector<glm::vec3> &pts);
+                          const s_skin &pts);
 
   /// Check intersection of a circle and a convexe mesh [mesh's skin: list of triangles (warning: in-face culling)]
   static bool sphere_skin(s_contact3D & cntSphere,
                           const glm::vec3 & center, const float radius,
-                          const std::vector<glm::vec3> &pts);
+                          const s_skin &pts);
 
   /// Check intersection of a sphere A and a sphere B
   static bool sphere_sphere(s_contact3D & cntSphereA,
                             const glm::vec3 & centerA, const float radiusA,
                             const glm::vec3 & centerB, const float radiusB);
-
-  /// Check intersection of a convexe mesh A [mesh's skin: list of triangles (warning: in-face culling)] A and a convexe mesh B
-  static bool skin_skin(s_contact3D & cntSkinA,
-                        const std::vector<glm::vec3> ptsA,
-                        const std::vector<glm::vec3> ptsB);
 
   /// @}
 
@@ -139,20 +161,29 @@ public:
   /// - the "penet" is the signed distance between the ray-center and the hit-point
   /// @{
 
-  /// Check if the ray (origin, direction) hits the box (ptA,ptB). Returns true when the ray hits the volume.
+  /// Check if the ray (origin, direction) hits the box (ptA,ptB). Returns true when the ray hits the box.
   static bool raytrace_box(s_contact3D & hitInfo,
                            const glm::vec3 & origin, const glm::vec3 & direction,
-                           const s_boundbox & box);
+                           const s_boundbox & box,
+                           float rayStart = -std::numeric_limits<float>::infinity());
 
-  /// Check if the ray (origin, direction) hits the sphere (center, radius). Returns true when the ray hits the volume.
+  /// Check if the ray (origin, direction) hits the sphere (center, radius). Returns true when the ray hits the sphere.
   static bool raytrace_sphere(s_contact3D & hitInfo,
                               const glm::vec3 & origin, const glm::vec3 & direction,
-                              const glm::vec3 & center, const float radius);
+                              const glm::vec3 & center, const float radius,
+                              float rayStart = -std::numeric_limits<float>::infinity());
 
-  /// Check if the ray (origin, direction) hits the mesh [mesh's skin: list of triangles (warning: in-face culling)]. Returns true when the ray hits the volume.
+  /// Check if the ray (origin, direction) hits the mesh's skin. Warning: in-face culling. Returns true when the ray hits the skin.
   static bool raytrace_skin(s_contact3D & hitInfo,
                             const glm::vec3 & origin, const glm::vec3 & direction,
-                            const std::vector<glm::vec3> &pts);
+                            const s_skin & pts,
+                            float rayStart = -std::numeric_limits<float>::infinity());
+
+  /// Check if the ray (origin, direction) hits the mesh's skin. Warning: in-face culling. Returns true when the ray hits the skin.
+  static bool raytrace_skin(s_contact3D & hitInfo,
+                            const glm::vec3 & origin, const glm::vec3 & direction,
+                            const s_skinKdTree & skinKdT,
+                            float rayStart = -std::numeric_limits<float>::infinity());
 
   /// @}
 };
