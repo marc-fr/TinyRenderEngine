@@ -591,8 +591,8 @@ void shaderGenerator::createShaderSource_Layout(std::string &sourceVertex, std::
 
   // header
 #ifdef TRE_OPENGL_ES
-  sourceVertex += "#version 300 es\nprecision mediump float;\n";
-  sourceFragment += "#version 300 es\nprecision mediump float;\n";
+  sourceVertex += "#version 300 es\nprecision mediump float;\nprecision mediump int;\n";
+  sourceFragment += "#version 300 es\nprecision mediump float;\nprecision mediump int;\n";
 #else
   sourceVertex += "#version 330 core\n";
   sourceFragment += "#version 330 core\n";
