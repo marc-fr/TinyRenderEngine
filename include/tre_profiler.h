@@ -1,7 +1,7 @@
 #ifndef PROFILER_H
 #define PROFILER_H
 
-#include "tre_utils.h"
+#include "tre_openglinclude.h"
 
 #ifdef TRE_PROFILE
 
@@ -28,45 +28,34 @@ class profiler
 {
 public:
 
-  profiler() { m_recordsOverFrames.fill(s_frame()); }
-  ~profiler() { TRE_ASSERT(m_whiteTexture == nullptr); TRE_ASSERT(m_shader == nullptr); /* clear contexts ... */ }
+  profiler();
+  ~profiler();
 
   typedef std::chrono::steady_clock systemclock;
   typedef systemclock::time_point   systemtick;
-
-  typedef std::vector<std::string>  recordpath; // TODO : optimize with identifier instead of string operations ?
 
 private:
   struct s_record
   {
     glm::vec4 m_color;
-    recordpath m_path;
-    double m_start;
-    double m_duration;
+    double    m_start;
+    double    m_duration;
+    char      m_path[64];
 
-    inline uint length() const { return uint(m_path.size()); }
-
-    bool isSamePath(const recordpath &otherPath) const
+    bool hasSamePath(const s_record &other) const
     {
-      if (length() != otherPath.size())
-        return false;
-      for (uint iP = 0; iP < length(); ++iP)
-      {
-        if (m_path[iP] != otherPath[iP]) return false;
-      }
-      return true;
+      return std::strncmp(m_path, other.m_path, 64) == 0;
     }
 
-    bool isChildOf(const recordpath &otherPath, const uint upperLevel = 0) const
+    int depth() const
     {
-      if (length() < otherPath.size())
-        return false;
-      const uint iPstop = (length() - upperLevel < otherPath.size()) ? length() - upperLevel : uint(otherPath.size());
-      for (uint iP = 0; iP < iPstop; ++iP)
+      int d = 1;
+      for (char c : m_path)
       {
-        if (m_path[iP] != otherPath[iP]) return false;
+        if (c == '/') ++d;
+        if (c == 0) break;
       }
-      return true;
+      return d;
     }
   };
 
@@ -74,18 +63,15 @@ public:
   class scope
   {
   public:
-    scope(const std::string &name = "no-named", const glm::vec4 &color = glm::vec4(0.f));
-    scope(profiler *owner, const std::string &name, const glm::vec4 &color = glm::vec4(0.f));
+    scope();
+    scope(profiler *owner, const char *name, const glm::vec4 &color = glm::vec4(0.f));
     ~scope();
 
-    void attach(profiler *owner);
-
   protected:
-    glm::vec4 m_color;
-    scope * m_parent = nullptr;
-    profiler * m_owner = nullptr;
-    const std::string m_name;
-    std::vector<std::string> m_path; // TODO : optimize with identifier instead of string operations ?
+    glm::vec4  m_color;
+    scope      *m_parent;
+    profiler   *m_owner;
+    char       m_name[16];
     systemtick m_tick_start;
   };
 
@@ -94,6 +80,8 @@ public:
 public:
   void newframe(); ///< Should be called by one thread only
   void endframe(); ///< Should be called by one thread only
+
+  void initSubThread(); ///< Allow to capture profiling on other threads
 
   void pause(bool paused = true) { m_paused = paused; } ///< Pause the collect (still recording frames but the data is trashed)
   bool isPaused() const { return m_paused; }
@@ -180,11 +168,11 @@ private:
   std::size_t m_partText;
 
   // geometry data
-  const float m_xTitle   = 0.f;
-  const float m_xStart   = 0.4f;
-  const float m_yStart   = 0.f;
-  const float m_dTime    = 0.0005f; ///< time (second) per grid-line (dX)
-  const float m_dYthread = 0.1f;
+  static constexpr float m_xTitle   = 0.f;
+  static constexpr float m_xStart   = 0.4f;
+  static constexpr float m_yStart   = 0.f;
+  static constexpr float m_dTime    = 0.0005f; ///< time (second) per grid-line (dX)
+  static constexpr float m_dYthread = 0.1f;
 
   float m_dX             = 0.15f;
   float m_dY             = 0.15f;
@@ -200,10 +188,7 @@ private:
 
 extern profiler profilerRoot;
 
-inline void profiler_initThread()
-{
-
-}
+inline void profiler_initThread() { profilerRoot.initSubThread(); }
 
 inline void profiler_newFrame() { profilerRoot.newframe(); }
 inline void profiler_endframe() { profilerRoot.endframe(); }

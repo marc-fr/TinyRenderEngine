@@ -9,7 +9,14 @@
 
 namespace tre {
 
-// ============================================================================
+// == Global variables ========================================================
+
+profiler profilerRoot;
+
+int              profilerThreadCount = 1;
+thread_local int profilerThreadID = -1;
+
+// == Helpers =================================================================
 
 static float _hueFromColor(const glm::vec4 color)
 {
@@ -48,23 +55,38 @@ static glm::vec4 _colorFromHS(float hue /**< hue is in [0,1] range.*/, float sat
                     1.f);
 }
 
-// ============================================================================
+// == Profiler Scope ==========================================================
 
-profiler::scope::scope(const std::string &name, const glm::vec4 &color) : m_color(color), m_name(name)
+profiler::scope::scope() : m_color(glm::vec4(0.f)), m_parent(nullptr), m_owner(nullptr)
 {
+  m_name[0] = 0;
   m_tick_start = systemclock::now();
 }
 
-profiler::scope::scope(profiler *owner, const std::string &name, const glm::vec4 &color) : m_color(color), m_name(name)
+profiler::scope::scope(profiler *owner, const char *name, const glm::vec4 &color) : m_color(color), m_parent(nullptr), m_owner(nullptr)
 {
-  attach(owner);
+  std::strncpy(m_name, name, 16);
+#ifdef TRE_DEBUG
+  for (char c : m_name)
+  {
+    if (c == '/') TRE_FATAL("profile: the name must not contain slash (/)");
+    if (c == 0) break;
+  }
+#endif
+  // attach the scope to the profiler's thread context.
+  TRE_ASSERT(owner != nullptr);
+  if (!owner->isEnabled()) return;
+  m_owner = owner;
+  s_context * ctx = m_owner->get_threadContext();
+  m_parent = ctx->m_scopeCurrent;
+  ctx->m_scopeCurrent = this;
+  // start the timer
   m_tick_start = systemclock::now();
 }
 
 profiler::scope::~scope()
 {
-  if (m_owner == nullptr)
-    return;
+  if (m_owner == nullptr) return;
 
   s_context * ctx = m_owner->get_threadContext();
 
@@ -73,64 +95,64 @@ profiler::scope::~scope()
   // create the record
   if (m_owner->isEnabled())
   {
-    ctx->m_records.push_back(s_record());
+    ctx->m_records.emplace_back();
     s_record &rc = ctx->m_records.back();
 
     rc.m_start = std::chrono::duration<double>(m_tick_start - m_owner->m_frameStartTick).count();
     rc.m_duration = std::chrono::duration<double>(tick_end - m_tick_start).count();
     rc.m_color = m_color;
-    rc.m_path = m_path;
+
+    // compute the path
+    scope * spath = this;
+    std::size_t ic = 0;
+    while (spath != nullptr)
+    {
+      for (char c : spath->m_name) { if (ic == 64 || c == 0) break; rc.m_path[ic++] = c; }
+      if (ic == 64) break;
+      rc.m_path[ic++] = '/';
+      spath = spath->m_parent;
+    }
+    for (char c : ctx->m_name /* thread-name */) { if (ic == 64) break; rc.m_path[ic++] = c;  }
+    ic = std::min(std::size_t(63), ic);
+    rc.m_path[ic] = 0;
+
+    // compute color if needed
+    if (rc.m_color.w == 0.f)
+    {
+      const float hueOffset = (m_parent != nullptr) ? _hueFromColor(m_parent->m_color) : 0.f;
+      uint hash = 5381;
+      for (char c : rc.m_path) hash = ((hash << 5) + hash) + c; // DJB Hash Function
+      //for (char c : rc.m_path) hash = c + (hash << 6) + (hash << 16) - hash; // SDBM Hash Function
+      const float hue = hueOffset + float(hash & 0xF) / float(0xF * rc.depth());
+      rc.m_color = _colorFromHS(hue, 0.8f);
+    }
   }
 
   // pop the scope in the profile's thread context
   ctx->m_scopeCurrent = m_parent;
 }
 
-void profiler::scope::attach(profiler *owner)
-{
-  TRE_ASSERT(m_owner == nullptr);
-  TRE_ASSERT(owner != nullptr);
-  if (!owner->isEnabled())
-    return;
+// == Profiler Main ===========================================================
 
-  // attach the scope to the profiler's thread context.
-  m_owner = owner;
-  s_context * ctx = m_owner->get_threadContext();
-  m_parent = ctx->m_scopeCurrent;
-  ctx->m_scopeCurrent = this;
-  // compute path
-  {
-    std::vector<std::string> tmpPath;
-    scope * spath = this;
-    while (spath != nullptr)
-    {
-      tmpPath.push_back(spath->m_name);
-      spath = spath->m_parent;
-    }
-    m_path.reserve(tmpPath.size() + 1);
-    m_path.push_back(ctx->m_name); // thread-name
-    for (uint iP = 0; iP < tmpPath.size(); ++iP)
-      m_path.push_back(tmpPath[tmpPath.size() - 1 - iP]); // ... path
-  }
-  // compute color if needed
-  if (m_color.w == 0.f)
-  {
-    const std::size_t nLevel = m_path.size() - 1;
-    const float       hueOffset = m_parent != nullptr ? _hueFromColor(m_parent->m_color) : 0.f;
-    uint hash = 5381;
-    for (char c : m_name) hash = ((hash << 5) + hash) + c; // DJB Hash Function
-    //for (char c : m_name) hash = c + (hash << 6) + (hash << 16) - hash; // SDBM Hash Function
-    //TRE_LOG("level=" << nLevel << " name=" << m_name << " hash&0x1F=" << (hash & 0x1F));
-    const float hueRange = 1.f / (nLevel + 1.f);
-    const float hue = hueOffset + hueRange * float(hash & 0x1F) / float(0x1F);
-    m_color = _colorFromHS(hue, 0.8f);
-  }
+profiler::profiler()
+{
+  m_recordsOverFrames.fill(s_frame());
+
+  TRE_ASSERT(profilerThreadID == -1);
+  profilerThreadID = 0;
 }
 
-// ============================================================================
+profiler::~profiler()
+{
+  TRE_ASSERT(m_whiteTexture == nullptr);
+  TRE_ASSERT(m_shader == nullptr);
+
+  /* clear contexts ... */
+}
 
 void profiler::newframe()
 {
+  TRE_ASSERT(profilerThreadID == 0);
 
   // for all threads ... (do lock)
   if (m_enabled)
@@ -144,6 +166,8 @@ void profiler::newframe()
 
 void profiler::endframe()
 {
+  TRE_ASSERT(profilerThreadID == 0);
+
   // for all threads ... (do lock)
   if (m_enabled)
   {
@@ -155,42 +179,32 @@ void profiler::endframe()
 
       m_hoveredRecord = -1;
 
-      // collect mean-values
-      if (m_meanvalueRecords.empty())
+      // treat the collected records
+      for (const s_record & cRec : m_collectedRecords)
       {
-        m_meanvalueRecords = m_collectedRecords;
-
-        // TODO: make unique "path"  entries
-      }
-      else
-      {
-        // treat the collected records
-        for (const s_record & cRec : m_collectedRecords)
+        // find it in the mean value ...
+        int recordMeanIndex = -1;
+        for (uint iC = 0; iC < m_meanvalueRecords.size(); ++iC)
         {
-          // find it in the mean value ...
-          int recordMeanIndex = -1;
-          for (uint iC = 0; iC < m_meanvalueRecords.size(); ++iC)
+          if (m_meanvalueRecords[iC].hasSamePath(cRec))
           {
-            if (m_meanvalueRecords[iC].isSamePath(cRec.m_path))
-            {
-              recordMeanIndex = iC;
-              break;
-            }
+            recordMeanIndex = iC;
+            break;
           }
+        }
 
-          if (recordMeanIndex != -1)
-          {
-            // found, add the current value
-            s_record & mRec = m_meanvalueRecords[recordMeanIndex];
-            mRec.m_duration = 0.95f * mRec.m_duration + 0.05f * cRec.m_duration;
-            mRec.m_start    = 0.f; // N/A
-          }
-          else
-          {
-            // not found, add new input
-            m_meanvalueRecords.push_back(cRec);
-            m_meanvalueRecords.back().m_start = 0.f;
-          }
+        if (recordMeanIndex != -1)
+        {
+          // found, add the current value
+          s_record & mRec = m_meanvalueRecords[recordMeanIndex];
+          mRec.m_duration = 0.95f * mRec.m_duration + 0.05f * cRec.m_duration;
+          mRec.m_start    = 0.f; // N/A
+        }
+        else
+        {
+          // not found, add new input
+          m_meanvalueRecords.push_back(cRec);
+          m_meanvalueRecords.back().m_start = 0.f;
         }
       }
 
@@ -207,7 +221,7 @@ void profiler::endframe()
       m_recordsOverFrames[m_frameIndex].m_records.clear();
       for (const auto & rec : m_collectedRecords)
       {
-        const int depth = rec.m_path.size();
+        const int depth = rec.depth();
         TRE_ASSERT(depth >= 2);
         if (depth > 2) continue;
         m_recordsOverFrames[m_frameIndex].m_records.emplace_back(rec.m_color, rec.m_duration, 0);
@@ -215,6 +229,13 @@ void profiler::endframe()
       m_recordsOverFrames[m_frameIndex].m_globalTime = std::chrono::duration<float>(tick_end - m_frameStartTick).count();
     }
   }
+}
+
+void profiler::initSubThread()
+{
+  TRE_ASSERT(profilerThreadID == -1);
+  profilerThreadID = profilerThreadCount++;
+  // TODO ...
 }
 
 // ============================================================================
@@ -244,6 +265,7 @@ bool profiler::acceptEvent(const SDL_Event &event)
       m_enabled = !m_enabled;
       eventAccepted = true;
     }
+    break;
   case SDL_MOUSEBUTTONDOWN:
     if (event.button.button == SDL_BUTTON_LEFT)
     {
@@ -258,8 +280,6 @@ bool profiler::acceptEvent(const SDL_Event &event)
     break;
   case SDL_MOUSEMOTION:
     eventAccepted = acceptEvent(mouseCoord);
-    break;
-  default:
     break;
   }
 
@@ -282,21 +302,21 @@ bool profiler::acceptEvent(const glm::ivec2 &mousePosition)
 
   const double dxPixel = 2.f / m_viewportSize.x; // TODO, consider m_PV and m_matModel
 
-  uint levelmax = 4;
+  int levelmax = 4;
   for (const s_record & rec : m_collectedRecords)
   {
-    const uint recL = rec.length();
+    const int recL = rec.depth();
     if (recL > levelmax) levelmax = recL;
   }
   const double dYlevel = m_dYthread / levelmax;
 
-  uint irec = 0;
+  int irec = 0;
   for (const s_record & rec : m_collectedRecords)
   {
     const double x0 = m_xStart + rec.m_start * m_dX / m_dTime;
     const double x1 = std::max(x0 + rec.m_duration * m_dX / m_dTime, x0 + 2.f * dxPixel);
-    TRE_ASSERT(rec.length() >= 2); // root + first-zone
-    const uint level = rec.length() - 2;
+    TRE_ASSERT(rec.depth() >= 2); // root + first-zone
+    const int level = rec.depth() - 2;
 
     if (x0 <= m_mousePosition.x && m_mousePosition.x <= x1 &&
         m_yStart + level * dYlevel <= m_mousePosition.y && m_mousePosition.y <= m_yStart + (level+1) * dYlevel)
@@ -476,10 +496,10 @@ void profiler::compute_data()
 
   // create recorded zones
   {
-    uint levelmax = 4;
+    int levelmax = 4;
     for (const s_record & rec : m_collectedRecords)
     {
-      const uint recL = rec.length();
+      const int recL = rec.depth();
       if (recL > levelmax) levelmax = recL;
     }
     const double dYlevel = m_dYthread / levelmax;
@@ -489,8 +509,8 @@ void profiler::compute_data()
     {
       const double x0 = m_xStart + rec.m_start * m_dX / m_dTime;
       const double x1 = x0 + rec.m_duration * m_dX / m_dTime;
-      TRE_ASSERT(rec.length() >= 2); // root + first-zone
-      const uint level = rec.length() - 2;
+      TRE_ASSERT(rec.depth() >= 2); // root + first-zone
+      const uint level = rec.depth() - 2;
 
       const glm::vec4 AABB(x0, m_yStart + level * dYlevel, x1, m_yStart + (level+1) * dYlevel);
       glm::vec4 color = rec.m_color;
@@ -552,10 +572,10 @@ void profiler::compute_data()
       for (const auto &rec: m_recordsOverFrames[tIndex].m_records)
       {
         const float yA = y0 + accT * dY;
-        const float yB = yA + rec.m_duration * dY;
+        const float yB = yA + float(rec.m_duration) * dY;
         m_model.fillDataLine(m_partLine, offsetLine, xFT, yA, xFT, yB, rec.m_color);
         offsetLine += 2;
-        accT += rec.m_duration;
+        accT += float(rec.m_duration);
       }
       const float yFT = y0 + m_recordsOverFrames[tIndex].m_globalTime * dY;
       const float green = expf(-m_recordsOverFrames[tIndex].m_globalTime * 100.f);
@@ -595,25 +615,37 @@ void profiler::compute_data()
     const s_record *mrec = nullptr;
     for (const s_record &mrecLoop : m_meanvalueRecords)
     {
-      if (mrecLoop.isSamePath(hrec.m_path))
+      if (mrecLoop.hasSamePath(hrec))
       {
         mrec = &mrecLoop;
         break;
       }
     }
 
-    std::string txt = hrec.m_path.front();
-    for (uint i = 1 ; i < hrec.length(); ++i)
-      txt += '/' + hrec.m_path[i];
     char txtT[128];
-    std::snprintf(txtT, 127, "\n%.3f ms (mean: %.3f ms)",
+    // reverse path
+    std::size_t ic = 0;
+    std::size_t stop = std::strlen(hrec.m_path);
+    TRE_ASSERT(stop <= 64);
+    while (true)
+    {
+      std::size_t start = stop - 1;
+      while (start != 0 && hrec.m_path[start] != '/') --start;
+      if (start != 0) ++start;
+      for (std::size_t i = start; i < stop; ++i) txtT[ic++] = hrec.m_path[i];
+      if (start == 0) break;
+      --start;
+      txtT[ic++] = '/';
+      stop = start;
+    }
+    txtT[ic++] = '\n';
+    std::snprintf(txtT + ic, 127 - ic, "\n%.3f ms (mean: %.3f ms)",
                   int(hrec.m_duration*1000000)*0.001f,
                   mrec == nullptr ? 0.f : int(mrec->m_duration*1000000)*0.001f);
     txtT[127] = 0;
-    txt += txtT;
 
     textgenerator::s_textInfo txtInfo;
-    txtInfo.setupBasic(m_font, txt.c_str());
+    txtInfo.setupBasic(m_font, txtT);
     txtInfo.setupSize(m_dYthread);
 
     textgenerator::s_textInfoOut txtInfoOut;
@@ -634,8 +666,6 @@ void profiler::compute_data()
 }
 
 // ============================================================================
-
-profiler profilerRoot; // static profiler
 
 } // namespace
 
