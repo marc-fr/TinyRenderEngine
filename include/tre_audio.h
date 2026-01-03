@@ -147,18 +147,19 @@ protected:
 
 #ifdef TRE_PROFILE
 protected:
-  float    m_perftime_total = 0.f;
-  unsigned m_perftime_nbrCall = 0;
-  unsigned m_perftime_nbrSample = 0;
+  unsigned m_perf_nbrCall = 0;
+  float    m_perf_elapsedTime = 0.f;
+  float    m_perf_accElapsedTime = 0.f;
+  float    m_perf_accGenTime = 0.f;
 public:
-  float    getPerfTime_Total() const { return m_perftime_total; } ///< Elapsed time spent in the audio callback (in seconds)
-  unsigned getPerfTime_nbrCall() const { return m_perftime_nbrCall; }
-  unsigned getPerfTime_nbrSample() const { return m_perftime_nbrSample; }
+  unsigned getPerf_nbrCall() const { return m_perf_nbrCall; } ///< Nbr of calls of the audio callback, since the last sync.
+  float    getPerf_total() const { return m_perf_elapsedTime; } ///< Elapsed time spent in the audio callback, since the last sync. (in seconds)
+  float    getPerf_load() const { return m_perf_accElapsedTime / std::max(m_perf_accGenTime, 1.e-6f); } ///< Compute load of the audio thread. = ElapsedTime / SoundTimeGenerated
 #else
 public:
-  float    getPerfTime_Total() const { return 0.f; }
-  unsigned getPerfTime_nbrCall() const { return 0; }
-  unsigned getPerfTime_nbrSample() const { return 0; }
+  unsigned getPerf_nbrCall() const { return 0; }
+  float    getPerf_total() const { return 0.f; }
+  float    getPerf_load() const { return 0.f; }
 #endif
 
 public:
@@ -172,9 +173,9 @@ private:
     int                          ac_freq = 0;
     unsigned                     ac_channels = 0;
 #ifdef TRE_PROFILE
-  float                          ac_perftime_total = 0.f;
-  unsigned                       ac_perftime_nbrCall = 0;
-  unsigned                       ac_perftime_nbrSample = 0;
+    unsigned                     ac_perf_nbrCall = 0;
+    float                        ac_perf_elapsedTime = 0.f;
+    float                        ac_perf_genTime = 0.f;
 #endif
 
     void run(uint8_t* stream, int len);

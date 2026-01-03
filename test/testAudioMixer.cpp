@@ -709,17 +709,13 @@ static int app_init()
     textureWaveforms.load(textureWaveformLoading, 0, true);
 
     {
-      float avgTimeMSSmooth = 0.f;
-      windowMain->create_widgetText(iRaw, 0, 1, 8)->wcb_animate = [avgTimeMSSmooth](tre::ui::widget *w, float ) mutable
+      windowMain->create_widgetText(iRaw, 0, 1, 8)->wcb_animate = [](tre::ui::widget *w, float )
       {
-        if (audioCtx.getPerfTime_nbrCall() == 0) return;
         tre::ui::widgetText *wText = static_cast<tre::ui::widgetText*>(w);
         char txt[128];
-        const float avgTimeMS = audioCtx.getPerfTime_nbrCall() == 0 ? 0.f : audioCtx.getPerfTime_Total() / audioCtx.getPerfTime_nbrCall() * 1000.f;
-        avgTimeMSSmooth = 0.95f * avgTimeMSSmooth + 0.05f * avgTimeMS;
-        const unsigned avgSample = audioCtx.getPerfTime_nbrCall() == 0 ? 0 : audioCtx.getPerfTime_nbrSample() / audioCtx.getPerfTime_nbrCall();
-        const float    avgSampleTimeMS = float(avgSample) / float(audioCtx.getAudioSpec()->freq) * 1000.f;
-        std::snprintf(txt, 127, "perf[audio-callback]: time = %0.1f ms per call, samples = %d (%.1f ms)", avgTimeMSSmooth, avgSample, avgSampleTimeMS);
+        const float avgLoad = audioCtx.getPerf_load();
+        const float elapsedTime = audioCtx.getPerf_total();
+        std::snprintf(txt, 127, "perf[audio-callback]: load %.0f%% (%.1f ms)", avgLoad * 100.f, elapsedTime * 1000.f);
         wText->set_text(txt);
       };
       ++iRaw;

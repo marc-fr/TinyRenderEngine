@@ -658,12 +658,13 @@ void audioContext::updateSystem()
   }
 
 #ifdef TRE_PROFILE
-  m_perftime_total     = m_audioCallbackContext.ac_perftime_total;
-  m_perftime_nbrCall   = m_audioCallbackContext.ac_perftime_nbrCall;
-  m_perftime_nbrSample = m_audioCallbackContext.ac_perftime_nbrSample;
-  m_audioCallbackContext.ac_perftime_total = 0.f;
-  m_audioCallbackContext.ac_perftime_nbrCall = 0;
-  m_audioCallbackContext.ac_perftime_nbrSample = 0;
+  m_perf_nbrCall     = m_audioCallbackContext.ac_perf_nbrCall;
+  m_perf_elapsedTime = m_audioCallbackContext.ac_perf_elapsedTime;
+  m_perf_accElapsedTime = 0.95f * m_perf_accElapsedTime + 0.05f * m_perf_elapsedTime;
+  m_perf_accGenTime     = 0.95f * m_perf_accGenTime     + 0.05f * m_audioCallbackContext.ac_perf_genTime;
+  m_audioCallbackContext.ac_perf_nbrCall = 0;
+  m_audioCallbackContext.ac_perf_elapsedTime = 0.f;
+  m_audioCallbackContext.ac_perf_genTime = 0.f;
 #endif
 
   SDL_UnlockAudioDevice(m_deviceID);
@@ -773,9 +774,9 @@ void audioContext::s_audioCallbackContext::run(uint8_t * stream, int len)
 #ifdef TRE_PROFILE
   const systemclock::time_point tickEnd =  systemclock::now();
   const double timeElapsed = std::chrono::duration<double, std::micro>(tickEnd - tickStart).count();
-  ac_perftime_nbrCall += 1;
-  ac_perftime_nbrSample += sampleCount;
-  ac_perftime_total += float(timeElapsed * 1.e-6);
+  ac_perf_nbrCall += 1;
+  ac_perf_elapsedTime += float(timeElapsed * 1.e-6);
+  ac_perf_genTime += sampleCount / float(ac_freq);
 #endif
 }
 
