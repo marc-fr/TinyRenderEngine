@@ -16,6 +16,7 @@
 #include <math.h>
 #include <string>
 #include <random>
+#include <chrono>
 
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/euler_angles.hpp>
@@ -87,6 +88,9 @@ std::mt19937    rng; // global generator
 
 std::uniform_real_distribution<float> rand01(0.f, 1.f);
 
+typedef std::chrono::steady_clock systemclock;
+typedef systemclock::time_point   systemtick;
+
 // =============================================================================
 
 namespace rayTracer
@@ -98,6 +102,7 @@ namespace rayTracer
   int                    bounceLimit = 1;
 
   bool isDurty = false;
+  float lastElapsedTime = 0.f; // [s]
 
   tre::texture textureForRender;
 
@@ -305,6 +310,7 @@ namespace rayTracer
 
     // Ray-trace (a single pass at quarter-res)
     {
+      const systemtick tickStart = systemclock::now();
       const glm::vec4 mProjInvRed = glm::vec4(1.f/myWindow.m_matProjection3D[0][0], 1.f/myWindow.m_matProjection3D[1][1], 1.f, 1.f / myWindow.m_near);
       const glm::mat3 mViewRotInv = glm::mat3(glm::transpose(mView));
       const glm::vec3 camPos = glm::vec3(- glm::transpose(mView) * mView[3]);
@@ -327,7 +333,10 @@ namespace rayTracer
       }
       processStep = (processStep + 1) % 4;
       if (processStep == 0) accumCount += 1.f;
+      const systemtick tickEnd = systemclock::now();
+      lastElapsedTime = std::chrono::duration<float, std::milli>(tickEnd - tickStart).count() * 1.e-3f;
     }
+    TRE_LOG("rayTrace hakf-res: " << int(lastElapsedTime * 1.e4f) * 1.e-1f << " ms"); // tmp here
 
     // Upload the texture
     {

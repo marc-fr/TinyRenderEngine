@@ -51,55 +51,42 @@ void s_contact3D::s_skinKdTree::computeTree()
       // select the split direction
       const glm::vec3 bExtend = nodeBox.extend();
       const float     bExtendMax = std::max(std::max(bExtend.x, bExtend.y), bExtend.z);
-      unsigned dir = 0;
-      if      (bExtendMax == bExtend.y) dir = 1;
-      else if (bExtendMax == bExtend.z) dir = 2;
-      // select the split point
-#if 1 // mean-split
-      const float       splitPoint = nodeBox.center()[dir];
-#else // median-split
-      triCP.clear();
-      for (std::size_t tri = 0, stop = nTri; tri < stop; ++tri)
       {
-        if (box_box(nodeBox, triBox[tri])) triCP.push_back(triBox[tri].center()[dir]);
+        // select split direction
+        unsigned dir = 0;
+        if (bExtendMax == bExtend.y) dir = 1;
+        else if (bExtendMax == bExtend.z) dir = 2;
+        // select the split point
+        const float splitPoint = nodeBox.center()[dir];
+        const std::size_t nidA = tree.size();
+        const std::size_t nidB = nidA + 1;
+        TRE_ASSERT(nidB <= 0x7FFF);
+        // compute the child bounding-boxes
+        s_boundbox bbA = nodeBox, bbB = nodeBox;
+        if (dir == 0) { bbA.m_max.x = splitPoint; bbB.m_min.x = splitPoint; }
+        else if (dir == 1) { bbA.m_max.y = splitPoint; bbB.m_min.y = splitPoint; }
+        else  /*(dir == 2)*/ { bbA.m_max.z = splitPoint; bbB.m_min.z = splitPoint; }
+        // check if the split is ok
+        std::size_t ntriP = 0, ntriA = 0, ntriB = 0;
+        for (std::size_t tri = 0, stop = nTri; tri < stop; ++tri)
+        {
+          if (box_box(nodeBox, triBox[tri])) ++ntriP;
+          if (box_box(bbA, triBox[tri])) ++ntriA;
+          if (box_box(bbB, triBox[tri])) ++ntriB;
+        }
+        ntriP = ntriP / 2 + ntriP / 4;
+        if (ntriA > ntriP || ntriB > ntriP)
+          continue;
+        // ok, do the split
+        tree.push_back(s_node()); treeBox.push_back(bbA);
+        tree.push_back(s_node()); treeBox.push_back(bbB);
+        tree[nid].flags = (unsigned(nidA) << 17) | (unsigned(nidB) << 2) | (dir + 1);
+        tree[nid].split = splitPoint;
+        nodeStackNew.push_back(nidA);
+        nodeStackNew.push_back(nidB);
       }
-      if (triCP.size() < 8) // stop here, the node is a leaf
-      {
-        tree[nid].flags = 0;
-        // the triangle-list is built after.
-        continue;
-      }
-      sortQuick<float>(triCP);
-      const float       splitPoint = glm::clamp(triCP[triCP.size() / 2], nodeBox.m_min[dir], nodeBox.m_max[dir]);
-#endif
-      const std::size_t nidA = tree.size();
-      const std::size_t nidB = nidA + 1;
-      TRE_ASSERT(nidB <= 0x7FFF);
-      // compute the child bounding-boxes
-      s_boundbox bbA = nodeBox, bbB = nodeBox;
-      if      (dir == 0)   { bbA.m_max.x = splitPoint; bbB.m_min.x = splitPoint; }
-      else if (dir == 1)   { bbA.m_max.y = splitPoint; bbB.m_min.y = splitPoint; }
-      else  /*(dir == 2)*/ { bbA.m_max.z = splitPoint; bbB.m_min.z = splitPoint; }
-      // check if the split is ok
-      std::size_t ntriP = 0, ntriA = 0, ntriB = 0;
-      for (std::size_t tri = 0, stop = nTri; tri < stop; ++tri)
-      {
-        if (box_box(nodeBox, triBox[tri])) ++ntriP;
-        if (box_box(bbA, triBox[tri])) ++ntriA;
-        if (box_box(bbB, triBox[tri])) ++ntriB;
-      }
-      // TODO ...
-      // ok, do the split
-      tree.push_back(s_node()); treeBox.push_back(bbA);
-      tree.push_back(s_node()); treeBox.push_back(bbB);
-      tree[nid].flags = (unsigned(nidA) << 17) | (unsigned(nidB) << 2) | (dir+1);
-      tree[nid].split = splitPoint;
-      nodeStackNew.push_back(nidA);
-      nodeStackNew.push_back(nidB);
     }
     nodeStack.swap(nodeStackNew);
-
-    break; // TMP, TODO
   }
 
   // build the triangle list of each leaf
@@ -133,7 +120,7 @@ void s_contact3D::s_skinKdTree::computeTree()
         ++triCurr;
       }
     }
-    node.flags = (rangeTriA << 17) | (triCurr << 2);
+    node.flags = uint32_t((rangeTriA << 17) | (triCurr << 2));
     ++leafNodes;
   }
 
@@ -205,27 +192,22 @@ bool _skinKdTree_raytrace(const s_contact3D::s_skinKdTree &skinKdTree, const glm
     if (dir != 0)
     {
       const float tSplit = (cnode.split - origin[dir-1]) * invDir[dir-1];
-      const bool hitPrevNode = (cs.tMin <= tSplit) && (cs.flags == 0);
-      const bool hitNextNode = (cs.tMax >= tSplit) && !hitPrevNode && (cs.flags <= 1);
-      const bool chooseLeftNode = (invDir[dir-1] < 0.f) ? hitNextNode : hitPrevNode;
-      const bool chooseRightNode = (invDir[dir-1] < 0.f) ? hitPrevNode : hitNextNode;
-      TRE_ASSERT(!(chooseLeftNode && chooseRightNode));
 
-      if (chooseLeftNode) // stack: push left-node
+      if (cs.tMin <= tSplit && cs.flags == 0) // stack: push first-node
       {
-        stack[stackId].flags += 1 + hitNextNode;
+        stack[stackId].flags = 1;
         ++stackId;
-        stack[stackId].nodeId = cnode.getLeft();
+        stack[stackId].nodeId = invDir[dir-1] >= 0.f ? cnode.getLeft() : cnode.getRight();
         stack[stackId].flags = 0;
         stack[stackId].tMin = cs.tMin;
         stack[stackId].tMax = std::min(cs.tMax, tSplit);
         continue;
       }
-      if (chooseRightNode) // stack: push right-node
+      if (cs.tMax >= tSplit && cs.flags <= 1) // stack: push second-node
       {
-        stack[stackId].flags += 1 + hitNextNode;
+        stack[stackId].flags = 2;
         ++stackId;
-        stack[stackId].nodeId = cnode.getRight();
+        stack[stackId].nodeId = invDir[dir-1] >= 0.f ? cnode.getRight() : cnode.getLeft();
         stack[stackId].flags = 0;
         stack[stackId].tMin = std::max(cs.tMin, tSplit);
         stack[stackId].tMax = cs.tMax;
@@ -901,9 +883,8 @@ bool s_contact3D::raytrace_skin(s_contact3D & hitInfo,
 {
   TRE_ASSERT((std::abs(glm::length(direction) - 1.f)) < 1.e-6f);
 
-  float           minDist = std::numeric_limits<float>::infinity();
+  float minDist = std::numeric_limits<float>::infinity();
 
-#if 1 // use template
   const auto fnRT = [&origin, &direction, rayStart, &minDist, &hitInfo](const glm::vec3 &pt0, const glm::vec3 &pt1, const glm::vec3 &pt2) -> bool
     {
       const glm::vec3 edge01 = pt1 - pt0;
@@ -926,93 +907,6 @@ bool s_contact3D::raytrace_skin(s_contact3D & hitInfo,
     };
 
   _skinKdTree_raytrace(skinKdT, origin, direction, rayStart, std::numeric_limits<float>::infinity(), fnRT);
-#else
-  const glm::vec3 invDir = 1.f / direction;
-
-  struct s_kdStack { unsigned nodeId, flags; float tMin, tMax; };
-  std::array<s_kdStack,  s_skinKdTree::kMaxDepth> stack;
-
-  std::size_t stackId = 0;
-  stack[stackId].nodeId = 0;
-  stack[stackId].flags = 0;
-  stack[stackId].tMin = rayStart;
-  stack[stackId].tMax = std::numeric_limits<float>::infinity();
-
-  while (true)
-  {
-    const s_kdStack &cs    = stack[stackId];
-    const s_skinKdTree::s_node    &cnode = skinKdT.tree[cs.nodeId];
-    const unsigned  dir = cnode.getDir();
-
-    if (dir != 0)
-    {
-      const float tSplit = (cnode.split - origin[dir-1]) * invDir[dir-1];
-      const bool hitPrevNode = (cs.tMin <= tSplit) && (cs.flags == 0);
-      const bool hitNextNode = (cs.tMax >= tSplit) && !hitPrevNode && (cs.flags <= 1);
-      const bool chooseLeftNode = (invDir[dir-1] < 0.f) ? hitNextNode : hitPrevNode;
-      const bool chooseRightNode = (invDir[dir-1] < 0.f) ? hitPrevNode : hitNextNode;
-      TRE_ASSERT(!(chooseLeftNode && chooseRightNode));
-
-      if (chooseLeftNode) // stack: push left-node
-      {
-        stack[stackId].flags += 1 + hitNextNode;
-        ++stackId;
-        stack[stackId].nodeId = cnode.getLeft();
-        stack[stackId].flags = 0;
-        stack[stackId].tMin = cs.tMin;
-        stack[stackId].tMax = std::min(cs.tMax, tSplit);
-        continue;
-      }
-      if (chooseRightNode) // stack: push right-node
-      {
-        stack[stackId].flags += 1 + hitNextNode;
-        ++stackId;
-        stack[stackId].nodeId = cnode.getRight();
-        stack[stackId].flags = 0;
-        stack[stackId].tMin = std::max(cs.tMin, tSplit);
-        stack[stackId].tMax = cs.tMax;
-        continue;
-      }
-      // stack: pop
-      if (stackId == 0) break;
-      --stackId;
-    }
-    else
-    {
-      // leaf: process the triangles
-      stack[stackId].flags = 4;
-      bool hasHit = false;
-      const unsigned triStart = cnode.getLeft();
-      const unsigned triStop  = cnode.getRight();
-      for (unsigned tri = triStart; tri < triStop; ++tri)
-      {
-        const glm::vec3 &pt0 = skinKdT.skin[tri * 3 + 0];
-        const glm::vec3 &pt1 = skinKdT.skin[tri * 3 + 1];
-        const glm::vec3 &pt2 = skinKdT.skin[tri * 3 + 2];
-        const glm::vec3 edge01 = pt1 - pt0;
-        const glm::vec3 edge02 = pt2 - pt0;
-        const glm::vec3 outNormal = glm::cross(edge01, edge02);
-        if (glm::dot(outNormal, direction) > 0.f) continue;
-
-        glm::vec3 cUVT;
-        if (triangleRaytrace3D(pt0, pt1, pt2, origin, direction, &cUVT))
-        {
-          if (cUVT.z >= rayStart && cUVT.z < minDist)
-          {
-            minDist = cUVT.z;
-            hitInfo.normal = glm::normalize(outNormal);
-            TRE_ASSERT(!std::isnan(hitInfo.normal.x));
-            hasHit = true;
-          }
-        }
-      }
-      if (hasHit) break;
-      // stack: pop
-      if (stackId == 0) break;
-      --stackId;
-    }
-  }
-#endif
 
   hitInfo.penet = minDist;
   hitInfo.pt = origin + hitInfo.penet * direction;

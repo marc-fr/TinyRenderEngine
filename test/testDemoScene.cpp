@@ -572,8 +572,6 @@ int app_init()
   tre::profiler_loadShader();
   tre::profiler_loadIntoGPU(&worldHUDFont);
 
-  tre::profiler_initThread();
-
   // Render-targets and Post-Effects
 
   TRE_LOG("... loading post-effects ...");
