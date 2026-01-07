@@ -34,9 +34,6 @@ endif()
 add_executable(testIO testIO.cpp)
 target_link_libraries(testIO ${LINK_LIB_LIST})
 
-add_executable(testBenchmark testBenchmark.cpp)
-target_link_libraries(testBenchmark ${LINK_LIB_LIST})
-
 add_executable(testTextureSampling testTextureSampling.cpp)
 target_link_libraries(testTextureSampling ${LINK_LIB_LIST})
 

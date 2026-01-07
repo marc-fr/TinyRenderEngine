@@ -16,8 +16,9 @@ CORE_OBJ    := $(patsubst $(CORE_SRCDIR)/%.cpp, $(OBJDIR)/%.o, $(CORE_SRC))
 
 ## Dependencies
 
-# Note: On a fresh install of emsdk, you might temporary add "-sUSE_SDL=2" to
-#       the variable "DEFINE" so that emsdk will fetch the SDL2 lib.
+# SDL (Only first time is needed, so the emsdk can fetch SDL2 dev-lib)
+
+FIRSTTIME_CXXFLAGS := -sUSE_SDL=2
 
 # Opus (Optionnal)
 
@@ -27,22 +28,27 @@ OPUS_INC     := -I$(OPUS_SRCDIR)/include
 OPUS_LDFLAGS := $(OBJDIR)/libopus.a
 OPUS_RULE    := opus
 
+# Threading (Optionnal)
+
+THREAD_CCXFLAGS := -pthread
+THREAD_LDFLAGS  := -pthread -sPTHREAD_POOL_SIZE=2
+
 ## Platform
 
 CXX = emcc
-CXXFLAGS = -O2
+CXXFLAGS = -O2 $(THREAD_CCXFLAGS) $(FIRSTTIME_CXXFLAGS)
 DEFINE = -DTRE_EMSCRIPTEN -DTRE_OPENGL_ES $(OPUS_DEFINE) -DTRE_PROFILE -DTRE_DEBUG -DTRE_PRINTS
 INC = -I$(ROOTDIR)/include -I$(ROOTDIR)/glm $(OPUS_INC)
-LDFLAGS = -sUSE_SDL=2 -sFULL_ES3=1 -sINITIAL_MEMORY=256Mb -sSTACK_SIZE=1Mb -sWASM=1 -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 $(OPUS_LDFLAGS)
+LDFLAGS = -sUSE_SDL=2 -sFULL_ES3=1 -sINITIAL_MEMORY=256Mb -sSTACK_SIZE=1Mb -sWASM=1 -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 $(OPUS_LDFLAGS) $(THREAD_LDFLAGS)
 
 ## Rules
 
 default : all
 
-all : $(OBJDIR) $(OPUS_RULE) testBasic.html testDemoScene.html testAudioMixer.html testLighting.html testTextureCompression.html
+all : $(OBJDIR) $(OPUS_RULE) testBasic.html testDemoScene.html testAudioMixer.html testLighting.html testTextureCompression.html testContact2D.html testContact3D.html
 
 clean :
-	@rm -f $(OBJDIR)/*.o testBasic.* testDemoScene.* testAudioMixer.* testLighting.* testTextureCompression.*
+	@rm -f $(OBJDIR)/*.o test*
 
 #-
 
