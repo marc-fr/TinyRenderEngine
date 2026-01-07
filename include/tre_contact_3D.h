@@ -123,11 +123,6 @@ public:
   static bool box_box(const s_boundbox & box_0,
                       const s_boundbox & box_1);
 
-  /// Check intersection of a box and a convexe mesh [mesh's skin: list of triangles (warning: in-face culling)]
-  static bool box_skin(s_contact3D & cntBox,
-                       const s_boundbox & box,
-                       const s_skin &pts);
-
   /// Check intersection of a box and a sphere (center, radius) => no contact info
   static bool box_sphere(const s_boundbox & box,
                          const glm::vec3 & center, const float radius);

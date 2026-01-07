@@ -259,23 +259,32 @@ static void skin_barycenter(const s_contact3D::s_skin &pts, glm::vec3 &center, f
   center *= 1.f / (4.f * volume);
 }
 
-static const glm::vec3 axes[3] = { glm::vec3(1.f, 0.f, 0.f), glm::vec3(0.f, 1.f, 0.f), glm::vec3(0.f, 0.f, 1.f) };
-
 // (0D in 3D) Simple penetration test of a point in a volume ==================
 
 bool s_contact3D::point_treta(const glm::vec3 & point,
                               const glm::vec3 & pt0, const glm::vec3 & pt1, const glm::vec3 & pt2, const glm::vec3 & pt3)
 {
-  const glm::mat3 transf = glm::mat3(pt1 - pt0, pt2 - pt0, pt3 - pt0); // (no transpose - glm is column-major indexed)
+  const glm::vec3 v0P = point - pt0;
 
-  // fast but unsafe if the tetrahedron is degenerated. See other implementation of "point_treta" for the slow & safe method.
-  TRE_ASSERT(fabsf(glm::determinant(transf)) > 1.e-12f);
+  const glm::vec3 edge01 = pt1 - pt0;
+  const glm::vec3 edge02 = pt2 - pt0;
+  const glm::vec3 edge03 = pt3 - pt0;
 
-  const glm::mat3 transfInv = glm::inverse(transf);
-  const glm::vec3 coordUVW = transfInv * (point - pt0);
+  const glm::vec3 normal012 = glm::cross(edge01, edge02);
+  if (glm::dot(normal012, v0P) * glm::dot(normal012, edge03) < 0.f) return false;
 
-  if (glm::any(glm::lessThan(coordUVW, glm::vec3(0.f))) || (coordUVW.x + coordUVW.y + coordUVW.z) > 1.f)
-      return false;
+  const glm::vec3 normal013 = glm::cross(edge01, edge03);
+  if (glm::dot(normal013, v0P) * glm::dot(normal013, edge02) < 0.f) return false;
+
+  const glm::vec3 normal023 = glm::cross(edge02, edge03);
+  if (glm::dot(normal023, v0P) * glm::dot(normal023, edge01) < 0.f) return false;
+
+  const glm::vec3 v1P = point - pt1;
+  const glm::vec3 edge12 = pt2 - pt1;
+  const glm::vec3 edge13 = pt3 - pt1;
+
+  const glm::vec3 normal123 = glm::cross(edge12, edge13);
+  if (glm::dot(normal123, v1P) * glm::dot(normal123, edge01 /* = -edge10 */) > 0.f) return false;
 
   return true;
 }
@@ -372,7 +381,15 @@ bool s_contact3D::point_treta(s_contact3D & cntTetra,
 bool s_contact3D::point_box(const glm::vec3 & point,
                             const s_boundbox & bbox)
 {
-  return glm::all(glm::lessThanEqual(bbox.m_min, point)) && glm::all(glm::lessThanEqual(point, bbox.m_max));
+  //return glm::all(glm::lessThanEqual(bbox.m_min, point)) && glm::all(glm::lessThanEqual(point, bbox.m_max));
+
+  const glm::vec3 vAP = point - bbox.m_min;
+  if (vAP.x < 0.f || vAP.y < 0.f || vAP.z) return false;
+
+  const glm::vec3 vPB = bbox.m_max - point;
+  if (vPB.x < 0.f || vPB.y < 0.f || vPB.z) return false;
+
+  return true;
 }
 
 // ----------------------------------------------------------------------------
@@ -382,31 +399,30 @@ bool s_contact3D::point_box(s_contact3D & cntBox,
                             const s_boundbox & bbox)
 {
   const glm::vec3 vAP = point - bbox.m_min;
-  const glm::vec3 vPB = bbox.m_max - point;
-
   float vAPmin = vAP.x; uint vAPminInd = 0;
   if (vAP.y < vAPmin) { vAPmin = vAP.y; vAPminInd = 1; }
   if (vAP.z < vAPmin) { vAPmin = vAP.z; vAPminInd = 2; }
-
   if (vAPmin < 0.f) return false;
 
+  const glm::vec3 vPB = bbox.m_max - point;
   float vPBmin = vPB.x; uint vPBminInd = 0;
   if (vPB.y < vPBmin) { vPBmin = vPB.y; vPBminInd = 1; }
   if (vPB.z < vPBmin) { vPBmin = vPB.z; vPBminInd = 2; }
-
   if (vPBmin < 0.f) return false;
 
   if (vAPmin < vPBmin)
   {
     cntBox.penet = vAPmin;
-    cntBox.normal = - axes[vAPminInd];
-    cntBox.pt = point - vAP * axes[vAPminInd];
+    cntBox.normal = glm::vec3(0.f);
+    cntBox.normal[vAPminInd] = -1.f;
+    cntBox.pt = point + vAP * cntBox.normal;
   }
   else
   {
     cntBox.penet = vPBmin;
-    cntBox.normal = axes[vPBminInd];
-    cntBox.pt = point + vPB * axes[vPBminInd];
+    cntBox.normal = glm::vec3(0.f);
+    cntBox.normal[vPBminInd] = 1.f;
+    cntBox.pt = point + vPB * cntBox.normal;
   }
 
   return true;
@@ -477,7 +493,8 @@ bool s_contact3D::point_skin(s_contact3D & cntSkin,
 bool s_contact3D::point_sphere(const glm::vec3 &point,
                                const glm::vec3 &center, const float radius)
 {
-  return glm::length(point - center) <= radius;
+  const glm::vec3 vCP = point - center;
+  return glm::dot(vCP,vCP) <= radius * radius;
 }
 
 // ----------------------------------------------------------------------------
@@ -487,8 +504,9 @@ bool s_contact3D::point_sphere(s_contact3D & cntSphere,
                                const glm::vec3 &center, const float radius)
 {
   const glm::vec3 vCP = point - center;
-  const float     dCP = glm::length(vCP);
-  if (dCP > radius) return false;
+  float dCP = glm::dot(vCP,vCP);
+  if (dCP > radius * radius) return false;
+  dCP = std::sqrt(dCP);
 
   const glm::vec3 normalOut = dCP == 0.f ? glm::vec3(1.f, 0.f, 0.f) : vCP / dCP;
   cntSphere.pt = center + normalOut * radius;
@@ -772,11 +790,12 @@ bool s_contact3D::raytrace_box(s_contact3D & hitInfo,
 
   for (uint iAxis = 0; iAxis < 3; ++iAxis)
   {
-    const glm::vec3 planeNormal = axes[iAxis];
-    const float     dotNormalDir = glm::dot(planeNormal, direction);
+    const float     dotNormalDir = direction[iAxis]; // glm::dot(planeNormal, direction);
     if (std::abs(dotNormalDir) < 1.e-3f) continue;
+    const float     vOAn = vOA[iAxis];
+    const float     vOBn = vOB[iAxis];
     const bool      chooseA = dotNormalDir > 0.f;
-    const float     dist = (chooseA ? glm::dot(planeNormal, vOA) : glm::dot(planeNormal, vOB)) / dotNormalDir;
+    const float     dist = (chooseA ? vOAn : vOBn) / dotNormalDir;
     const glm::vec3 vCP = chooseA ? dist * direction - vOA : vOB - dist * direction; // if "B", take the opposite, so the "uv"-check still stay positive.
 
     // TODO: make it work when inside.
@@ -794,7 +813,8 @@ bool s_contact3D::raytrace_box(s_contact3D & hitInfo,
     {
       hitInfo.penet = dist;
       hitInfo.pt = origin + hitInfo.penet * direction;
-      hitInfo.normal = chooseA ? -planeNormal : planeNormal;
+      hitInfo.normal = glm::vec3(0.f);
+      hitInfo.normal[iAxis] = chooseA ? -1.f : 1.f;
       return true;
     }
   }
