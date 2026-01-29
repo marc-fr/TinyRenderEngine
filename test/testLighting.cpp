@@ -340,7 +340,7 @@ namespace rayTracer
 
     // Upload the texture
     {
-      textureForRender.updateFloat(reinterpret_cast<float*>(accumBuffer.data()), res.x, res.y, false);
+      textureForRender.updateFloat(accumBuffer.data(), res.x, res.y, false);
     }
   }
 }

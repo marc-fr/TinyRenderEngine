@@ -45,12 +45,14 @@ public:
   bool loadArray(const span<SDL_Surface*> &surfaces, int modemask, const bool freeSurface); ///< Load from multiple SDL_Surface into GPU as 2D-Array-Texture. Using freeSurface=true allows to apply modifiers in-place to the pixel data.
   bool loadCube(const std::array<SDL_Surface *, 6> &cubeFaces, int modemask, const bool freeSurface);  ///< Load from SDL_Surface into GPU as CubeMap-Texture. Textures lost: X+, X-, Y+, Y-, Z+, Z-. Using freeSurface=true allows to apply modifiers in-place to the pixel data.
   bool load3D(const uint8_t *data, int w, int h, int d, uint components, int modemask); ///< Load from SDL_Surface into GPU as 3D-Texture. Using modifiers is not allowed. data can be null.
-  bool loadFloat(float * __restrict data, int w, int h, int modemask); ///< Load from float data into GPU as 2D-Texture with RGBA floatting-point format. data can be null. Input data is written and content is undefined.
+  bool loadFloat(const glm::vec4 * data, int w, int h, int modemask); ///< Load from float data into GPU as 2D-Texture with RGBA floatting-point format. data can be null.
+  bool loadArrayFloat(const glm::vec4 * data, int w, int h, int layers, int modemask); ///< Load from float data into GPU as 2D-Array-Texture with RGBA floatting-point format. data can be null.
 
-  bool update(SDL_Surface *surface, const bool freeSurface, const bool unbind = true); ///< Upload new pixels into a 2D-texture. Using freeSurface=true allows to apply modifiers in-place to the pixel data.
-  bool updateArray(SDL_Surface *surface, int depthIndex, const bool freeSurface, const bool unbind = true); ///< Upload new pixels into a 2D-Array-Texture. Using freeSurface=true allows to apply modifiers in-place to the pixel data.
-  bool update3D(const uint8_t *data, int w, int h, int d, uint components, const bool unbind = true); ///< Upload new pixels into a 3D-Texture. Using modifiers is not allowed.
-  bool updateFloat(float * __restrict data, int w, int h, const bool unbind = true); ///< Upload new float pixels into a 2D-Texture with RGBA floatting-point format. Input data is written and content is undefined.
+  bool update(SDL_Surface *surface, const bool freeSurface, const bool unbind = true) const; ///< Upload new pixels into a 2D-texture. Using freeSurface=true allows to apply modifiers in-place to the pixel data.
+  bool updateArray(SDL_Surface *surface, int layerIndex, const bool freeSurface, const bool unbind = true) const; ///< Upload new pixels into a single layer of an 2D-Array-Texture. Using freeSurface=true allows to apply modifiers in-place to the pixel data.
+  bool update3D(const uint8_t *data, int w, int h, int d, uint components, const bool unbind = true) const; ///< Upload new pixels into a 3D-Texture. Using modifiers is not allowed.
+  bool updateFloat(const glm::vec4 * data, int w, int h, const bool unbind = true) const; ///< Upload new float pixels into a 2D-Texture with RGBA floatting-point format.
+  bool updateArrayFloat(const glm::vec4 * data, int w, int h, int layerIndex, const bool unbind = true) const; ///< Upload new float pixels into a single layer of an 2D-Array-Texture with RGBA floatting-point format.
 
   bool loadColor(const uint32_t cARGB); ///< Load a plain-colored texture into GPU as 2D-Texture.
   bool loadWhite() { return loadColor(0xFFFFFFFF); } ///< Load a plain-white texture into GPU as 2D-Texture.

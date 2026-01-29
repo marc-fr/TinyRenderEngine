@@ -215,6 +215,7 @@ bool texture::loadArray(const span<SDL_Surface*> &surfaces, int modemask, const 
   m_mask = modemask;
   m_w = surfaces[0]->w;
   m_h = surfaces[0]->h;
+  m_d = int(surfaces.size());
   TRE_ASSERT(m_w >= 4 && (m_w & 0x03) == 0);
   TRE_ASSERT(m_h >= 4 && (m_h & 0x03) == 0);
   TRE_ASSERT(!useAnisotropic() || useMipmap()); // Mipmap is need for Anisotropic
@@ -414,7 +415,7 @@ bool texture::load3D(const uint8_t *data, int w, int h, int d, uint components, 
 
 //-----------------------------------------------------------------------------
 
-bool texture::loadFloat(float * __restrict data, int w, int h, int modemask)
+bool texture::loadFloat(const glm::vec4 * data, int w, int h, int modemask)
 {
   m_type = TI_2D;
   m_mask = modemask;
@@ -446,7 +447,40 @@ bool texture::loadFloat(float * __restrict data, int w, int h, int modemask)
 
 //-----------------------------------------------------------------------------
 
-bool texture::update(SDL_Surface *surface, const bool freeSurface, const bool unbind /* = true */)
+bool texture::loadArrayFloat(const glm::vec4 * data, int w, int h, int layers, int modemask)
+{
+  m_type = TI_2DARRAY;
+  m_mask = modemask;
+  m_w = w;
+  m_h = h;
+  m_d = layers;
+  m_components = 4;
+
+  if (useCompress())
+  {
+    TRE_LOG("Cannot compress float-textures. Skip compression.");
+    m_mask &= ~MMASK_COMPRESS;
+  }
+
+  if (modemask & (MMASK_FORCE_NO_ALPHA | MMASK_RG_ONLY | MMASK_ALPHA_ONLY))
+  {
+    TRE_LOG("Cannot apply modifiers on float-textures, because RGBA is forced. loadArrayFloat failed.");
+    return false;
+  }
+
+  glGenTextures(1, &m_handle);
+
+  const bool success = updateArrayFloat(data, w, h, layers, false);
+
+  if (success) set_parameters();
+
+  glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+  return IsOpenGLok("texture::loadArrayFloat - complete texture");
+}
+
+//-----------------------------------------------------------------------------
+
+bool texture::update(SDL_Surface *surface, const bool freeSurface, const bool unbind /* = true */) const
 {
   if (surface == nullptr) return false;
   if (m_handle == 0) return false;
@@ -535,14 +569,14 @@ bool texture::update(SDL_Surface *surface, const bool freeSurface, const bool un
 
 //-----------------------------------------------------------------------------
 
-bool texture::updateArray(SDL_Surface* surface, int depthIndex, const bool freeSurface, const bool unbind /* = true */)
+bool texture::updateArray(SDL_Surface* surface, int layerIndex, const bool freeSurface, const bool unbind /* = true */) const
 {
   if (surface == nullptr) return false;
   if (m_handle == 0) return false;
 
   TRE_ASSERT(surface->w == m_w);
   TRE_ASSERT(surface->h == m_h);
-  TRE_ASSERT(depthIndex < m_d);
+  TRE_ASSERT(layerIndex < m_d);
 
   GLenum       externalformat = getTexFormatSource(surface);
   const GLenum internalformat = getTexInternalFormat(m_components, useCompress(), useGammeCorreciton());
@@ -607,15 +641,15 @@ bool texture::updateArray(SDL_Surface* surface, int depthIndex, const bool freeS
     }
     else
     {
-      glCompressedTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, depthIndex, surfLocal.w, surfLocal.h, 1, internalformat, bufferByteSize, surfLocal.pixels);
+      glCompressedTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, layerIndex, surfLocal.w, surfLocal.h, 1, internalformat, bufferByteSize, surfLocal.pixels);
     }
 #else
-    glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, depthIndex,  surfLocal.w, surfLocal.h, 1, externalformat, GL_UNSIGNED_BYTE, surfLocal.pixels);
+    glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, layerIndex,  surfLocal.w, surfLocal.h, 1, externalformat, GL_UNSIGNED_BYTE, surfLocal.pixels);
 #endif
   }
   else
   {
-    glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, depthIndex, surfLocal.w, surfLocal.h, 1, externalformat, GL_UNSIGNED_BYTE, surfLocal.pixels);
+    glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, layerIndex, surfLocal.w, surfLocal.h, 1, externalformat, GL_UNSIGNED_BYTE, surfLocal.pixels);
   }
 
   if (unbind) glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
@@ -625,7 +659,7 @@ bool texture::updateArray(SDL_Surface* surface, int depthIndex, const bool freeS
 
 //-----------------------------------------------------------------------------
 
-bool texture::update3D(const uint8_t* data, int w, int h, int d, uint components, const bool unbind /* = true */)
+bool texture::update3D(const uint8_t* data, int w, int h, int d, uint components, const bool unbind /* = true */) const
 {
   if (m_handle == 0) return false;
 
@@ -657,7 +691,7 @@ bool texture::update3D(const uint8_t* data, int w, int h, int d, uint components
 
 //-----------------------------------------------------------------------------
 
-bool texture::updateFloat(float * __restrict data, int w, int h, const bool unbind /* = true */)
+bool texture::updateFloat(const glm::vec4 * data, int w, int h, const bool unbind /* = true */) const
 {
   if (m_handle == 0) return false;
 
@@ -675,6 +709,29 @@ bool texture::updateFloat(float * __restrict data, int w, int h, const bool unbi
   if (unbind) glBindTexture(GL_TEXTURE_2D, 0);
 
   return IsOpenGLok("texture::updateFloat - upload pixels");
+}
+
+//-----------------------------------------------------------------------------
+
+bool texture::updateArrayFloat(const glm::vec4 * data, int w, int h, int layerIndex, const bool unbind /* = true */) const
+{
+  if (m_handle == 0) return false;
+
+  TRE_ASSERT(w == m_w);
+  TRE_ASSERT(h == m_h);
+  TRE_ASSERT(layerIndex < m_d);
+
+  // upload
+
+  glBindTexture(GL_TEXTURE_2D_ARRAY, m_handle);
+
+  {
+    glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, layerIndex, w, h, 1,  GL_RGBA, GL_FLOAT, data);
+  }
+
+  if (unbind) glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
+
+  return IsOpenGLok("texture::updateArrayFloat - upload pixels");
 }
 
 //-----------------------------------------------------------------------------
@@ -723,10 +780,10 @@ bool texture::write(std::ostream &outbuffer, SDL_Surface *surface, int modemask,
   if (modemask & MMASK_ALPHA_ONLY) components = 1;
 
   // header
-  uint tinfo[8];
+  int32_t tinfo[8];
   tinfo[0] = TI_2D;
-  tinfo[1] = (surface != nullptr) ? surface->w : 0u;
-  tinfo[2] = (surface != nullptr) ? surface->h : 0u;
+  tinfo[1] = (surface != nullptr) ? surface->w : 0;
+  tinfo[2] = (surface != nullptr) ? surface->h : 0;
   tinfo[3] = modemask;
   tinfo[4] = k_Config; // internal
   tinfo[5] = 0; // depth
@@ -813,13 +870,13 @@ bool texture::writeArray(std::ostream& outbuffer, const span<SDL_Surface*> &surf
   if (modemask & MMASK_ALPHA_ONLY) components = 1;
 
   // header
-  uint tinfo[8];
+  int32_t tinfo[8];
   tinfo[0] = TI_2DARRAY;
   tinfo[1] = w;
   tinfo[2] = h;
   tinfo[3] = modemask;
   tinfo[4] = k_Config; // internal
-  tinfo[5] = uint(surfaces.size());
+  tinfo[5] = int(surfaces.size());
   tinfo[6] = components;
   tinfo[7] = TEXTURE_BIN_VERSION;
 
@@ -906,10 +963,10 @@ bool texture::writeCube(std::ostream &outbuffer, const std::array<SDL_Surface *,
   TRE_ASSERT((modemask & MMASK_RG_ONLY) == 0); // 2-chanels modifier not supported
 
   // header
-  uint tinfo[8];
+  int32_t tinfo[8];
   tinfo[0] = TI_CUBEMAP;
-  tinfo[1] = isValid ? cubeFaces[0]->w : 0u;
-  tinfo[2] = isValid ? cubeFaces[0]->h : 0u;
+  tinfo[1] = isValid ? cubeFaces[0]->w : 0;
+  tinfo[2] = isValid ? cubeFaces[0]->h : 0;
   tinfo[3] = modemask;
   tinfo[4] = k_Config; // internal
   tinfo[5] = 0; // depth
@@ -969,7 +1026,7 @@ bool texture::write3D(std::ostream &outbuffer, const uint8_t *data, int w, int h
   TRE_ASSERT((modemask & MMASK_RG_ONLY) == 0); // 2-chanels modifier not supported
 
   // header
-  uint tinfo[8];
+  int32_t tinfo[8];
   tinfo[0] = TI_3D;
   tinfo[1] = w;
   tinfo[2] = h;
@@ -997,7 +1054,7 @@ bool texture::write3D(std::ostream &outbuffer, const uint8_t *data, int w, int h
 bool texture::read(std::istream &inbuffer)
 {
   // header
-  uint tinfo[8];
+  int32_t tinfo[8];
   inbuffer.read(reinterpret_cast<char*>(&tinfo), sizeof(tinfo) );
 
   if      (tinfo[0] == TI_2D     ) m_type = TI_2D;
@@ -1338,9 +1395,9 @@ void texture::_rawUnpack_A8_to_RGBA8(std::vector<char> &pixelData)
   pixelData.resize(npixels * 4);
   for (std::size_t ip = npixels; ip-- != 0; )
   {
-    pixelData[4 * ip + 0] = 0xFF;
-    pixelData[4 * ip + 1] = 0xFF;
-    pixelData[4 * ip + 2] = 0xFF;
+    pixelData[4 * ip + 0] = char(0xFF);
+    pixelData[4 * ip + 1] = char(0xFF);
+    pixelData[4 * ip + 2] = char(0xFF);
     pixelData[4 * ip + 3] = pixelData[ip];
   }
 }
