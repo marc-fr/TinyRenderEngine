@@ -149,13 +149,42 @@ public:
 
   bool        empty() const noexcept { return m_size == 0; }
   std::size_t size() const noexcept { return m_size; }
-  void        clean() noexcept; ///< clear and free memory (capacity = 0)
-  void        clear() noexcept { m_size = 0; } ///< clear but do not free memory
 
-  void        reserve(std::size_t capacity);
-  void        resize(std::size_t size);
-  void        push_back(const _T &element);
-  void        push_back(_T &&element);
+  /// clear and free memory (capacity = 0)
+  void        clean() noexcept
+  {
+    for (chunkElement *e : m_chunks) delete e;
+    m_chunks.clear();
+    m_size = 0;
+  }
+
+  /// clear but do not free memory
+  void        clear() noexcept { m_size = 0; }
+
+  void        reserve(std::size_t capacity)
+  {
+    for (std::size_t i = m_chunks.size(), stop = (capacity + chunkSize - 1) / chunkSize; i < stop; ++i)
+      m_chunks.push_back(new chunkElement);
+  }
+
+  void        resize(std::size_t size)
+  {
+    reserve(size);
+    m_size = size;
+  }
+
+  void        push_back(const _T &element)
+  {
+    resize(m_size + 1);
+    this->operator[](m_size - 1) = element;
+  }
+
+  void        push_back(_T &&element)
+  {
+    resize(m_size + 1);
+    this->operator[](m_size - 1) = std::move(element);
+  }
+
   void        pop_back() { TRE_ASSERT(m_size != 0); --m_size; }
 
   class iterator
@@ -193,10 +222,31 @@ public:
   std::size_t sizeCounted() const noexcept { return m_sizeCounted; }
 
   void        clear() noexcept { resize(0); } ///< clear but do not free memory
-  void        resize(std::size_t size);
-  void        push_back(const _T& element);
-  void        push_back(_T&& element);
-  const _T   &pop_back() noexcept;
+
+  void        resize(std::size_t size)
+  {
+    TRE_ASSERT(size <= capacity);
+    m_sizeCounted = size;
+  }
+
+  void        push_back(const _T& element)
+  {
+    resize(m_sizeCounted + 1);
+    this->operator[](m_sizeCounted - 1) = element;
+  }
+
+  void        push_back(_T&& element)
+  {
+    resize(m_sizeCounted + 1);
+    this->operator[](m_sizeCounted - 1) = std::move(element);
+  }
+
+  const _T   &pop_back() noexcept
+  {
+    m_sizeCounted = (m_sizeCounted != 0) ? m_sizeCounted - 1 : 0;
+    return this->operator[](m_sizeCounted);
+  }
+
   const _T   &back() const noexcept { return (m_sizeCounted != 0) ? this->operator[](m_sizeCounted-1) : this->operator[](0); }
   _T         &back()       noexcept { return (m_sizeCounted != 0) ? this->operator[](m_sizeCounted-1) : this->operator[](0); }
 
@@ -350,40 +400,197 @@ void tetrahedronQuality(const glm::vec3 &vA, const glm::vec3 &vB, const glm::vec
 /// @name Sort algorithms
 /// @{
 
+namespace details
+{
+  template<class _T> static void _sortFusion(tre::span<_T> &array, std::size_t istart, std::size_t iend, std::vector<_T> &buffer)
+  {
+    //- stop  condition
+    if ((iend-istart)<=1) return;
+    //- divide
+    const std::size_t sizeA = (iend-istart) / 2;
+    const std::size_t icut = istart + sizeA;
+    _sortFusion(array, istart, icut, buffer);
+    _sortFusion(array, icut  , iend, buffer);
+    // - merge (fusion)
+    memcpy(buffer.data(), &array[istart], sizeA * sizeof(_T));
+    _T *ptrA = &buffer[0];
+    _T *ptrAStop = &buffer[sizeA];
+    _T *ptrB = &array[icut];
+    _T *ptrBStop = &array[iend];
+    _T *ptrMerge = &array[istart];
+
+    while (ptrA != ptrAStop && ptrB != ptrBStop)
+      *ptrMerge++ = (*ptrA < *ptrB) ? *ptrA++ : *ptrB++;
+
+    while (ptrA != ptrAStop)
+      *ptrMerge++ = *ptrA++;
+
+    //while (ptrB != ptrBStop) => not needed as the arrayB is in-place.
+    //  *ptrMerge++ = *ptrB++;
+  }
+
+  template<class _T> static void _sortQuick(tre::span<_T> &array, std::size_t istart, std::size_t iend)
+  {
+    //- stop  condition
+    if ((iend-istart)<=1) return;
+    //- find partition
+    std::size_t ileft = istart, iright = iend-1;
+    _T vpivot = array[istart];
+    while (1)
+    {
+      while (ileft < iend     && array[ileft] <= vpivot) ++ileft;
+      while (iright >= istart && array[iright] > vpivot) --iright;
+      if (ileft<iright)
+      {
+        std::swap(array[ileft], array[iright]);
+      }
+      else
+      {
+        break;
+      }
+    }
+    // pivot is on position "iright"
+    {
+      std::swap(array[istart], array[iright]);
+    }
+    //- divide recursively
+    _sortQuick(array,istart,iright);
+    _sortQuick(array,iright+1,iend);
+  }
+
+  template<class _T> static void _sortQuick_permutation(tre::span<_T> &array, tre::span<unsigned> &permut, std::size_t istart, std::size_t iend)
+  {
+    //- stop  condition
+    if ((iend-istart)<=1) return;
+    //- find partition
+    std::size_t ileft = istart, iright = iend-1;
+    _T vpivot = array[istart];
+    while (1)
+    {
+      while (ileft < iend     && array[ileft] <= vpivot) ++ileft;
+      while (iright >= istart && array[iright] > vpivot) --iright;
+      if (ileft<iright)
+      {
+        std::swap(array[ileft], array[iright]);
+        std::swap(permut[ileft], permut[iright]);
+      }
+      else
+      {
+        break;
+      }
+    }
+    // pivot is on position "iright"
+    {
+      std::swap(array[istart], array[iright]);
+      std::swap(permut[istart], permut[iright]);
+    }
+    //- divide recursively
+    _sortQuick_permutation(array,permut,istart,iright);
+    _sortQuick_permutation(array,permut,iright+1,iend);
+  }
+
+  template<class _T> struct sortRadixKey
+  {
+    static inline unsigned key(const _T &v);
+  };
+
+  template<> struct sortRadixKey<unsigned>
+  {
+    static inline unsigned key(const unsigned &v) { return v; }
+  };
+
+  template<> struct sortRadixKey<float>
+  {
+    static inline unsigned key(const float &v) { return *reinterpret_cast<const unsigned*>(&v) ^ ((*reinterpret_cast<const int*>(&v) >> 31) | 0x80000000); }
+  };
+
+}
+
 /**
  * @brief sort with "Counting-sort" algorithm, and make values unique (remove duplicated values)
  */
-void sortAndUniqueCounting(std::vector<uint> &array);
+void sortAndUniqueCounting(std::vector<unsigned> &array);
 
 /**
  * @brief sort with "Bull-sort" algorithm, and make values unique (remove duplicated values)
  */
-void sortAndUniqueBull(std::vector<uint> &array);
+void sortAndUniqueBull(std::vector<unsigned> &array);
 
 /**
  * @brief sort with "Insertion" algorithm
  */
-template<class _T> void sortInsertion(tre::span<_T> array);
+template<class _T> void sortInsertion(tre::span<_T> array)
+{
+  for (size_t i = 1, iend = array.size(); i < iend; ++i)
+  {
+    size_t j = i;
+    while (j != 0 && array[j] < array[j - 1])
+    {
+      std::swap(array[j], array[j - 1]);
+      --j;
+    }
+  }
+}
 
 /**
  * @brief sort with "Fusion" algorithm
  */
-template<class _T> void sortFusion(tre::span<_T> array);
+template<class _T> void sortFusion(tre::span<_T> array)
+{
+  std::vector<_T> arrayBuffer(array.size() / 2);
+  details::_sortFusion<_T>(array, 0, array.size(), arrayBuffer);
+}
 
 /**
  * @brief sort with "Quick-sort" algorithm
  */
-template<class _T> void sortQuick(tre::span<_T> array);
+template<class _T> void sortQuick(tre::span<_T> array)
+{
+  details::_sortQuick<_T>(array, 0, array.size());
+}
 
 /**
  * @brief sort with "Quick-sort" algorithm
  */
-template<class _T> void sortQuick_permutation(tre::span<_T> array, tre::span<uint> permut);
+template<class _T> void sortQuick_permutation(tre::span<_T> array, tre::span<unsigned> permut)
+{
+  TRE_ASSERT(permut.size() == array.size());
+  details::_sortQuick_permutation<_T>(array, permut, 0, array.size());
+}
 
 /**
  * @brief sort with "Radix-sort" algorithm
  */
-template<class _T> void sortRadix(tre::span<_T> array);
+template<class _T> void sortRadix(tre::span<_T> array)
+{
+  if (array.empty()) return;
+
+  const std::size_t n = array.size();
+  std::vector<_T> array2V(n);
+  tre::span<_T> array2(array2V);
+
+  unsigned counter[256];
+
+  for (uint ishift = 0, s = 0; ishift < 4; ++ishift, s += 8)
+  {
+    memset(counter, 0, sizeof(unsigned) * 256); // reset counter
+
+    for (std::size_t i = 0; i < n; ++i)
+      ++counter[(details::sortRadixKey<_T>::key(array[i]) >> s) & 0xFF];
+
+    for (std::size_t j = 1; j < 256; ++j)
+      counter[j] += counter[j-1];
+
+    for (std::size_t i = n; i-- != 0;)
+    {
+      unsigned j = (details::sortRadixKey<_T>::key(array[i]) >> s) & 0xFF;
+      array2[--counter[j]] = array[i];
+    }
+
+    array.swap(array2); // result is in "array2", so swap it with "array". It runs in O(1) as std::vector::swap swaps the data pointers and the vector's intern data.
+  }
+
+}
 
 /// @}
 // Shader-Model ===============================================================
@@ -399,9 +606,71 @@ class shader;
 bool checkLayoutMatch_Shader_Model(shader *pshader, model *pmodel);
 
 /// @}
+// Noise ======================================================================
+/// @name noise helpers
+/// @{
+
+/**
+* @brief return integer given 3 integers
+*/
+static int hashI3(const glm::ivec3 &p)
+{
+  int n = p.x * 3 + p.y * 113 + p.z * 311; // 3D -> 1D
+  n = (n << 13) ^ n;
+  return n * (n * n * 15731 + 789221) + 1376312589;
+}
+
+/**
+* @brief return float value in [0,1] given 2 integers
+*/
+static float hashF2(int p, int q)
+{
+  p = p * 3 + q * 11;
+  p = (p << 13) ^ p;
+  p = p * (p * p * 15731 + 789221) + 1376312589;
+  return float(p & 0x0fffffff) / float(0x0fffffff);
+}
+
+/**
+* @brief return float value in [0,1] given 3 integers
+*/
+static float hashF3(const glm::ivec3 &p)
+{
+  return float(hashI3(p) & 0x0fffffff) / float(0x0fffffff);
+}
+
+/**
+* @brief return cubic interoplated value in [0,1], noise resolution is 1.
+*/
+float noise1(float t, int seed);
+
+/**
+* @brief return cubic interpolated value on 3d-grid values in [0,1]. The grid resolution is 1.
+*/
+float noise3(const glm::vec3 &x);
+
+/**
+* @brief return gradient in xyz and value in z, of a cubic interpolated 3d-grid values in [0,1]. The grid resolution is 1.
+*/
+glm::vec4 noise3GradAndValue(const glm::vec3 &x);
+
+/// @}
+// FFT ======================================================================
+/// @name Fast Fourier Transform helpers
+/// @{
+
+/**
+* @brief compute in-place the DFT of "data" (complex). The size must be a power of 2.
+*/
+void fft(glm::vec2 * __restrict data, const std::size_t n, const bool inverse);
+
+/**
+* @brief compute in-place the DFT of "data" (complex), describing a n x n values. The size must be a power of 2. "sideBuffer" must cover at least n elements.
+*/
+void fft2D(glm::vec2 * __restrict data, const std::size_t n, const bool inverse, glm::vec2 * __restrict sideBuffer);
+
+/// @}
 
 } // namespace
-
-#include "tre_utils.hpp"
 
 #endif

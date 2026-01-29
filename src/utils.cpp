@@ -494,4 +494,108 @@ bool checkLayoutMatch_Shader_Model(shader *pshader, model *pmodel)
 
 // ============================================================================
 
+float noise1(float t, int seed)
+{
+  const int p = int(t);
+  t = std::fmod(t, 1.f);
+  t = t * t * (3.f - 2.f * t);
+  return glm::mix(hashF2(p, seed), hashF2(p + 1, seed), t);
+}
+
+// ----------------------------------------------------------------------------
+
+float noise3(const glm::vec3 &x)
+{
+  glm::ivec3 i = glm::ivec3(x);
+  glm::vec3 f = glm::fract(x); f = f * f * (3.f-2.f * f);
+  return glm::mix(glm::mix(glm::mix(hashF3(i+glm::ivec3(0,0,0)), hashF3(i+glm::ivec3(1,0,0)),f.x),
+                           glm::mix(hashF3(i+glm::ivec3(0,1,0)), hashF3(i+glm::ivec3(1,1,0)),f.x),f.y),
+                  glm::mix(glm::mix(hashF3(i+glm::ivec3(0,0,1)), hashF3(i+glm::ivec3(1,0,1)),f.x),
+                           glm::mix(hashF3(i+glm::ivec3(0,1,1)), hashF3(i+glm::ivec3(1,1,1)),f.x),f.y),f.z);
+}
+
+// ----------------------------------------------------------------------------
+
+glm::vec4 noise3GradAndValue(const glm::vec3 &x)
+{
+  const glm::ivec3 i  = glm::ivec3(x);
+  const glm::vec3  fR = glm::fract(x);
+  const glm::vec3  f  = fR * fR * (3.f - 2.f * fR);
+  const glm::vec3  g  = glm::vec3(1.f) - fR;
+  const glm::vec3  df = 6.f * fR * (1.f - fR);
+  const glm::vec3  dg = -df;
+  float hAAA = hashF3(i+glm::ivec3(0,0,0)); float hAAB = hashF3(i+glm::ivec3(0,0,1));
+  float hABA = hashF3(i+glm::ivec3(0,1,0)); float hABB = hashF3(i+glm::ivec3(0,1,1));
+  float hBAA = hashF3(i+glm::ivec3(1,0,0)); float hBAB = hashF3(i+glm::ivec3(1,0,1));
+  float hBBA = hashF3(i+glm::ivec3(1,1,0)); float hBBB = hashF3(i+glm::ivec3(1,1,1));
+  glm::vec3 grad = hAAA * glm::vec3(dg.x * g.y * g.z, g.x * dg.y * g.z, g.x * g.y * dg.z) + hBAA * glm::vec3(df.x * g.y * g.z, f.x * dg.y * g.z, f.x * g.y * dg.z) +
+    hABA * glm::vec3(dg.x * f.y * g.z, g.x * df.y * g.z, g.x * f.y * dg.z) + hBBA * glm::vec3(df.x * f.y * g.z, f.x * df.y * g.z, f.x * f.y * dg.z) +
+    hAAB * glm::vec3(dg.x * g.y * f.z, g.x * dg.y * f.z, g.x * g.y * df.z) + hBAB * glm::vec3(df.x * g.y * f.z, f.x * dg.y * f.z, f.x * g.y * df.z) +
+    hABB * glm::vec3(dg.x * f.y * f.z, g.x * df.y * f.z, g.x * f.y * df.z) + hBBB * glm::vec3(df.x * f.y * f.z, f.x * df.y * f.z, f.x * f.y * df.z);
+  float v = glm::mix(glm::mix(glm::mix(hAAA, hBAA, f.x),
+                              glm::mix(hABA, hBBA, f.x),f.y),
+                     glm::mix(glm::mix(hAAB, hBAB, f.x),
+                              glm::mix(hABB, hBBB, f.x),f.y),f.z);
+  return glm::vec4(grad,v);
+}
+
+// ============================================================================
+
+void fft(glm::vec2 * __restrict data, const std::size_t n, const bool inverse)
+{
+  TRE_ASSERT((n & (n - 1)) == 0); // must be power of two
+  // Bit-reversal
+  for (std::size_t i = 0, j = 0; i < n; ++i)
+  {
+    if (j > i) std::swap(data[i], data[j]);
+    std::size_t m = n >> 1;
+    for (; (j >= m) && (m >= 2); m >>= 1) j -= m;
+    j += m;
+  }
+  // Cooley-Tukey
+  for (std::size_t mmax = 2; mmax <= n; mmax <<= 1)
+  {
+    const float theta = (inverse ? +1.f : -1.f) * (2.f * float(M_PI) / float(mmax));
+    const glm::vec2 wtemp = glm::vec2(std::sin(0.5f * theta), std::sin(theta));
+    const glm::vec2 wpr = -2.f * wtemp * wtemp;
+    const glm::vec2 wpi = glm::vec2(std::sin(theta), 0.f);
+    glm::vec2 w = glm::vec2(1.f, 0.f);
+    for (std::size_t m = 0; m < mmax / 2; ++m)
+    {
+      for (std::size_t i = m; i < n; i += mmax)
+      {
+        const std::size_t j = i + mmax / 2;
+        const glm::vec2   tempr = w * data[j];
+        data[j] = data[i] - tempr;
+        data[i] += tempr;
+      }
+      const glm::vec2 wtmp = w;
+      w = w * wpr + glm::vec2(wtmp.y, -wtmp.x) * wpi + wtmp;
+    }
+  }
+  // Normalize if inverse
+  if (inverse)
+  {
+    const float invn = 1.f / float(n);
+    for (std::size_t i = 0; i < n; ++i) data[i] *= invn;
+  }
+}
+
+// ----------------------------------------------------------------------------
+
+void fft2D(glm::vec2 * __restrict data, const std::size_t n, const bool inverse, glm::vec2 * __restrict sideBuffer)
+{
+  // FFT on lines
+  for (std::size_t iy = 0; iy < n; ++iy) fft(&data[iy * n], n, inverse);
+  // FFT on columns
+  for (std::size_t ix = 0; ix < n; ++ix)
+  {
+    for (std::size_t iy = 0; iy < n; ++iy) sideBuffer[iy] = data[iy * n + ix];
+    fft(sideBuffer, n, inverse);
+    for (std::size_t iy = 0; iy < n; ++iy) data[iy * n + ix] = sideBuffer[iy];
+  }
+}
+
+// ============================================================================
+
 } // namespace
