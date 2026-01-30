@@ -18,6 +18,11 @@
 #include <random>
 #include <chrono>
 
+#ifndef TRE_EMSCRIPTEN // emscripten supports threads but don't use it
+#define RAYTRACER_THREADED
+#include <thread>
+#endif
+
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/euler_angles.hpp>
 
@@ -27,19 +32,19 @@
 
 // =============================================================================
 
-static tre::windowContext             myWindow;
-static tre::windowContext::s_controls myControls;
+tre::windowContext             myWindow;
+tre::windowContext::s_controls myControls;
 
-static tre::modelStaticIndexed3D meshRoom = tre::modelStaticIndexed3D(tre::modelStaticIndexed3D::VB_NORMAL /*| tre::modelStaticIndexed3D::VB_UV*/);
+tre::modelStaticIndexed3D meshRoom = tre::modelStaticIndexed3D(tre::modelStaticIndexed3D::VB_NORMAL /*| tre::modelStaticIndexed3D::VB_UV*/);
 const float roomSize = 4.f; // full extend
 
-static tre::modelStaticIndexed3D meshes = tre::modelStaticIndexed3D(tre::modelStaticIndexed3D::VB_NORMAL /*| tre::modelStaticIndexed3D::VB_UV*/);
+tre::modelStaticIndexed3D meshes = tre::modelStaticIndexed3D(tre::modelStaticIndexed3D::VB_NORMAL /*| tre::modelStaticIndexed3D::VB_UV*/);
 std::size_t modelPart = 0;
 std::size_t NmodelPart = 0;
 glm::mat4 modelTransform = glm::mat4(1.f);
 std::vector<tre::s_contact3D::s_skinKdTree> meshesSkin;
 
-static tre::modelRaw2D meshQuad;
+tre::modelRaw2D meshQuad;
 
 tre::shader shaderPhong;
 tre::shader shaderGGX;
@@ -68,10 +73,9 @@ float     meshRoughness = 0.1f;
 
 bool showRoom = true;
 const glm::vec3 sunLightIncomingDir = glm::normalize(glm::vec3(-0.243f,-0.970f,0.f));
-const glm::vec3 sunLightColor = glm::vec3(0.9f,1.3f,0.9f);
-const glm::vec3 ambiantLightColor = glm::vec3(0.9f,0.9f,1.3f);
+const glm::vec3 lightColor = glm::vec3(0.9f,1.3f,0.9f);
 float sunLightIntensity = 1.f;
-float ambiantLightIntensity = 0.1f;
+float ambiantLightIntensity = 0.05f;
 
 bool showNormal = false;
 bool showRaytrace = false;
@@ -83,8 +87,9 @@ glm::mat4 mView = glm::mat4(1.f);
 tre::font       worldFont;
 tre::baseUI2D   worldUI;
 tre::ui::window *worldWin = nullptr;
+tre::ui::window *testRandSpereWin = nullptr;
 
-std::mt19937    rng; // global generator
+thread_local std::mt19937 rng; // global generator (local thread)
 
 std::uniform_real_distribution<float> rand01(0.f, 1.f);
 
@@ -96,9 +101,7 @@ typedef systemclock::time_point   systemtick;
 namespace rayTracer
 {
   glm::ivec2             res = glm::ivec2(0);
-  float                  accumCount = 0.f;
   std::vector<glm::vec4> accumBuffer;
-  int                    processStep = 0;
   int                    bounceLimit = 1;
 
   bool isDurty = false;
@@ -155,62 +158,70 @@ namespace rayTracer
     return normal * (cosTheta) + tangentU * (sinTheta * cosPhi) + tangentV * (sinTheta * sinPhi);
   }
 
-  glm::vec3 ray(glm::vec3 pos, glm::vec3 dir, int bounceCount = 0)
+  glm::vec3 ray(glm::vec3 pos, glm::vec3 dir)
   {
     tre::s_contact3D hitInfo;
-    hitInfo.penet = std::numeric_limits<float>::infinity();
+    glm::vec3 retLight = glm::vec3(1.f);
+    int bounceCount = 0;
 
-    // Room hit
-    if (showRoom)
+    while (true)
     {
-      const float invDirX = (dir.x == 0.f) ? 0.f : 1.f /dir.x;
-      const float invDirY = (dir.y == 0.f) ? 0.f : 1.f /dir.y;
-      const float invDirZ = (dir.z == 0.f) ? 0.f : 1.f /dir.z;
-      {
-        // bottom
-        const float     dist = (-0.5f * roomSize - pos.y) * invDirY;
-        const glm::vec3 pt = pos + dist * dir;
-        const bool      inRange = std::abs(pt.x) < 0.5f * roomSize && std::abs(pt.z) < 0.5f * roomSize;
-        if (dist > 0.f && inRange && dist < hitInfo.penet) { hitInfo.penet = dist; hitInfo.pt = pt; hitInfo.normal = glm::vec3(0.f, 1.f, 0.f); }
-      }
-      {
-        // left
-        const float     dist = (-0.5f * roomSize - pos.x) * invDirX;
-        const glm::vec3 pt = pos + dist * dir;
-        const bool      inRange = std::abs(pt.y) < 0.5f * roomSize && std::abs(pt.z) < 0.5f * roomSize;
-        if (dist > 0.f && inRange && dist < hitInfo.penet) { hitInfo.penet = dist; hitInfo.pt = pt; hitInfo.normal = glm::vec3(1.f, 0.f, 0.f); }
-      }
-      {
-        // right
-        const float     dist = (0.5f * roomSize - pos.x) * invDirX;
-        const glm::vec3 pt = pos + dist * dir;
-        const bool      inRange = std::abs(pt.y) < 0.5f * roomSize && std::abs(pt.z) < 0.5f * roomSize;
-        if (dist > 0.f && inRange && dist < hitInfo.penet) { hitInfo.penet = dist; hitInfo.pt = pt; hitInfo.normal = glm::vec3(-1.f, 0.f, 0.f); }
-      }
-      {
-        // back
-        const float     dist = (-0.5f * roomSize - pos.z) * invDirZ;
-        const glm::vec3 pt = pos + dist * dir;
-        const bool      inRange = std::abs(pt.x) < 0.5f * roomSize && std::abs(pt.y) < 0.5f * roomSize;
-        if (dist > 0.f && inRange && dist < hitInfo.penet) { hitInfo.penet = dist; hitInfo.pt = pt; hitInfo.normal = glm::vec3(0.f, 0.f, 1.f); }
-      }
-    }
+      hitInfo.penet = std::numeric_limits<float>::infinity();
 
-    bool hitMesh = false;
+      // Room hit
+      if (showRoom)
+      {
+        const float invDirX = (dir.x == 0.f) ? 0.f : 1.f /dir.x;
+        const float invDirY = (dir.y == 0.f) ? 0.f : 1.f /dir.y;
+        const float invDirZ = (dir.z == 0.f) ? 0.f : 1.f /dir.z;
+        {
+          // bottom
+          const float     dist = (-0.5f * roomSize - pos.y) * invDirY;
+          const glm::vec3 pt = pos + dist * dir;
+          const bool      inRange = std::abs(pt.x) < 0.5f * roomSize && std::abs(pt.z) < 0.5f * roomSize;
+          if (dist > 0.f && inRange && dist < hitInfo.penet) { hitInfo.penet = dist; hitInfo.pt = pt; hitInfo.normal = glm::vec3(0.f, 1.f, 0.f); }
+        }
+        {
+          // left
+          const float     dist = (-0.5f * roomSize - pos.x) * invDirX;
+          const glm::vec3 pt = pos + dist * dir;
+          const bool      inRange = std::abs(pt.y) < 0.5f * roomSize && std::abs(pt.z) < 0.5f * roomSize;
+          if (dist > 0.f && inRange && dist < hitInfo.penet) { hitInfo.penet = dist; hitInfo.pt = pt; hitInfo.normal = glm::vec3(1.f, 0.f, 0.f); }
+        }
+        {
+          // right
+          const float     dist = (0.5f * roomSize - pos.x) * invDirX;
+          const glm::vec3 pt = pos + dist * dir;
+          const bool      inRange = std::abs(pt.y) < 0.5f * roomSize && std::abs(pt.z) < 0.5f * roomSize;
+          if (dist > 0.f && inRange && dist < hitInfo.penet) { hitInfo.penet = dist; hitInfo.pt = pt; hitInfo.normal = glm::vec3(-1.f, 0.f, 0.f); }
+        }
+        {
+          // back
+          const float     dist = (-0.5f * roomSize - pos.z) * invDirZ;
+          const glm::vec3 pt = pos + dist * dir;
+          const bool      inRange = std::abs(pt.x) < 0.5f * roomSize && std::abs(pt.y) < 0.5f * roomSize;
+          if (dist > 0.f && inRange && dist < hitInfo.penet) { hitInfo.penet = dist; hitInfo.pt = pt; hitInfo.normal = glm::vec3(0.f, 0.f, 1.f); }
+        }
+      }
 
-    // Mesh hit
-    {
-      tre::s_contact3D hitInfoMesh;
-      const bool earlyCullMesh = tre::s_contact3D::point_box(pos, meshes.partInfo(modelPart).m_bbox) || tre::s_contact3D::raytrace_box(hitInfoMesh, pos, dir, meshes.partInfo(modelPart).m_bbox, 0.f);
-      if (!earlyCullMesh || !tre::s_contact3D::raytrace_skin(hitInfoMesh, pos, dir, meshesSkin[modelPart], 0.f)) hitInfoMesh.penet = 0.f;
-      if (hitInfoMesh.penet > 0.f && hitInfoMesh.penet < hitInfo.penet) { hitInfo = hitInfoMesh; hitMesh = true; }
-    }
+      bool hitMesh = false;
 
-    if (!std::isfinite(hitInfo.penet))
-    {
-      // no hit: background + sun-light
-      return (glm::dot(dir, sunLightIncomingDir) < -0.99f) * sunLightIntensity * sunLightColor + ambiantLightIntensity * ambiantLightColor;
-    }
+      // Mesh hit
+      {
+        tre::s_contact3D hitInfoMesh;
+        const bool earlyCullMesh = tre::s_contact3D::point_box(pos, meshes.partInfo(modelPart).m_bbox) || tre::s_contact3D::raytrace_box(hitInfoMesh, pos, dir, meshes.partInfo(modelPart).m_bbox, 0.f);
+        if (!earlyCullMesh || !tre::s_contact3D::raytrace_skin(hitInfoMesh, pos, dir, meshesSkin[modelPart], 0.f)) hitInfoMesh.penet = 0.f;
+        if (hitInfoMesh.penet > 0.f && hitInfoMesh.penet < hitInfo.penet) { hitInfo = hitInfoMesh; hitMesh = true; }
+      }
+
+      if (!std::isfinite(hitInfo.penet))
+      {
+        // no hit: background + sun-light
+        static constexpr float kSunLightFactor = 1.f / (2.f * 3.141592f * (1.f - 0.99f)); // in fact, the sun-light becomes a cone-light.
+        static constexpr float kAmbLightFactor = 0.f;
+        retLight *= kSunLightFactor * (glm::dot(dir, sunLightIncomingDir) < -0.99f) * sunLightIntensity * lightColor + kAmbLightFactor * ambiantLightIntensity * lightColor;
+        break;
+      }
 
     if (bounceCount >= bounceLimit)
     {
@@ -218,83 +229,181 @@ namespace rayTracer
       return glm::vec3(0.f);
     }
 
-    // double-sided
+      // double-sided
 
-    if (glm::dot(-dir, hitInfo.normal) < 0.f) hitInfo.normal = -hitInfo.normal;
+      if (glm::dot(-dir, hitInfo.normal) < 0.f) hitInfo.normal = -hitInfo.normal;
 
-    const float dotN = glm::dot(-dir, hitInfo.normal); // >= 0.
-    TRE_ASSERT(dotN <= 1.f);
+      const float dotN = glm::dot(-dir, hitInfo.normal); // >= 0.
+      TRE_ASSERT(dotN <= 1.f);
 
-    // there is a hit
+      // there is a hit
 
-    const glm::vec3 matColor = hitMesh ? meshDiffuse   : roomDiffuse;
-    const float     matMetal = hitMesh ? meshMetalness : roomMetalness;
-    const float     matR2    = hitMesh ? meshRoughness * meshRoughness : roomRoughness * roomRoughness;
+      const glm::vec3 matColor = hitMesh ? meshDiffuse   : roomDiffuse;
+      const float     matMetal = hitMesh ? meshMetalness : roomMetalness;
+      const float     matR2    = hitMesh ? meshRoughness * meshRoughness : roomRoughness * roomRoughness;
 
-    const glm::vec3 tangentU = glm::normalize(glm::cross(hitInfo.normal, -dir));
-    const glm::vec3 tangentV = glm::normalize(glm::cross(hitInfo.normal, tangentU));
+      const glm::vec3 tangentU = glm::normalize(glm::cross(hitInfo.normal, -dir));
+      const glm::vec3 tangentV = glm::normalize(glm::cross(hitInfo.normal, tangentU));
 
 #if 0
-    // choose a facet:
-    glm::vec3 facetNormal;
-    while (true)
-    {
-      facetNormal = genDir_uniform(hitInfo.normal, tangentU, tangentV, 1.f - matR2);
+      // choose a facet:
+      glm::vec3 facetNormal;
+      while (true)
+      {
+        facetNormal = genDir_uniform(hitInfo.normal, tangentU, tangentV, 1.f - matR2);
 
-      if (glm::dot(facetNormal, -dir) > 0.f) break; // ok, the facet is visible. (TODO: take also account of the facet self-shadowing)
-    }
+        if (glm::dot(facetNormal, -dir) > 0.f) break; // ok, the facet is visible. (TODO: take also account of the facet self-shadowing)
+      }
 #endif
 
-    // choose outputs direction:
-    //const glm::vec3 dirOutReflect = dir - 2.f * glm::dot(dir, facetNormal) * facetNormal;
-    glm::vec3 dirOutDiffuse;
-    while (true)
-    {
-      dirOutDiffuse = genDir_uniform(hitInfo.normal, tangentU, tangentV, 0.001f);
-      break; //if (glm::dot(dirOutDiffuse, facetNormal) > 0.f) break; // ok, the out-direction is visible from the facet (TODO: take also account of the facet self-shadowing)
+      // choose outputs direction:
+      //const glm::vec3 dirOutReflect = dir - 2.f * glm::dot(dir, facetNormal) * facetNormal;
+      glm::vec3 dirOutDiffuse;
+      while (true)
+      {
+        //dirOutDiffuse = genDir_uniform(hitInfo.normal, tangentU, tangentV, 0.001f); but put-back a "* 2.f" factor in the final light.
+        dirOutDiffuse = genDir_cosine(hitInfo.normal, tangentU, tangentV, 0.001f);
+        break; //if (glm::dot(dirOutDiffuse, facetNormal) > 0.f) break; // ok, the out-direction is visible from the facet (TODO: take also account of the facet self-shadowing)
+      }
+
+      // Raw evaluation of the rendering equation with Monte-Carlo method: L = intg_hemisphere( fr Li n.w dw ) ~= 2 pi Mean_{w uniform distribution}(fr Li n.w)
+      // But we use importance-sampling (cosine-weighted integrale): L = intg_hemisphere( fr Li n.w dw ) ~= pi Mean_{w cosine-weighted distribution}(fr Li)
+      // Note: We still compute the NDF, but we could also include in the importance-sampling (with a weigthed-distribution, or with the facet-normal distribution (TODO)).
+
+      const glm::vec3 half = glm::normalize(-dir + dirOutDiffuse);
+      const float dotNH = std::max(glm::dot(hitInfo.normal, half), 0.f);
+      const float dotVH = std::min(glm::dot(-dir, half), 1.f);
+      const float dotNL = std::max(glm::dot(hitInfo.normal, dirOutDiffuse), 0.f);
+      const float dotNV = std::max(glm::dot(hitInfo.normal, -dir), 0.f);
+      float ndf; // note: "pi" factor moved away
+      float vis;
+      switch (lightingModel)
+      {
+        case MODEL_PHONG:
+        {
+          const float matR4 = matR2 * matR2;
+          ndf = std::pow(dotNH, 2.f / matR4 - 2.f) / matR4;
+          vis = 0.25f / std::max(std::max(dotNV, dotNL), 0.5f);
+        }
+        break;
+        case MODEL_GGX:
+        {
+          const float matR4 = matR2 * matR2;
+          const float dm = dotNH * dotNH * (matR4 - 1.f) + 1.f;
+          ndf = matR4 / (dm * dm);
+          float GGXV = dotNL * std::sqrt(dotNV * dotNV * (1.0 - matR4) + matR4);
+          float GGXL = dotNV * std::sqrt(dotNL * dotNL * (1.0 - matR4) + matR4);
+          vis = 0.5 / std::max(GGXV + GGXL, 1.f);
+        }
+        break;
+        default:
+        TRE_FATAL("Not reached: bad model");
+      }
+      TRE_ASSERT(std::isfinite(ndf));
+
+      // BRDF (Cook-Torrance model):
+      const glm::vec3 F0     = glm::mix(glm::vec3(0.04f), matColor, matMetal);
+      const glm::vec3 kRefl  = F0 + (1.f - F0) * std::pow(1.f - dotVH, 5.f);
+      const glm::vec3 kRefr  = (1.f - kRefl) * (1.f - matMetal);
+      TRE_ASSERT(glm::all(glm::isfinite(kRefl)));
+
+      retLight *= (kRefr * matColor + kRefl * ndf * vis); // * glm::dot(dirOutDiffuse, hitInfo.normal) * 2.f; // note: "pi" factor moved away
+
+      // next ray
+      pos = hitInfo.pt + 0.001f * dirOutDiffuse;
+      dir = dirOutDiffuse;
+      ++bounceCount;
     }
 
-    // Evaluating the rendering equation with Monte-Carlo method: L = intg_hemisphere( fr Li n.w dw ) ~= 2 pi Mean_{w uniform distribution}(fr Li n.w)
-    // We can use importance-sampling (cosine-weighted integrale): L = intg_hemisphere( fr Li n.w dw ) ~= pi Mean_{w cosine-weighted distribution}(fr Li)
+    return retLight;
+  }
 
-    // Note: We still compute the NDF, but we could also include in the importance-sampling, by selecting facet-normal. (TODO)
-    const glm::vec3 half = glm::normalize(-dir + dirOutDiffuse);
-    const float dotNH = glm::dot(hitInfo.normal, half);
-    const float dotVH = glm::dot(-dir, half);
-    float ndf; // note: "pi" factor moved away
-    switch (lightingModel)
+#ifdef RAYTRACER_THREADED
+  enum e_state
+  {
+    STATE_RUN,
+    STATE_SUSPEND,
+    STATE_STOP,
+  };
+  e_state                    processState = STATE_SUSPEND; // target state of all threads
+  std::atomic<int>           processSuspendedCount;
+  std::array<std::thread, 4> processThreads;
+  int                        processRevision = 0;
+#else
+  int   processStep = 0;
+  float accumCount = 0.f;
+#endif
+
+  bool init_threading()
+  {
+#ifdef RAYTRACER_THREADED
+    for (std::size_t threadId = 0; threadId < processThreads.size(); ++threadId)
     {
-      case MODEL_PHONG:
+      processThreads[threadId] = std::thread( [threadId]()
       {
-        const float matR4 = matR2 * matR2;
-        ndf = std::pow(dotNH, 2.f / matR4 - 2.f) / matR4;
-      }
-      break;
-      case MODEL_GGX:
-      {
-        const float matR4 = matR2 * matR2;
-        const float dm = dotNH * dotNH * (matR4 - 1.f) + 1.f;
-        ndf = matR4 / (dm * dm);
-      }
-      break;
-      default:
-      TRE_FATAL("Not reached: bad model");
+        int   localRevision = 0;
+        float localAccumCount = 0.f;
+        while (processState != STATE_STOP)
+        {
+          // wait
+          if (processState == STATE_SUSPEND)
+          {
+            processSuspendedCount++;
+            while (processState == STATE_SUSPEND)
+              std::this_thread::sleep_for(std::chrono::microseconds(1));
+          }
+          // check dirty
+          if (processRevision != localRevision)
+          {
+            localRevision = processRevision;
+            localAccumCount = 0.f;
+          }
+          // run
+          const glm::vec4 mProjInvRed = glm::vec4(1.f/myWindow.m_matProjection3D[0][0], 1.f/myWindow.m_matProjection3D[1][1], 1.f, 1.f / myWindow.m_near);
+          const glm::mat3 mViewRotInv = glm::mat3(glm::transpose(mView));
+          const glm::vec3 camPos = glm::vec3(- glm::transpose(mView) * mView[3]);
+          const int yS = (res.y * int(threadId    )) / 4;
+          const int yE = (res.y * int(threadId + 1)) / 4;
+          for (int y = yS; y < yE; ++y)
+          {
+            for (int x = 0; x < res.x; ++x)
+            {
+              const glm::vec4 pxCoordClipSpace = glm::vec4( (float(x) + 0.5f) / float(res.x) * 2.f - 1.f, (float(y) + 0.5f) / float(res.y) * 2.f - 1.f, -1.f, 1.f);
+              glm::vec4 pxCoordViewSpace = mProjInvRed * pxCoordClipSpace;
+              //pxCoordViewSpace /= pxCoordViewSpace.w; // ok because "w" is positive
+              pxCoordViewSpace.w = 0.f;
+              const glm::vec3 camDir = glm::normalize(mViewRotInv * glm::vec3(pxCoordViewSpace));
+
+              const glm::vec3 c = ray(camPos, camDir);
+              accumBuffer[x + y * res.x] = (accumBuffer[x + y * res.x] * localAccumCount + glm::vec4(c, 1.f)) / (localAccumCount + 1.f);
+              accumBuffer[x + y * res.x].w = 1.f;
+            }
+          }
+          localAccumCount += 1.f;
+        }
+      } );
     }
-    TRE_ASSERT(std::isfinite(ndf));
+#endif
+    return true;
+  }
 
-    // BRDF (Cook-Torrance model):
-    const glm::vec3 F0     = glm::mix(glm::vec3(0.04f), matColor, matMetal);
-    const glm::vec3 kRefl  = F0 + (1.f - F0) * std::pow(1.f - dotVH, 5.f);
-    const glm::vec3 kRefr  = (1.f - kRefl) * (1.f - matMetal);
-    TRE_ASSERT(glm::all(glm::isfinite(kRefl)));
-
-    return (kRefr * matColor + ndf * kRefl) /* * pi */ * glm::dot(dirOutDiffuse, hitInfo.normal) * 2.f * ray(hitInfo.pt + 0.001f * dirOutDiffuse, dirOutDiffuse, bounceCount + 1);
+  void close_threading()
+  {
+#ifdef RAYTRACER_THREADED
+    processState = STATE_STOP;
+    for (auto &trd : processThreads) trd.join();
+#endif
   }
 
   void update()
   {
     if (accumBuffer.size() != res.x * res.y)
     {
+#ifdef RAYTRACER_THREADED
+      processState = STATE_SUSPEND;
+      while (processSuspendedCount.load() < processThreads.size())
+        std::this_thread::sleep_for(std::chrono::microseconds(1));
+#endif
       accumBuffer.resize(res.x * res.y);
       textureForRender.clear();
       textureForRender.loadFloat(nullptr, res.x, res.y, tre::texture::MMASK_NEAREST_MAG_FILTER);
@@ -302,13 +411,18 @@ namespace rayTracer
     }
     if (isDurty)
     {
+#ifdef RAYTRACER_THREADED
+      processRevision += 1;
+#else
       accumCount = 0.f;
       std::memset(accumBuffer.data(), 0, sizeof(glm::vec4) * res.x * res.y);
       processStep = 0;
+#endif
       isDurty = false;
     }
 
     // Ray-trace (a single pass at quarter-res)
+#ifndef RAYTRACER_THREADED
     {
       const systemtick tickStart = systemclock::now();
       const glm::vec4 mProjInvRed = glm::vec4(1.f/myWindow.m_matProjection3D[0][0], 1.f/myWindow.m_matProjection3D[1][1], 1.f, 1.f / myWindow.m_near);
@@ -336,12 +450,19 @@ namespace rayTracer
       const systemtick tickEnd = systemclock::now();
       lastElapsedTime = std::chrono::duration<float, std::milli>(tickEnd - tickStart).count() * 1.e-3f;
     }
-    TRE_LOG("rayTrace hakf-res: " << int(lastElapsedTime * 1.e4f) * 1.e-1f << " ms"); // tmp here
+    TRE_LOG("rayTrace half-res: " << int(lastElapsedTime * 1.e4f) * 1.e-1f << " ms"); // tmp here
+#endif
 
     // Upload the texture
     {
       textureForRender.updateFloat(accumBuffer.data(), res.x, res.y, false);
     }
+
+#ifdef RAYTRACER_THREADED
+    TRE_ASSERT(processSuspendedCount == 0);
+    processSuspendedCount = 0;
+    processState = STATE_RUN;
+#endif
   }
 }
 
@@ -485,8 +606,6 @@ int app_init(std::string meshPath)
   NmodelPart = meshes.partCount();
 
   {
-    static const glm::vec3 quadU[4] = { glm::vec3(1.f, 0.f, 0.f), glm::vec3() };
-
     std::size_t offsetV = 0;
     meshRoom.createPart(meshRoom.fillDataSquare_ISize() * 4, meshRoom.fillDataSquare_VSize() * 4, offsetV);
     std::size_t offsetI = 0;
@@ -562,17 +681,18 @@ int app_init(std::string meshPath)
 
   rayTracer::res = myWindow.m_resolutioncurrent;
 
+  rayTracer::init_threading();
+
   randOnSphere::meshForRender.loadIntoGPU();
 
   // U.I
 
   worldFont.load({ tre::font::loadFromBMPandFNT(TESTIMPORTPATH "resources/font_arial_88") }, true);
+  worldUI.set_defaultFont(&worldFont);
+
+  worldUI.updateCameraInfo(myWindow.m_matProjection2D, myWindow.m_resolutioncurrent);
 
   {
-    worldUI.set_defaultFont(&worldFont);
-
-    worldUI.updateCameraInfo(myWindow.m_matProjection2D, myWindow.m_resolutioncurrent);
-
     worldWin = worldUI.create_window();
     worldWin->set_colormask(glm::vec4(0.7f,1.f,0.7f,0.8f));
     worldWin->set_fontSize(tre::ui::s_size(16, tre::ui::SIZE_PIXEL));
@@ -584,73 +704,54 @@ int app_init(std::string meshPath)
       wmat[2][1] = 0.99f;
       worldWin->set_mat3(wmat);
     }
-    worldWin->set_layoutGrid(24,2);
+    worldWin->set_layoutGrid(24, 2);
+
+    worldWin->wcb_animate = [](tre::ui::window *self, float) { self->set_isvisibleWindow(!showRandOnSphere); };
 
     unsigned rowIdx = -1;
 
     worldWin->create_widgetText(++rowIdx, 0)->set_text("model (F1:F4):")->set_heightModifier(1.2f)->set_color(glm::vec4(1.f, 1.f, 0.2f, 1.f));
-    worldWin->create_widgetText(rowIdx, 1)->wcb_animate = [](tre::ui::widget* myself, float)
+    worldWin->create_widgetText(rowIdx, 1)->wcb_animate = [](tre::ui::widget *myself, float)
     {
-      static_cast<tre::ui::widgetText*>(myself)->set_text(meshes.partInfo(modelPart).m_name);
+      static_cast<tre::ui::widgetText *>(myself)->set_text(meshes.partInfo(modelPart).m_name);
     };
 
     worldWin->create_widgetText(++rowIdx, 0)->set_text("diffuse R");
-    tre::ui::widget * wCR = worldWin->create_widgetBar(rowIdx, 1)->set_value(meshDiffuse.r)->set_withtext(true)->set_withborder(true)->set_iseditable(true)->set_isactive(true);
-    wCR->wcb_modified_ongoing = [](tre::ui::widget* myself) { meshDiffuse.r = static_cast<tre::ui::widgetBar*>(myself)->get_value(); rayTracer::isDurty = true; };
+    tre::ui::widget *wCR = worldWin->create_widgetBar(rowIdx, 1)->set_value(meshDiffuse.r)->set_withtext(true)->set_withborder(true)->set_iseditable(true)->set_isactive(true);
+    wCR->wcb_modified_ongoing = [](tre::ui::widget *myself) { meshDiffuse.r = static_cast<tre::ui::widgetBar *>(myself)->get_value(); rayTracer::isDurty = true; };
 
     worldWin->create_widgetText(++rowIdx, 0)->set_text("diffuse G");
-    tre::ui::widget * wCG = worldWin->create_widgetBar(rowIdx, 1)->set_value(meshDiffuse.g)->set_withtext(true)->set_withborder(true)->set_iseditable(true)->set_isactive(true);
-    wCG->wcb_modified_ongoing = [](tre::ui::widget* myself) { meshDiffuse.g = static_cast<tre::ui::widgetBar*>(myself)->get_value(); rayTracer::isDurty = true; };
+    tre::ui::widget *wCG = worldWin->create_widgetBar(rowIdx, 1)->set_value(meshDiffuse.g)->set_withtext(true)->set_withborder(true)->set_iseditable(true)->set_isactive(true);
+    wCG->wcb_modified_ongoing = [](tre::ui::widget *myself) { meshDiffuse.g = static_cast<tre::ui::widgetBar *>(myself)->get_value(); rayTracer::isDurty = true; };
 
     worldWin->create_widgetText(++rowIdx, 0)->set_text("diffuse B");
-    tre::ui::widget * wCB = worldWin->create_widgetBar(rowIdx, 1)->set_value(meshDiffuse.b)->set_withtext(true)->set_withborder(true)->set_iseditable(true)->set_isactive(true);
-    wCB->wcb_modified_ongoing = [](tre::ui::widget* myself) { meshDiffuse.b = static_cast<tre::ui::widgetBar*>(myself)->get_value(); rayTracer::isDurty = true; };
+    tre::ui::widget *wCB = worldWin->create_widgetBar(rowIdx, 1)->set_value(meshDiffuse.b)->set_withtext(true)->set_withborder(true)->set_iseditable(true)->set_isactive(true);
+    wCB->wcb_modified_ongoing = [](tre::ui::widget *myself) { meshDiffuse.b = static_cast<tre::ui::widgetBar *>(myself)->get_value(); rayTracer::isDurty = true; };
 
     worldWin->create_widgetText(++rowIdx, 0)->set_text("lighting model (F5):")->set_heightModifier(1.2f)->set_color(glm::vec4(1.f, 1.f, 0.2f, 1.f));
-    worldWin->create_widgetText(rowIdx, 1)->wcb_animate = [](tre::ui::widget* myself, float)
+    worldWin->create_widgetText(rowIdx, 1)->wcb_animate = [](tre::ui::widget *myself, float)
     {
-      static const std::string listShaderName[MODELSCOUNT] = { "Phong", "GGX" };
-      static_cast<tre::ui::widgetText*>(myself)->set_text(listShaderName[lightingModel]);
+      static const std::string listShaderName[MODELSCOUNT] = {"Phong", "GGX"};
+      static_cast<tre::ui::widgetText *>(myself)->set_text(listShaderName[lightingModel]);
     };
 
     worldWin->create_widgetText(++rowIdx, 0)->set_text("ray-tracer bounce limit:");
     worldWin->create_widgetSliderInt(rowIdx, 1)->set_value(rayTracer::bounceLimit)->set_valuemin(1)->set_valuemax(8)->set_withtext(true)->set_iseditable(true)->set_isactive(true)
-      ->wcb_modified_ongoing = [](tre::ui::widget* myself)
+      ->wcb_modified_finished = [](tre::ui::widget *myself)
     {
-      rayTracer::bounceLimit = static_cast<tre::ui::widgetSliderInt*>(myself)->get_value();
+      rayTracer::bounceLimit = static_cast<tre::ui::widgetSliderInt *>(myself)->get_value();
       rayTracer::isDurty = true;
     };
-
-    worldWin->create_widgetText(++rowIdx, 0)->set_text("ray-tracer accum:");
-    worldWin->create_widgetText(rowIdx, 1)->wcb_animate = [](tre::ui::widget* myself, float)
-    {
-      char txt[16];
-      std::snprintf(txt, sizeof(txt), "%d", int(rayTracer::accumCount + 0.5f));
-      static_cast<tre::ui::widgetText*>(myself)->set_text(txt);
-    };
-
-    worldWin->create_widgetText(++rowIdx, 0)->set_text("Test rand: distr:");
-    static const std::vector<std::string> listDistName = { "Uniform", "Cos-Weighted" };
-    worldWin->create_widgetLineChoice(rowIdx, 1)->set_values(listDistName)->set_selectedIndex(static_cast<unsigned>(randOnSphere::distributionModel))->set_iseditable(true)->set_isactive(true)
-      ->wcb_modified_finished = [](tre::ui::widget* myself)
-    {
-      randOnSphere::distributionModel = static_cast<randOnSphere::e_Distribution>(static_cast<tre::ui::widgetLineChoice*>(myself)->get_selectedIndex());
-      randOnSphere::isDurty = true;
-    };
-
-    worldWin->create_widgetText(++rowIdx, 0)->set_text("Test rand: min cos T:");
-    worldWin->create_widgetBar(rowIdx, 1)->set_value(randOnSphere::cosThetaMin)->set_withtext(true)->set_withborder(true)->set_iseditable(true)->set_isactive(true)
-      ->wcb_modified_ongoing = [](tre::ui::widget* myself) { randOnSphere::cosThetaMin = static_cast<tre::ui::widgetBar*>(myself)->get_value(); randOnSphere::isDurty = true; };
 
     worldWin->create_widgetText(++rowIdx, 0, 1, 2)->set_text("material:")->set_heightModifier(1.2f)->set_color(glm::vec4(1.f, 1.f, 0.2f, 1.f));
 
     worldWin->create_widgetText(++rowIdx, 0)->set_text("metalness");
-    tre::ui::widget * wMM = worldWin->create_widgetBar(rowIdx, 1)->set_value(meshMetalness)->set_withtext(true)->set_withborder(true)->set_iseditable(true)->set_isactive(true);
-    wMM->wcb_modified_ongoing = [](tre::ui::widget* myself) { meshMetalness = static_cast<tre::ui::widgetBar*>(myself)->get_value(); rayTracer::isDurty = true; };
+    tre::ui::widget *wMM = worldWin->create_widgetBar(rowIdx, 1)->set_value(meshMetalness)->set_withtext(true)->set_withborder(true)->set_iseditable(true)->set_isactive(true);
+    wMM->wcb_modified_ongoing = [](tre::ui::widget *myself) { meshMetalness = static_cast<tre::ui::widgetBar *>(myself)->get_value(); rayTracer::isDurty = true; };
 
     worldWin->create_widgetText(++rowIdx, 0)->set_text("roughness");
-    tre::ui::widget * wMR = worldWin->create_widgetBar(rowIdx, 1)->set_value(meshRoughness)->set_withtext(true)->set_withborder(true)->set_iseditable(true)->set_isactive(true);
-    wMR->wcb_modified_ongoing = [](tre::ui::widget* myself) { meshRoughness = static_cast<tre::ui::widgetBar*>(myself)->get_value(); rayTracer::isDurty = true; };
+    tre::ui::widget *wMR = worldWin->create_widgetBar(rowIdx, 1)->set_value(meshRoughness)->set_withtext(true)->set_withborder(true)->set_iseditable(true)->set_isactive(true);
+    wMR->wcb_modified_ongoing = [](tre::ui::widget *myself) { meshRoughness = static_cast<tre::ui::widgetBar *>(myself)->get_value(); rayTracer::isDurty = true; };
 
     worldWin->create_widgetText(++rowIdx, 0, 1, 2)->set_text("environment:")->set_heightModifier(1.2f)->set_color(glm::vec4(1.f, 1.f, 0.2f, 1.f));
 
@@ -658,28 +759,61 @@ int app_init(std::string meshPath)
 
     worldWin->create_widgetText(++rowIdx, 0)->set_text("show room");
     tre::ui::widget *wRoom = worldWin->create_widgetBoxCheck(rowIdx, 1)->set_value(showRoom)->set_iseditable(true)->set_isactive(true);
-    wRoom->wcb_modified_finished = [](tre::ui::widget* myself) { showRoom = static_cast<tre::ui::widgetBoxCheck*>(myself)->get_value(); rayTracer::isDurty = true; };
+    wRoom->wcb_modified_finished = [](tre::ui::widget *myself) { showRoom = static_cast<tre::ui::widgetBoxCheck *>(myself)->get_value(); rayTracer::isDurty = true; };
 
     worldWin->create_widgetText(++rowIdx, 0)->set_text("gamma correction");
-    tre::ui::widget * wGC = worldWin->create_widgetBoxCheck(rowIdx, 1)->set_value(true)->set_iseditable(true)->set_isactive(true);
-    wGC->wcb_modified_finished = [](tre::ui::widget* myself) { postEffectToneMapping.set_gamma(static_cast<tre::ui::widgetBoxCheck*>(myself)->get_value() ? 2.2f : 1.f); };
+    tre::ui::widget *wGC = worldWin->create_widgetBoxCheck(rowIdx, 1)->set_value(true)->set_iseditable(true)->set_isactive(true);
+    wGC->wcb_modified_finished = [](tre::ui::widget *myself) { postEffectToneMapping.set_gamma(static_cast<tre::ui::widgetBoxCheck *>(myself)->get_value() ? 2.2f : 1.f); };
 
     worldWin->create_widgetText(++rowIdx, 0)->set_text("exposure");
-    tre::ui::widget * wEP = worldWin->create_widgetBar(rowIdx, 1)->set_value(1.4f)->set_valuemax(2.f)->set_iseditable(true)->set_isactive(true);
-    wEP->wcb_modified_ongoing = [](tre::ui::widget* myself) { postEffectToneMapping.set_exposure(static_cast<tre::ui::widgetBar*>(myself)->get_value()); };
+    tre::ui::widget *wEP = worldWin->create_widgetBar(rowIdx, 1)->set_value(1.f)->set_valuemax(6.f)->set_iseditable(true)->set_isactive(true);
+    wEP->wcb_modified_ongoing = [](tre::ui::widget *myself) { postEffectToneMapping.set_exposure(static_cast<tre::ui::widgetBar *>(myself)->get_value()); };
 
     worldWin->create_widgetText(++rowIdx, 0)->set_text("light intensity");
-    tre::ui::widget * wEI = worldWin->create_widgetBar(rowIdx, 1)->set_value(sunLightIntensity)->set_withtext(true)->set_withborder(true)->set_iseditable(true)->set_isactive(true);
-    wEI->wcb_modified_ongoing = [](tre::ui::widget* myself) { sunLightIntensity = static_cast<tre::ui::widgetBar*>(myself)->get_value(); rayTracer::isDurty = true; };
+    tre::ui::widget *wEI = worldWin->create_widgetBar(rowIdx, 1)->set_value(sunLightIntensity)->set_withtext(true)->set_withborder(true)->set_iseditable(true)->set_isactive(true);
+    wEI->wcb_modified_ongoing = [](tre::ui::widget *myself) { sunLightIntensity = static_cast<tre::ui::widgetBar *>(myself)->get_value(); rayTracer::isDurty = true; };
 
     worldWin->create_widgetText(++rowIdx, 0)->set_text("ambiant intensity");
-    tre::ui::widget * wEA = worldWin->create_widgetBar(rowIdx, 1)->set_value(ambiantLightIntensity)->set_withtext(true)->set_withborder(true)->set_iseditable(true)->set_isactive(true);
-    wEA->wcb_modified_ongoing = [](tre::ui::widget* myself) { ambiantLightIntensity = static_cast<tre::ui::widgetBar*>(myself)->get_value(); rayTracer::isDurty = true; };
-
-    // load
-    worldUI.loadIntoGPU();
-    worldUI.loadShader();
+    tre::ui::widget *wEA = worldWin->create_widgetBar(rowIdx, 1)->set_value(ambiantLightIntensity)->set_valuemax(0.5f)->set_withtext(true)->set_withborder(true)->set_iseditable(true)->set_isactive(true);
+    wEA->wcb_modified_ongoing = [](tre::ui::widget *myself) { ambiantLightIntensity = static_cast<tre::ui::widgetBar *>(myself)->get_value(); /*rayTracer::isDurty = true;*/ };
   }
+
+  {
+    testRandSpereWin = worldUI.create_window();
+    testRandSpereWin->set_colormask(glm::vec4(0.7f,1.f,0.7f,0.8f));
+    testRandSpereWin->set_fontSize(tre::ui::s_size(16, tre::ui::SIZE_PIXEL));
+    testRandSpereWin->set_cellMargin(tre::ui::s_size(4, tre::ui::SIZE_PIXEL));
+    testRandSpereWin->set_topbar("Test Rand Sphere", true, false);
+    {
+      glm::mat3 wmat(1.f);
+      wmat[2][0] = -1.f / myWindow.m_matProjection2D[0][0] + 0.01f;
+      wmat[2][1] = 0.99f;
+      testRandSpereWin->set_mat3(wmat);
+    }
+    testRandSpereWin->set_layoutGrid(8, 2);
+
+    testRandSpereWin->wcb_animate = [](tre::ui::window *self, float) { self->set_isvisibleWindow(showRandOnSphere); };
+
+    unsigned rowIdx = -1;
+
+    testRandSpereWin->create_widgetText(++rowIdx, 0)->set_text("distribution:");
+    static const std::vector<std::string> listDistName = {"Uniform", "Cos-Weighted"};
+    testRandSpereWin->create_widgetLineChoice(rowIdx, 1)->set_values(listDistName)->set_selectedIndex(static_cast<unsigned>(randOnSphere::distributionModel))->set_iseditable(true)->set_isactive(true)
+      ->wcb_modified_finished = [](tre::ui::widget *myself)
+    {
+      randOnSphere::distributionModel = static_cast<randOnSphere::e_Distribution>(static_cast<tre::ui::widgetLineChoice *>(myself)->get_selectedIndex());
+      randOnSphere::isDurty = true;
+    };
+
+    testRandSpereWin->create_widgetText(++rowIdx, 0)->set_text("min cos theta:");
+    testRandSpereWin->create_widgetBar(rowIdx, 1)->set_value(randOnSphere::cosThetaMin)->set_withtext(true)->set_withborder(true)->set_iseditable(true)->set_isactive(true)
+      ->wcb_modified_ongoing = [](tre::ui::widget *myself) { randOnSphere::cosThetaMin = static_cast<tre::ui::widgetBar *>(myself)->get_value(); randOnSphere::isDurty = true; };
+
+    testRandSpereWin->create_widgetText(++rowIdx, 0, 1, 2)->set_text("show normal (F6)\nshow ray-trace (F7)\nshow rand on sphere (F8)");
+  }
+
+  worldUI.loadIntoGPU();
+  worldUI.loadShader();
 
   // End Init
 
@@ -701,8 +835,8 @@ void app_update()
 
   tre::shader::s_UBOdata_sunLight sunLight;
   sunLight.direction = sunLightIncomingDir;
-  sunLight.color = sunLightIntensity * sunLightColor;
-  sunLight.colorAmbiant = ambiantLightIntensity * ambiantLightColor;
+  sunLight.color = sunLightIntensity * lightColor;
+  sunLight.colorAmbiant = ambiantLightIntensity * lightColor;
 
   {
     myWindow.SDLEvent_newFrame();
@@ -744,7 +878,9 @@ void app_update()
       glm::mat3 wmat(1.f);
       wmat[2][0] = -1.f / myWindow.m_matProjection2D[0][0] + 0.01f;
       wmat[2][1] = 0.99f;
+
       worldWin->set_mat3(wmat);
+      testRandSpereWin->set_mat3(wmat);
 
       rayTracer::res = myWindow.m_resolutioncurrent;
     }
@@ -787,7 +923,6 @@ void app_update()
     else if (showRaytrace)
     {
       glDisable(GL_DEPTH_TEST);
-      glViewport(0, 0, myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
       glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
       glActiveTexture(GL_TEXTURE2);
@@ -801,9 +936,7 @@ void app_update()
     else
     {
       glEnable(GL_DEPTH_TEST);
-      glClearColor(ambiantLightIntensity * ambiantLightColor.r, ambiantLightIntensity * ambiantLightColor.g, ambiantLightIntensity * ambiantLightColor.b, 1.f);
       glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-      glClearColor(0.f, 0.f, 0.f, 0.f);
       tre::shader & curShader = showNormal ? shaderScreenSpaceNormal : ((lightingModel == 1) ? shaderGGX : shaderPhong);
       const glm::mat4 mPV(myWindow.m_matProjection3D * mView);
       glUseProgram(curShader.m_drawProgram);
@@ -871,6 +1004,8 @@ void app_quit()
   postEffectToneMapping.clear();
 
   rayTracer::textureForRender.clear();
+  rayTracer::close_threading();
+
   randOnSphere::meshForRender.clearGPU();
 
   myWindow.OpenGLQuit();

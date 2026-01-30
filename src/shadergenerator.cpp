@@ -79,6 +79,13 @@ void shaderGenerator::createShaderFunctions_Light(std::string &outstring)
     "}\n";
 
   outstring +=
+    "vec3 normalize3_safe(vec3 v)\n"
+    "{\n"
+    "  float lenV = length(v);\n"
+    "  return (lenV != 0.f) ? v * (1.f / lenV) : vec3(0.,0.,0.);\n"
+    "}\n";
+
+  outstring +=
     "float _DistributionBlinnPhong(float cosTheta, float roughness)\n"
     "{\n"
     "  const float PI = 3.14159265359;\n"
@@ -88,16 +95,16 @@ void shaderGenerator::createShaderFunctions_Light(std::string &outstring)
     "}\n"
     "float _VisibilityNeumann(float NoV, float NoL, float roughness) // note: geometry, but already divided by '4 NoV NoL'\n"
     "{\n"
-    "  return 0.25f / (max(NoV, NoL) + 0.001);\n"
+    "  return 0.25f / max(max(NoV, NoL), 0.5f);\n"
     "}\n"
     "vec3 BlinnPhong(vec3 albedo, vec3 radiance, vec3 N, vec3 L, vec3 V, float metallic, float roughnessUser)\n"
     "{\n"
     "  const float PI = 3.14159265359;\n"
     "  float roughness = clamp(roughnessUser * roughnessUser, 1.e-3f, 1.f);\n"
-    "  float NdotL = max(dot(N, L), 0.f);           // Light-incidence\n"
-    "  float NdotV = clamp(dot(N, V), 1.e-2f, 1.f); // View-incidence\n"
-    "  vec3 H = normalize(L + V);                   // Half-way vector\n"
-    "  float VdotH = max(dot(V, H), 0.f);\n"
+    "  float NdotL = max(dot(N, L), 0.f); // Light-incidence\n"
+    "  float NdotV = max(dot(N, V), 0.f); // View-incidence\n"
+    "  vec3 H = normalize3_safe(L + V);   // Half-way vector\n"
+    "  float VdotH = min(dot(V, H), 1.f);\n"
     "  float NdotH = max(dot(N, H), 0.f);\n"
     "  // Material coef. of refraction and reflection\n"
     "  vec3 F0     = mix(vec3(0.04f), albedo, metallic);\n"
@@ -109,20 +116,17 @@ void shaderGenerator::createShaderFunctions_Light(std::string &outstring)
     "  // Outgoing radiance\n"
     "  return (kRefr * albedo / PI + Dis * Vis * kRefl) * radiance * NdotL;\n"
     "}\n"
-    "vec3 BlinnPhong_ambiante(vec3 albedo, vec3 ambiante, vec3 N, vec3 L, vec3 V, float metallic, float roughnessUser)\n"
+    "vec3 BlinnPhong_ambiante(vec3 albedo, vec3 ambiante, vec3 N, vec3 V, float metallic, float roughnessUser)\n"
     "{\n"
     "  float roughness = clamp(roughnessUser * roughnessUser, 1.e-3f, 1.f);\n"
-    "  float NdotL = 0.8f + 0.2f * dot(N, L); // pseudo AO\n"
-    "  float NdotV = max(dot(N, V), 0.f);\n"
+    "  float NdotV = min(dot(N, V), 1.f);\n"
     "  // Material coef. of refraction and reflection\n"
     "  vec3 F0     = mix(vec3(0.04f), albedo, metallic);\n"
     "  vec3 F90    = mix(vec3(1.f), albedo, metallic);\n"
     "  vec3 kRefl  = F0; // + (F90 - F0) * pow(1.f - NdotV, 5.f) * (0.7f - 0.5f * roughness); // TODO\n"
     "  vec3 kRefr  = (F90 - kRefl) * (1.f - metallic);\n"
-    "  // Cook-torrance BRDF (intergrated)\n"
-    "  float Vis  = 1.f; //_VisibilityNeumann(NdotV, 1.f, roughness); // TODO\n"
     "  // Outgoing radiance\n"
-    "  return (kRefr * albedo + Vis * kRefl) * ambiante * NdotL;\n"
+    "  return (kRefr * albedo + kRefl) * ambiante;\n"
     "}\n";
 
   outstring +=
@@ -137,29 +141,29 @@ void shaderGenerator::createShaderFunctions_Light(std::string &outstring)
     "{\n"
     "  float r = roughness + 1.f;\n"
     "  float k = r * r / 8.f;\n"
-    "  return 0.25f / ((NoV * (1.f - k) + k) * (NoL * (1.f - k) + k));\n"
+    "  return 0.25f / max((NoV * (1.f - k) + k) * (NoL * (1.f - k) + k), 0.5f);\n"
     "}\n"
     "float _VisibilityGGXCorrelated(float NoV, float NoL, float roughness) //note: Smith-geometry, but already divided by '4 NoV NoL'\n"
     "{\n"
     "  float a2 = roughness * roughness;\n"
     "  float GGXV = NoL * sqrt(NoV * NoV * (1.0 - a2) + a2);\n"
     "  float GGXL = NoV * sqrt(NoL * NoL * (1.0 - a2) + a2);\n"
-    "  return 0.5 / (GGXV + GGXL);\n"
+    "  return 0.5 / max(GGXV + GGXL, 1.f);\n"
     "}\n"
     "float _VisibilityGGXCorrelatedFast(float NoV, float NoL, float roughness) // note: Smith-geometry, but already divided by '4 NoV NoL'\n"
     "{\n"
     "  float GGXV = NoL * (NoV * (1.0 - roughness) + roughness);\n"
     "  float GGXL = NoV * (NoL * (1.0 - roughness) + roughness);\n"
-    "  return 0.5 / (GGXV + GGXL);\n"
+    "  return 0.5 / max(GGXV + GGXL, 1.f);\n"
     "}\n"
     "vec3 BRDFLighting(vec3 albedo, vec3 radiance, vec3 N, vec3 L, vec3 V, float metallic, float roughnessUser)\n"
     "{\n"
     "  const float PI = 3.14159265359;\n"
     "  float roughness = clamp(roughnessUser * roughnessUser, 1.e-3f, 1.f);\n"
-    "  float NdotL = max(dot(N, L), 0.f);           // Light-incidence\n"
-    "  float NdotV = clamp(dot(N, V), 1.e-2f, 1.f); // View-incidence\n"
-    "  vec3 H = normalize(L + V);                   // Half-way vector\n"
-    "  float VdotH = max(dot(V, H), 0.f);\n"
+    "  float NdotL = max(dot(N, L), 0.f); // Light-incidence\n"
+    "  float NdotV = max(dot(N, V), 0.f); // View-incidence\n"
+    "  vec3 H = normalize3_safe(L + V);   // Half-way vector\n"
+    "  float VdotH = min(dot(V, H), 1.f);\n"
     "  float NdotH = max(dot(N, H), 0.f);\n"
     "  // Material coef. of refraction and reflection\n"
     "  vec3 F0     = mix(vec3(0.04f), albedo, metallic);\n"
@@ -171,20 +175,17 @@ void shaderGenerator::createShaderFunctions_Light(std::string &outstring)
     "  // Outgoing radiance\n"
     "  return (kRefr * albedo / PI + Dis * Vis * kRefl) * radiance * NdotL;\n"
     "}\n"
-    "vec3 BRDFLighting_ambiante(vec3 albedo, vec3 ambiante, vec3 N, vec3 L, vec3 V, float metallic, float roughnessUser)\n"
+    "vec3 BRDFLighting_ambiante(vec3 albedo, vec3 ambiante, vec3 N, vec3 V, float metallic, float roughnessUser)\n"
     "{\n"
     "  float roughness = clamp(roughnessUser * roughnessUser, 1.e-3f, 1.f);\n"
-    "  float NdotL = 0.8f + 0.2f * dot(N, L); // pseudo AO\n"
-    "  float NdotV = max(dot(N, V), 0.f);\n"
+    "  float NdotV = min(dot(N, V), 1.f);\n"
     "  // Material coef. of refraction and reflection\n"
     "  vec3 F0     = mix(vec3(0.04f), albedo, metallic);\n"
     "  vec3 F90    = mix(vec3(1.f), albedo, metallic);\n"
     "  vec3 kRefl  = F0; // + (F90 - F0) * pow(1.f - NdotV, 5.f) * (0.7f - 0.5f * roughness); // TODO\n"
     "  vec3 kRefr  = (F90 - kRefl) * (1.f - metallic);\n"
-    "  // Cook-torrance BRDF (intergrated)\n"
-    "  float Vis  = 1.f; //_VisibilityGGX(NdotV, 1.f, roughness); // TODO\n"
     "  // Outgoing radiance\n"
-    "  return (kRefr * albedo + Vis * kRefl) * ambiante * NdotL;\n"
+    "  return (kRefr * albedo + kRefl) * ambiante;\n"
     "}\n";
 }
 
@@ -475,8 +476,8 @@ void shaderGenerator::createShaderFunction_Light(const int flags, std::string &g
       gatherLights += "  vec3 lsun = BRDFLighting(albedo, m_sunlight.color,\n"
                       "                           N, L, V,\n"
                       "                           matMetalRough.x, matMetalRough.y);\n"
-                      "  vec3 lamb = BRDFLighting_ambiante(albedo, ambiantOcclusion * m_sunlight.colorAmbiant,\n"
-                      "                                    N, L, V,\n"
+                      "  vec3 lamb = BRDFLighting_ambiante(albedo, m_sunlight.colorAmbiant,\n"
+                      "                                    N, V,\n"
                       "                                    matMetalRough.x, matMetalRough.y);\n";
     }
     else
@@ -484,12 +485,12 @@ void shaderGenerator::createShaderFunction_Light(const int flags, std::string &g
       gatherLights += "  vec3 lsun = BlinnPhong(albedo, m_sunlight.color,\n"
                       "                         N, L, V,\n"
                       "                         matMetalRough.x, matMetalRough.y);\n"
-                      "  vec3 lamb = BlinnPhong_ambiante(albedo, ambiantOcclusion * m_sunlight.colorAmbiant,\n"
-                      "                                  N, L, V,\n"
+                      "  vec3 lamb = BlinnPhong_ambiante(albedo, m_sunlight.colorAmbiant,\n"
+                      "                                  N, V,\n"
                       "                                  matMetalRough.x, matMetalRough.y);\n";
     }
     if (!returnval.empty()) returnval += " + ";
-    returnval += "lsun * islighted_sun + lamb";
+    returnval += "lsun * islighted_sun + lamb * ambiantOcclusion";
   }
   if (flags & PRGM_LIGHT_PTS)
   {
