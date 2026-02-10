@@ -470,9 +470,12 @@ bool texture::loadArrayFloat(const glm::vec4 * data, int w, int h, int layers, i
 
   glGenTextures(1, &m_handle);
 
-  const bool success = updateArrayFloat(data, w, h, layers, false);
+  {
+    glBindTexture(GL_TEXTURE_2D_ARRAY, m_handle);
+    glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGBA16F, w, h, layers, 0, GL_RGBA, GL_FLOAT, data);
+  }
 
-  if (success) set_parameters();
+  set_parameters();
 
   glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
   return IsOpenGLok("texture::loadArrayFloat - complete texture");
