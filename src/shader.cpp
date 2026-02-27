@@ -162,9 +162,9 @@ bool shader::loadCustomShaderGF(const s_layout & shaderLayout , const char * sou
   createShaderSource_VertexMain(sourceVert);
 
   TRE_ASSERT(sourceFullGeom != nullptr);
-  sourceGeom = sourceFullGeom;
+  sourceGeom += sourceFullGeom;
   TRE_ASSERT(sourceFullFrag != nullptr);
-  sourceFrag = sourceFullFrag;
+  sourceFrag += sourceFullFrag;
 
   //-- compile and load it
 
@@ -599,25 +599,27 @@ void shader::compute_name(e_category cat, int flags, const char * pname)
   if (flags & PRGM_CUBEMAPED) m_name += "3";
   if (flags & PRGM_ATLAS) m_name += "a";
   if (flags & PRGM_BLEND) m_name += "b";
+  if (flags & PRGM_SOFT) m_name += "s";
 
-  if (flags & PRGM_MASK_LIGHT) m_name += "_LIT";
-  if (flags & PRGM_MODELPHONG) m_name += "phong";
-  else                         m_name += "ggx";
-  if (flags & PRGM_MAPMAT) m_name += "m";
-  if (flags & PRGM_MAPNORMAL) m_name += "n";
-
-  std::string pre_light;
-  if (flags & PRGM_LIGHT_SUN) pre_light += "s";
-  if (flags & PRGM_LIGHT_PTS) pre_light += "p";
-  if (flags & PRGM_AO) pre_light += "o";
-  if (!pre_light.empty()) pre_light = "_LIGHT" + pre_light;
-  m_name += pre_light;
+  if (flags & PRGM_MASK_LIGHT)
+  {
+    m_name += "_LIT";
+    if (flags & PRGM_MODELPHONG) m_name += "phong";
+    else                         m_name += "ggx";
+    if (flags & PRGM_MAPMAT) m_name += "m";
+    if (flags & PRGM_MAPNORMAL) m_name += "n";
+    if (flags & PRGM_LIGHT_SUN) m_name += "s";
+    if (flags & PRGM_LIGHT_PTS) m_name += "p";
+  }
 
   std::string pre_shadow;
   if (flags & PRGM_SHADOW_SUN) pre_shadow += "s";
   if (flags & PRGM_SHADOW_PTS) pre_shadow += "p";
   if (!pre_shadow.empty())  pre_shadow = "_SHADOW" + pre_shadow;
   m_name += pre_shadow;
+
+  if (flags & PRGM_AO) m_name += "_AO";
+  if (flags & PRGM_BACKGROUND) m_name += "_BG";
 
   if (flags & PRGM_INSTANCED)
   {
@@ -626,9 +628,6 @@ void shader::compute_name(e_category cat, int flags, const char * pname)
     if (flags & PRGM_ROTATION) m_name += "r";
     if (flags & PRGM_INSTCOLOR) m_name += "c";
   }
-
-  if (flags & PRGM_SOFT)
-    m_name += "_Soft";
 }
 
 // ----------------------------------------------------------------------------

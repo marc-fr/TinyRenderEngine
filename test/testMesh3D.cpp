@@ -464,11 +464,8 @@ int main(int argc, char **argv)
     "  vec3 L = - normalize((MView * vec4(m_sunlight.direction, 0.f)).xyz);\n"
     "  vec3 V = - normalize((MView * vec4(pixelPosition, 1.f)).xyz);\n"
     "  float islighted_sun = 1.f;\n"
-    "  vec3 lsun = BlinnPhong(albedo, m_sunlight.color,\n"
-    "                         N, L, V,\n"
-    "                         3.f, 0.5f, 0.f);\n"
-    "  vec3 lamb = BlinnPhong_ambiante(albedo, m_sunlight.colorAmbiant,\n"
-    "                                  N, L, 0.5f, 0.f);\n"
+    "  vec3 lsun = BlinnPhong(albedo, m_sunlight.color, N, L, V, uniMat.x, uniMat.y);\n"
+    "  vec3 lamb = BlinnPhong_ambiante(albedo, m_sunlight.colorAmbiant, N, L, uniMat.x, uniMat.y);\n"
     "  return lsun * islighted_sun + lamb;\n"
     "}\n"
     "void main(){\n"
@@ -860,6 +857,9 @@ int main(int argc, char **argv)
         glUniform4fv(curShader.getUniformLocation(tre::shader::uniColor), 1, glm::value_ptr(uChoiceVisu));
       else
         glUniform4fv(curShader.getUniformLocation(tre::shader::uniColor), 1, glm::value_ptr(ucolorMain));
+
+      if (curShader.layout().hasUNI_uniMat)
+        glUniform2f(curShader.getUniformLocation(tre::shader::uniMat), 0.f, 0.5f);
 
       curShader.setUniformMatrix(mPV * curModel, curModel);
 

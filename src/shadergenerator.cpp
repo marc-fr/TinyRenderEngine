@@ -75,14 +75,16 @@ void shaderGenerator::createShaderFunctions_Light(std::string &outstring)
   outstring +=
     "vec3 _FresnelSchlick(vec3 F0, float cosTheta)\n"
     "{\n"
-    "  return F0 + (vec3(1.f) - F0) * pow(1.f - cosTheta, 5.f);\n"
+    "  float a = 1.f - cosTheta;\n"
+    "  float a2 = a * a;\n"
+    "  return F0 + (vec3(1.f) - F0) * (a2 * a2 * a);\n"
     "}\n";
 
   outstring +=
     "vec3 normalize3_safe(vec3 v)\n"
     "{\n"
     "  float lenV = length(v);\n"
-    "  return (lenV != 0.f) ? v * (1.f / lenV) : vec3(0.,0.,0.);\n"
+    "  return (lenV != 0.f) ? v * (1.f / lenV) : vec3(0.f);\n"
     "}\n";
 
   outstring +=
@@ -104,13 +106,13 @@ void shaderGenerator::createShaderFunctions_Light(std::string &outstring)
     "  float NdotL = max(dot(N, L), 0.f); // Light-incidence\n"
     "  float NdotV = max(dot(N, V), 0.f); // View-incidence\n"
     "  vec3 H = normalize3_safe(L + V);   // Half-way vector\n"
-    "  float VdotH = min(dot(V, H), 1.f);\n"
+    "  float VdotH = dot(V, H);\n"
     "  float NdotH = max(dot(N, H), 0.f);\n"
     "  // Material coef. of refraction and reflection\n"
     "  vec3 F0     = mix(vec3(0.04f), albedo, metallic);\n"
     "  vec3 kRefl  = _FresnelSchlick(F0, VdotH);\n"
     "  vec3 kRefr  = (vec3(1.f) - kRefl) * (1.f - metallic);\n"
-    "  // Cook-torrance BRDF\n"
+    "  // BRDF\n"
     "  float Dis  = _DistributionBlinnPhong(NdotH, roughness);\n"
     "  float Vis  = _VisibilityNeumann(NdotV, NdotL, roughness);\n"
     "  // Outgoing radiance\n"
@@ -119,14 +121,13 @@ void shaderGenerator::createShaderFunctions_Light(std::string &outstring)
     "vec3 BlinnPhong_ambiante(vec3 albedo, vec3 ambiante, vec3 N, vec3 V, float metallic, float roughnessUser)\n"
     "{\n"
     "  float roughness = clamp(roughnessUser * roughnessUser, 1.e-3f, 1.f);\n"
-    "  float NdotV = min(dot(N, V), 1.f);\n"
+    "  float NdotV = dot(N, V);\n"
     "  // Material coef. of refraction and reflection\n"
-    "  vec3 F0     = mix(vec3(0.04f), albedo, metallic);\n"
-    "  vec3 F90    = mix(vec3(1.f), albedo, metallic);\n"
-    "  vec3 kRefl  = F0; // + (F90 - F0) * pow(1.f - NdotV, 5.f) * (0.7f - 0.5f * roughness); // TODO\n"
-    "  vec3 kRefr  = (F90 - kRefl) * (1.f - metallic);\n"
+    "  vec3 F0       = mix(vec3(0.04f), albedo, metallic);\n"
+    "  vec3 intgRefr = (1.f - F0) * (1.f - metallic) * (0.9f + 0.1f * NdotV);\n"
+    "  vec3 intgRefl = F0 * (0.35f * roughness * roughness + NdotV * (1.f - roughness * roughness));\n"
     "  // Outgoing radiance\n"
-    "  return (kRefr * albedo + kRefl) * ambiante;\n"
+    "  return (intgRefr * albedo + intgRefl) * ambiante;\n"
     "}\n";
 
   outstring +=
@@ -163,13 +164,13 @@ void shaderGenerator::createShaderFunctions_Light(std::string &outstring)
     "  float NdotL = max(dot(N, L), 0.f); // Light-incidence\n"
     "  float NdotV = max(dot(N, V), 0.f); // View-incidence\n"
     "  vec3 H = normalize3_safe(L + V);   // Half-way vector\n"
-    "  float VdotH = min(dot(V, H), 1.f);\n"
+    "  float VdotH = dot(V, H);\n"
     "  float NdotH = max(dot(N, H), 0.f);\n"
     "  // Material coef. of refraction and reflection\n"
     "  vec3 F0     = mix(vec3(0.04f), albedo, metallic);\n"
     "  vec3 kRefl  = _FresnelSchlick(F0, VdotH);\n"
     "  vec3 kRefr  = (vec3(1.f) - kRefl) * (1.f - metallic);\n"
-    "  // Cook-torrance BRDF\n"
+    "  // BRDF\n"
     "  float Dis  = _DistributionGGX(NdotH, roughness);\n"
     "  float Vis  = _VisibilityGGXCorrelatedFast(NdotV, NdotL, roughness);\n"
     "  // Outgoing radiance\n"
@@ -178,14 +179,13 @@ void shaderGenerator::createShaderFunctions_Light(std::string &outstring)
     "vec3 BRDFLighting_ambiante(vec3 albedo, vec3 ambiante, vec3 N, vec3 V, float metallic, float roughnessUser)\n"
     "{\n"
     "  float roughness = clamp(roughnessUser * roughnessUser, 1.e-3f, 1.f);\n"
-    "  float NdotV = min(dot(N, V), 1.f);\n"
+    "  float NdotV = dot(N, V);\n"
     "  // Material coef. of refraction and reflection\n"
-    "  vec3 F0     = mix(vec3(0.04f), albedo, metallic);\n"
-    "  vec3 F90    = mix(vec3(1.f), albedo, metallic);\n"
-    "  vec3 kRefl  = F0; // + (F90 - F0) * pow(1.f - NdotV, 5.f) * (0.7f - 0.5f * roughness); // TODO\n"
-    "  vec3 kRefr  = (F90 - kRefl) * (1.f - metallic);\n"
+    "  vec3 F0       = mix(vec3(0.04f), albedo, metallic);\n"
+    "  vec3 intgRefr = (1.f - F0) * (1.f - metallic) * (0.9f + 0.1f * NdotV);\n"
+    "  vec3 intgRefl = F0 * (1.f + 0.6f * roughness * roughness * NdotV * (NdotV - 2.f));\n"
     "  // Outgoing radiance\n"
-    "  return (kRefr * albedo + kRefl) * ambiante;\n"
+    "  return (intgRefr * albedo + intgRefl) * ambiante;\n"
     "}\n";
 }
 
@@ -425,14 +425,9 @@ void shaderGenerator::createShaderFunction_Light(const int flags, std::string &g
 
     gatherLights += "  vec3 V = - normalize((MView * vec4(pixelPosition, 1.f)).xyz);\n";
 
-    if (flags & (PRGM_SHADOW_SUN | PRGM_MAPNORMAL))
-      gatherLights += "  vec3 rawN = normalize(pixelNormal);\n";
-
     if (flags & PRGM_MAPNORMAL)
     {
-      gatherLights += "  vec3 rawT = normalize(pixelTangU);\n"
-                      "  vec3 rawB = normalize(pixelTangV);\n"
-                      "  mat3 TBN = mat3(rawT, rawB, rawN);\n"
+      gatherLights += "  mat3 TBN = mat3(pixelTangU, pixelTangV, pixelNormal);\n"
                       "  vec3 Normal_raw = TBN * (texture(TexNormal, pixelUV).xyz * 2.f - 1.f);\n"
                       "  vec4 Normal_vs = MView * vec4(Normal_raw, 0.f);\n"
                       "  vec3 N = normalize(Normal_vs.xyz);\n";
@@ -454,8 +449,9 @@ void shaderGenerator::createShaderFunction_Light(const int flags, std::string &g
       if (flags & PRGM_NO_SELF_SHADOW)
         gatherLights += "  float islighted_sun = ShadowOcclusion_sun_nobias();\n";
       else
-        gatherLights += "  float tanTheta = tan(acos(clamp(dot(rawN,normalize(-m_sunlight.direction)), 1.e-3f, 1.f)));\n"
-                        "  float islighted_sun = ShadowOcclusion_sun(tanTheta, rawN);\n";
+        gatherLights += "  float cosTheta = clamp(dot(pixelNormal, -m_sunlight.direction), 1.e-3f, 1.f);\n"
+                        "  float tanTheta = sqrt(1.f - cosTheta * cosTheta) / cosTheta;\n"
+                        "  float islighted_sun = ShadowOcclusion_sun(tanTheta, pixelNormal);\n";
     }
     else
     {
