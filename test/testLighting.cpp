@@ -21,6 +21,7 @@
 #ifndef TRE_EMSCRIPTEN // emscripten supports threads but don't use it
 #define RAYTRACER_THREADED
 #include <thread>
+#include <atomic>
 #endif
 
 #define GLM_ENABLE_EXPERIMENTAL

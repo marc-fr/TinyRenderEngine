@@ -495,11 +495,11 @@ widget::s_drawElementCount widgetPicture::get_drawElementCount() const
 }
 glm::vec2 widgetPicture::get_zoneSizeDefault(const s_drawData &dd) const
 {
-  const texture *tex = m_parentWindow->get_parentUI()->getTexture(wtexId);
-  if (tex == nullptr) return glm::vec2(0.f);
+  const auto &texRef = m_parentWindow->get_parentUI()->m_textures[wtexId];
+  if (texRef.m_handle == 0) return glm::vec2(0.f);
 
-  const float ratioWoH = ( tex->m_w * fabsf(wtexUV[2]-wtexUV[0]) ) /
-                         ( tex->m_h * fabsf(wtexUV[3]-wtexUV[1]) ) ;
+  const float ratioWoH = ( texRef.m_w * std::abs(wtexUV[2]-wtexUV[0]) ) /
+                         ( texRef.m_h * std::abs(wtexUV[3]-wtexUV[1]) ) ;
 
   const float h = wheightModifier * dd.resolve_sizeH(m_parentWindow->get_lineHeight());
 

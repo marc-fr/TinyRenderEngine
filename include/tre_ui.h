@@ -3,7 +3,6 @@
 
 #include "tre_utils.h"
 #include "tre_model.h"
-#include "tre_texture.h"
 
 #include <vector>
 #include <string>
@@ -12,6 +11,7 @@
 namespace tre {
 
 class shader;
+class texture;
 class font;
 
 class baseUI;
@@ -266,7 +266,7 @@ public:
   widgetTextTranslatate* set_texts(tre::span<const char*> values);
   widgetTextTranslatate* set_text_LangIdx(const std::string &str, std::size_t lidx);
 
-  widget_DECLAREATTRIBUTE(widgetTextTranslatate,bool,adjust,= false, Layout) ///< Overwrite the background color
+  widget_DECLAREATTRIBUTE(widgetTextTranslatate,bool,adjust,= false, Layout) ///< Fit the size with current text
 };
 
 class widgetTextEdit : public widgetText
@@ -610,7 +610,7 @@ friend class tre::baseUI3D;
 class baseUI
 {
 public:
-  baseUI() { eventState.mousePosPrev = glm::vec3(-20.f,-20.f,0.f); m_textures.fill(nullptr); }
+  baseUI() { eventState.mousePosPrev = glm::vec3(-20.f,-20.f,0.f); m_textures.fill(s_textureRef()); }
   virtual ~baseUI() { TRE_ASSERT(windowsList.empty()); TRE_ASSERT(m_shader == nullptr); TRE_ASSERT(m_textureWhite.m_handle == 0); }
 
   /// @name global settings
@@ -639,12 +639,18 @@ protected:
   /// @{
 public:
   static const std::size_t s_textureSlotsCount = 4;
-  std::size_t    addTexture(const texture *t); ///< Add a new texture. Returns the slot id. The baseUI does not take ownership of the texture.
-  const texture *getTexture(uint id) const {  return (id < s_textureSlotsCount) ? m_textures[id] : nullptr; }
-  std::size_t    getTextureSlot(const texture *t) const;
-protected:
-  std::array<const texture*, s_textureSlotsCount> m_textures; ///< Textures.
-  texture                                         m_textureWhite;
+  struct s_textureRef
+  {
+    GLuint m_handle;
+    int m_w, m_h;
+    s_textureRef() : m_handle(0), m_w(0), m_h(0) {}
+    s_textureRef(GLuint handle, int w, int h) : m_handle(handle), m_w(w), m_h(h) {}
+    s_textureRef(const texture &tex);
+    s_textureRef(const texture *tex);
+  };
+  std::size_t addTexture(GLuint handle, int w, int h) { return addTexture(s_textureRef(handle, w, h)); }
+  std::size_t addTexture(const s_textureRef &textureRef); ///< Add a new texture reference (for rendering).
+  std::array<s_textureRef, s_textureSlotsCount> m_textures; ///< Texture references
   /// @}
 
   /// @name window

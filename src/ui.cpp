@@ -1,7 +1,10 @@
 #include "tre_ui.h"
 
+#include "tre_texture.h"
 #include "tre_shader.h"
 #include "tre_font.h"
+
+#include <atomic>
 
 namespace tre {
 
@@ -157,7 +160,7 @@ void baseUI::clear()
   for (auto win : windowsList) delete(win);
   windowsList.clear();
   m_model.clearParts();
-  m_textures.fill(nullptr);
+  m_textures.fill(s_textureRef());
 }
 
 // baseUI methods : builtin language support ==================================
@@ -172,11 +175,33 @@ void baseUI::set_language(std::size_t lid)
 
 // baseUI methods : GPU interface =============================================
 
+static tre::texture     textureWhite;
+static std::atomic<int> textureWhiteRefCount = 0;
+
+baseUI::s_textureRef::s_textureRef(const texture &tex)
+{
+  m_handle = tex.m_handle;
+  m_w = tex.m_w;
+  m_h = tex.m_h;
+}
+
+baseUI::s_textureRef::s_textureRef(const texture *tex)
+{
+  m_handle = tex->m_handle;
+  m_w = tex->m_w;
+  m_h = tex->m_h;
+}
+
+// --------
+
 bool baseUI::loadIntoGPU()
 {
   TRE_ASSERT(!m_model.isLoadedGPU());
 
-  if (!m_textureWhite.loadWhite()) return false;
+  if (textureWhiteRefCount.fetch_add(1, std::memory_order_relaxed) == 0)
+  {
+    if (!textureWhite.loadWhite()) return false;
+  }
 
   createData();
   updateData();
@@ -193,31 +218,26 @@ void baseUI::updateIntoGPU()
 void baseUI::clearGPU()
 {
   m_model.clearGPU();
-  m_textureWhite.clear();
+
+  if (textureWhiteRefCount.fetch_add(-1, std::memory_order_acquire) == 1)
+  {
+    textureWhite.clear();
+  }
 }
 
-std::size_t baseUI::addTexture(const texture *t)
+std::size_t baseUI::addTexture(const s_textureRef &textureRef)
 {
   for (std::size_t i = 0; i < m_textures.size(); ++i)
   {
-    if (m_textures[i] == t) return i;
+    if (m_textures[i].m_handle == textureRef.m_handle) return i;
   }
   for (std::size_t i = 0; i < m_textures.size(); ++i)
   {
-    if (m_textures[i] == nullptr)
+    if (m_textures[i].m_handle == 0)
     {
-      m_textures[i] = t;
+      m_textures[i] = textureRef;
       return i;
     }
-  }
-  return std::size_t(-1);
-}
-
-std::size_t baseUI::getTextureSlot(const texture *t) const
-{
-  for (std::size_t i = 0; i < m_textures.size(); ++i)
-  {
-    if (m_textures[i] == t) return i;
   }
   return std::size_t(-1);
 }
@@ -274,7 +294,7 @@ void baseUI::updateData()
 void baseUI2D::draw() const
 {
   TRE_ASSERT(m_shader != nullptr);
-  TRE_ASSERT(m_textureWhite.m_handle != 0);
+  TRE_ASSERT(textureWhite.m_handle != 0);
   TRE_ASSERT(glIsEnabled(GL_BLEND)==GL_TRUE);
   TRE_ASSERT(glIsEnabled(GL_DEPTH_TEST)==GL_FALSE); // needed ??
 
@@ -286,7 +306,7 @@ void baseUI2D::draw() const
   glUseProgram(m_shader->m_drawProgram);
 
   glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_2D, m_textureWhite.m_handle);
+  glBindTexture(GL_TEXTURE_2D, textureWhite.m_handle);
 
   for (ui::window * curwin : windowsList)
   {
@@ -304,7 +324,7 @@ void baseUI2D::draw() const
     {
       if (m_model.partInfo(curwin->m_adrPict.part + tslot).m_size > 0)
       {
-        if (m_textures[tslot] == nullptr)
+        if (m_textures[tslot].m_handle == 0)
         {
           glUniform1i(m_shader->getUniformLocation(shader::TexDiffuse),0);
         }
@@ -313,7 +333,7 @@ void baseUI2D::draw() const
           if (!isTextureBound[tslot])
           {
             glActiveTexture(GL_TEXTURE1 + tslot);
-            glBindTexture(GL_TEXTURE_2D, m_textures[tslot]->m_handle);
+            glBindTexture(GL_TEXTURE_2D, m_textures[tslot].m_handle);
             isTextureBound[tslot] = true;
           }
           glUniform1i(m_shader->getUniformLocation(shader::TexDiffuse),1 + tslot);
@@ -519,7 +539,7 @@ bool baseUI2D::loadShader(shader *shaderToUse)
 void baseUI3D::draw() const
 {
   TRE_ASSERT(m_shader != nullptr);
-  TRE_ASSERT(m_textureWhite.m_handle != 0);
+  TRE_ASSERT(textureWhite.m_handle != 0);
   TRE_ASSERT(glIsEnabled(GL_BLEND)==GL_TRUE);
 
   bool isModelBound = false;
@@ -530,7 +550,7 @@ void baseUI3D::draw() const
   glUseProgram(m_shader->m_drawProgram);
 
   glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_2D, m_textureWhite.m_handle);
+  glBindTexture(GL_TEXTURE_2D, textureWhite.m_handle);
 
   for (ui::window * curwin : windowsList)
   {
@@ -548,7 +568,7 @@ void baseUI3D::draw() const
     {
       if (m_model.partInfo(curwin->m_adrPict.part + tslot).m_size > 0)
       {
-        if (m_textures[tslot] == nullptr)
+        if (m_textures[tslot].m_handle == 0)
         {
           glUniform1i(m_shader->getUniformLocation(shader::TexDiffuse),0);
         }
@@ -557,7 +577,7 @@ void baseUI3D::draw() const
           if (!isTextureBound[tslot])
           {
             glActiveTexture(GL_TEXTURE1 + tslot);
-            glBindTexture(GL_TEXTURE_2D, m_textures[tslot]->m_handle);
+            glBindTexture(GL_TEXTURE_2D, m_textures[tslot].m_handle);
             isTextureBound[tslot] = true;
           }
           glUniform1i(m_shader->getUniformLocation(shader::TexDiffuse),1 + tslot);
