@@ -1,8 +1,7 @@
 #include "tre_rendertarget.h"
+#include "tre_model.h"
 
-#ifdef TRE_PRINTS
-#include <iostream>
-#endif
+#include <atomic>
 
 namespace tre {
 
@@ -11,6 +10,31 @@ namespace tre {
 
 static int kNativeDepthSize = 0;
 static int kMaxMultiSampling = 0;
+
+static modelRaw2D       modelQuad;
+static std::atomic<int> modelQuadRefCount = 0;
+
+static bool loadQuadModel()
+{
+  if (modelQuadRefCount.fetch_add(1, std::memory_order_relaxed) == 0)
+  {
+    const glm::vec4 pos(-1.f, -1.f, 1.f, 1.f);
+    const glm::vec4 uv(0.f, 0.f, 1.f, 1.f);
+    const glm::vec4 color(1.f);
+    const std::size_t partId = modelQuad.createPart(6);
+    modelQuad.fillDataRectangle(partId, 0, pos, color, uv);
+    return modelQuad.loadIntoGPU();
+  }
+  return true;
+}
+
+static void clearQuadModel()
+{
+  if (modelQuadRefCount.fetch_add(-1, std::memory_order_acquire) == 1)
+  {
+    modelQuad.clearGPU();
+  }
+}
 
 // ----------------------------------------------------------------------------
 
@@ -686,12 +710,7 @@ bool postFX_Blur::load(const int pwidth, const int pheigth)
   status &= m_shaderUpPass.loadCustomShader(shaderLayout, SourcePostProcess_FragMain_BlurUpPass, "PostProcess_Blur_UpPass");
 
   // Model
-  const glm::vec4 pos(-1.f, -1.f, 1.f, 1.f);
-  const glm::vec4 uv(0.f, 0.f, 1.f, 1.f);
-  const glm::vec4 color(1.f);
-  const std::size_t partId = m_quadFullScreen.createPart(6);
-  m_quadFullScreen.fillDataRectangle(partId, 0, pos, color, uv);
-  status &= m_quadFullScreen.loadIntoGPU();
+  status &= loadQuadModel();
 
   return status;
 }
@@ -722,7 +741,7 @@ void postFX_Blur::clear()
   m_shaderDownPass.clearShader();
   m_shaderUpPass.clearShader();
   // Model
-  m_quadFullScreen.clearGPU();
+  clearQuadModel();
 }
 
 // ----------------------------------------------------------------------------
@@ -745,7 +764,7 @@ void postFX_Blur::processBlur(GLuint inputTextureHandle, const bool withFinalCom
     glUniform1i(m_shaderDownPass.getUniformLocation(tre::shader::TexDiffuse),0);
     glUniform4f(m_shaderDownPass.getUniformLocation(tre::shader::uniColor), m_brightAlpha, m_brightOffset, 0.f, 1.f);
     glUniform2f(m_shaderDownPass.getUniformLocation(tre::shader::AtlasInvDim), 0.f, 0.f); // not used in the bright-pass
-    m_quadFullScreen.drawcallAll(true);
+    modelQuad.drawcallAll(true);
   }
 
   // Down-pass
@@ -761,7 +780,7 @@ void postFX_Blur::processBlur(GLuint inputTextureHandle, const bool withFinalCom
       m_renderDownsample[ipass].bindForWritting();
       glBindTexture(GL_TEXTURE_2D,m_renderDownsample[ipass-1].colorHandle());
       glUniform2f(m_shaderDownPass.getUniformLocation(tre::shader::AtlasInvDim), 1.f / m_renderDownsample[ipass-1].w(), 1.f / m_renderDownsample[ipass-1].h());
-      m_quadFullScreen.drawcallAll(false);
+      modelQuad.drawcallAll(false);
     }
   }
 
@@ -781,8 +800,8 @@ void postFX_Blur::processBlur(GLuint inputTextureHandle, const bool withFinalCom
       const bool combineWithInput = (withFinalCombine && ipass == 1);
 
       glUniform4f(m_shaderUpPass.getUniformLocation(tre::shader::uniColor), 1.f, 0.f, m_combineStrength, combineWithInput ? 1.f : 0.f);
-      glUniform2f(m_shaderDownPass.getUniformLocation(tre::shader::AtlasInvDim), 1.f / m_renderDownsample[ipass].w(), 1.f / m_renderDownsample[ipass].h());
-      m_quadFullScreen.drawcallAll(false);
+      glUniform2f(m_shaderUpPass.getUniformLocation(tre::shader::AtlasInvDim), 1.f / m_renderDownsample[ipass].w(), 1.f / m_renderDownsample[ipass].h());
+      modelQuad.drawcallAll(false);
     }
   }
 
@@ -886,12 +905,7 @@ bool postFX_AmbiantOcclusion::load(const int pwidth, const int pheigth)
   }
 
   // Model
-  const glm::vec4 pos(-1.f, -1.f, 1.f, 1.f);
-  const glm::vec4 uv(0.f, 0.f, 1.f, 1.f);
-  const glm::vec4 color(1.f);
-  const std::size_t partId = m_quadFullScreen.createPart(6);
-  m_quadFullScreen.fillDataRectangle(partId, 0, pos, color, uv);
-  status &= m_quadFullScreen.loadIntoGPU();
+  status &= loadQuadModel();
 
   return status;
 }
@@ -905,7 +919,7 @@ void postFX_AmbiantOcclusion::clear()
   m_shaderAO.clearShader();
   m_shaderBlur.clearShader();
   // Model
-  m_quadFullScreen.clearGPU();
+  clearQuadModel();
 }
 
 void postFX_AmbiantOcclusion::process(GLuint depthTextureHandle, unsigned depthTextureWidth, unsigned depthTextureHeight, const glm::mat4 &matProj)
@@ -931,7 +945,7 @@ void postFX_AmbiantOcclusion::process(GLuint depthTextureHandle, unsigned depthT
   glUniform3fv(m_shaderAO.getUniformLocation(tre::shader::SoftDistance), 1, glm::value_ptr(m_params));
   glUniform2f(m_shaderAO.getUniformLocation(tre::shader::AtlasInvDim), 1.f / float(depthTextureWidth), 1.f / float(depthTextureHeight));
   glBindTexture(GL_TEXTURE_2D, depthTextureHandle);
-  m_quadFullScreen.drawcallAll(true);
+  modelQuad.drawcallAll(true);
 
   m_renderAOfinal.bindForWritting();
   glUseProgram(m_shaderBlur.m_drawProgram);
@@ -939,7 +953,7 @@ void postFX_AmbiantOcclusion::process(GLuint depthTextureHandle, unsigned depthT
   glUniform4f(m_shaderBlur.getUniformLocation(tre::shader::uniColor), 0.f, 0.f, 0.f, 0.f);
   glUniform2f(m_shaderBlur.getUniformLocation(tre::shader::AtlasInvDim), 1.f / float(m_renderAOraw.w()), 1.f / float(m_renderAOraw.h()));
   glBindTexture(GL_TEXTURE_2D, m_renderAOraw.colorHandle());
-  m_quadFullScreen.drawcallAll(false);
+  modelQuad.drawcallAll(false);
 
   m_isAOValueCleared = false;
 }
@@ -997,14 +1011,7 @@ bool postFX_ToneMapping::load()
   shaderLayout.hasOUT_Color0 = true;
   result &= m_shaderToneMap.loadCustomShader(shaderLayout,SourcePostProcess_FragMain_ToneMapping,"PostProcess_ToneMapping");
   // Model
-  const glm::vec4 pos(-1.f, -1.f, 1.f, 1.f);
-  const glm::vec4 uv(0.f, 0.f, 1.f, 1.f);
-  const glm::vec4 color(1.f);
-
-  const std::size_t partId = m_quadFullScreen.createPart(6);
-  m_quadFullScreen.fillDataRectangle(partId, 0, pos, color, uv);
-
-  m_quadFullScreen.loadIntoGPU();
+  result &= loadQuadModel();
 
   return result;
 }
@@ -1016,7 +1023,7 @@ void postFX_ToneMapping::clear()
   // Shaders
   m_shaderToneMap.clearShader();
   // Model
-  m_quadFullScreen.clearGPU();
+  clearQuadModel();
 }
 
 // ----------------------------------------------------------------------------
@@ -1038,7 +1045,7 @@ void postFX_ToneMapping::resolveToneMapping(GLuint inputTextureHandle, const int
   glUniform3fv(m_shaderToneMap.getUniformLocation("vignetteColor"), 1, glm::value_ptr(m_vignetteColor));
   glUniform1f(m_shaderToneMap.getUniformLocation("aspectRatio"), float(outheigth) / float(outwidth));
 
-  m_quadFullScreen.drawcallAll(true);
+  modelQuad.drawcallAll(true);
 }
 
 // ----------------------------------------------------------------------------
@@ -1059,7 +1066,7 @@ void postFX_ToneMapping::resolveToneMapping(GLuint inputTextureHandle, renderTar
   glUniform3fv(m_shaderToneMap.getUniformLocation("vignetteColor"), 1, glm::value_ptr(m_vignetteColor));
   glUniform1f(m_shaderToneMap.getUniformLocation("aspectRatio"), float(targetFBO.h()) / float(targetFBO.w()));
 
-  m_quadFullScreen.drawcallAll(true);
+  modelQuad.drawcallAll(true);
 }
 
 // ============================================================================

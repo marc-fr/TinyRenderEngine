@@ -61,6 +61,7 @@ shaderGenerator::s_layout::s_layout(const e_category cat, const int flags)
   hasOUT_Depth     = (cat == PRGM_3D_DEPTH);
 
   hasOPT_DepthOne = flags & (PRGM_BACKGROUND);
+  hasGEN_Lighting = false;
 
   hasPIP_Geom      = false;
 }
@@ -763,7 +764,7 @@ void shaderGenerator::createShaderSource_Layout(std::string &sourceVertex, std::
   }
 
   // generic functions
-  if (m_layout.hasUBO_ptslight || m_layout.hasUBO_sunlight)
+  if (m_layout.hasUBO_ptslight || m_layout.hasUBO_sunlight || m_layout.hasGEN_Lighting)
   {
     createShaderFunctions_Light(sourceFragment);
 

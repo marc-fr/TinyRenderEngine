@@ -125,6 +125,7 @@ public:
     bool hasOUT_Depth;
     // Miscellaneous
     bool hasOPT_DepthOne;
+    bool hasGEN_Lighting;
     // Pipeline
     bool hasPIP_Geom;
 

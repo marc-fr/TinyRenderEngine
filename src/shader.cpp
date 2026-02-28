@@ -231,6 +231,21 @@ void shader::clearShader()
 
 // ----------------------------------------------------------------------------
 
+static const std::array<const char*, shader::NCOMUNIFORMVAR> kUniformName =
+{
+  "MPVM", "MView", "MModel",
+  "MOrientation",
+  "uniBlend",
+  "uniColor",
+  "uniMat",
+  "AtlasInvDim",
+  "SoftDistance",
+  "TexDiffuse", "TexDiffuseB", "TexCube", "TexCubeB", "TexNormal", "TexMat",
+  "TexShadowSun0", "TexShadowSun1", "TexShadowSun2", "TexShadowSun3",
+  "TexShadowPts0",
+  "TexDepth", "TexAO"
+};
+
 GLint shader::getUniformLocation(const uniformname utype) const
 {
   const int itype = (const int)utype;
@@ -238,39 +253,13 @@ GLint shader::getUniformLocation(const uniformname utype) const
 
   GLint * puloc = const_cast<GLint*>(& m_uniformVars[itype]);
 
-  TRE_ASSERT(!(utype==TexShadowSun0 && m_shadowSun_count < 1));
-  TRE_ASSERT(!(utype==TexShadowSun1 && m_shadowSun_count < 2));
-  TRE_ASSERT(!(utype==TexShadowSun2 && m_shadowSun_count < 3));
-  TRE_ASSERT(!(utype==TexShadowSun3 && m_shadowSun_count < 4));
-  TRE_ASSERT(!(utype==TexShadowPts0 && m_shadowPts_count < 1));
-
   if ( *puloc != -2 ) return *puloc;
 
-  if      (utype==MPVM)          *puloc = glGetUniformLocation(m_drawProgram, "MPVM");
-  else if (utype==MView)         *puloc = glGetUniformLocation(m_drawProgram, "MView");
-  else if (utype==MModel)        *puloc = glGetUniformLocation(m_drawProgram, "MModel");
-  else if (utype==MOrientation)  *puloc = glGetUniformLocation(m_drawProgram, "MOrientation");
-  else if (utype==uniBlend)      *puloc = glGetUniformLocation(m_drawProgram, "uniBlend");
-  else if (utype==uniColor)      *puloc = glGetUniformLocation(m_drawProgram, "uniColor");
-  else if (utype==uniMat)        *puloc = glGetUniformLocation(m_drawProgram, "uniMat");
-  else if (utype==AtlasInvDim)   *puloc = glGetUniformLocation(m_drawProgram, "AtlasInvDim");
-  else if (utype==SoftDistance)  *puloc = glGetUniformLocation(m_drawProgram, "SoftDistance");
-  else if (utype==TexDiffuse)    *puloc = glGetUniformLocation(m_drawProgram, "TexDiffuse");
-  else if (utype==TexDiffuseB)   *puloc = glGetUniformLocation(m_drawProgram, "TexDiffuseB");
-  else if (utype==TexCube)       *puloc = glGetUniformLocation(m_drawProgram, "TexCube");
-  else if (utype==TexCubeB)      *puloc = glGetUniformLocation(m_drawProgram, "TexCubeB");
-  else if (utype==TexNormal)     *puloc = glGetUniformLocation(m_drawProgram, "TexNormal");
-  else if (utype==TexMat)        *puloc = glGetUniformLocation(m_drawProgram, "TexMat");
-  else if (utype==TexShadowSun0) *puloc = glGetUniformLocation(m_drawProgram, "TexShadowSun0");
-  else if (utype==TexShadowSun1) *puloc = glGetUniformLocation(m_drawProgram, "TexShadowSun1");
-  else if (utype==TexShadowSun2) *puloc = glGetUniformLocation(m_drawProgram, "TexShadowSun2");
-  else if (utype==TexShadowSun3) *puloc = glGetUniformLocation(m_drawProgram, "TexShadowSun3");
-  else if (utype==TexShadowPts0) *puloc = glGetUniformLocation(m_drawProgram, "TexShadowPts0");
-  else if (utype==TexDepth)      *puloc = glGetUniformLocation(m_drawProgram, "TexDepth");
-  else if (utype==TexAO)         *puloc = glGetUniformLocation(m_drawProgram, "TexAO");
-  else
+  *puloc = glGetUniformLocation(m_drawProgram, kUniformName[itype]);
+
+  if (*puloc == -1)
   {
-    TRE_FATAL("not reached");
+    TRE_LOG("Warning: uniform '" << kUniformName[itype] << "' not found in shader " << m_name);
   }
 
   return *puloc;

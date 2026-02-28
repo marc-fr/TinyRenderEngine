@@ -175,7 +175,7 @@ void baseUI::set_language(std::size_t lid)
 
 // baseUI methods : GPU interface =============================================
 
-static tre::texture     textureWhite;
+static texture          textureWhite;
 static std::atomic<int> textureWhiteRefCount = 0;
 
 baseUI::s_textureRef::s_textureRef(const texture &tex)

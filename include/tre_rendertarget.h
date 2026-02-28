@@ -3,7 +3,6 @@
 
 #include "tre_utils.h"
 #include "tre_shader.h"
-#include "tre_model.h"
 
 namespace tre {
 
@@ -179,7 +178,6 @@ class postFX_Blur
 {
 public:
   postFX_Blur(const uint NbrPass, const bool outHDR = false) :
-      m_quadFullScreen(),
       m_renderDownsample(NbrPass, {renderTarget::RT_COLOR | renderTarget::RT_COLOR_SAMPLABLE | (outHDR ? renderTarget::RT_COLOR_HDR : 0)}),
       m_brightAlpha(1.e-3f), m_brightOffset(outHDR ? 0.f : 0.6f), m_combineStrength(0.2f),
       m_Npass(NbrPass), m_isOutHDR(outHDR)
@@ -203,7 +201,6 @@ public:
   float get_combineStrength() const { return m_combineStrength; }
 
 protected:
-  modelRaw2D                m_quadFullScreen;
   std::vector<renderTarget> m_renderDownsample;
   shader                    m_shaderDownPass;
   shader                    m_shaderUpPass;
@@ -223,7 +220,7 @@ protected:
 class postFX_AmbiantOcclusion
 {
 public:
-  postFX_AmbiantOcclusion() : m_quadFullScreen(), m_renderAOraw(renderTarget::RT_COLOR | renderTarget::RT_COLOR_SAMPLABLE), m_renderAOfinal(renderTarget::RT_COLOR | renderTarget::RT_COLOR_SAMPLABLE) {}
+  postFX_AmbiantOcclusion() : m_renderAOraw(renderTarget::RT_COLOR | renderTarget::RT_COLOR_SAMPLABLE), m_renderAOfinal(renderTarget::RT_COLOR | renderTarget::RT_COLOR_SAMPLABLE) {}
   ~postFX_AmbiantOcclusion() {}
 
   bool load(const int pwidth, const int pheigth);
@@ -240,7 +237,6 @@ public:
   void set_power(const float pw) { m_params.z = pw; }
 
 protected:
-  modelRaw2D   m_quadFullScreen;
   renderTarget m_renderAOraw;
   renderTarget m_renderAOfinal;
   shader       m_shaderAO;
@@ -284,7 +280,6 @@ public:
   void set_vignettingSmoothness(const float smoothness) { m_vignettingParams.w = smoothness; }
 
 protected:
-  modelRaw2D m_quadFullScreen;
   shader     m_shaderToneMap;
   glm::vec4  m_params = glm::vec4(1.4f, 1.f, 0.f, 0.f); ///< packed parameters: (exposure, gamma, saturation-modifier, <unsued>)
   glm::vec4  m_vignettingParams = glm::vec4(0.5f, 0.2f, 0.8f, 0.5f); ///< packed parameters: (color-intensity, desaturation-intensity, roundness, smoothness)

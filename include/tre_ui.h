@@ -611,7 +611,7 @@ class baseUI
 {
 public:
   baseUI() { eventState.mousePosPrev = glm::vec3(-20.f,-20.f,0.f); m_textures.fill(s_textureRef()); }
-  virtual ~baseUI() { TRE_ASSERT(windowsList.empty()); TRE_ASSERT(m_shader == nullptr); TRE_ASSERT(m_textureWhite.m_handle == 0); }
+  virtual ~baseUI() { TRE_ASSERT(windowsList.empty()); TRE_ASSERT(m_shader == nullptr); }
 
   /// @name global settings
   /// @{

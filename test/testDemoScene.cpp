@@ -521,7 +521,7 @@ int app_init()
                            "float tanTheta = tan(acos(clamp(dot(rawN,normalize(-m_sunlight.direction)), 1.e-3f, 1.f)));\n"
                            "float islighted_sun = ShadowOcclusion_sun(tanTheta, rawN);\n"
                            "vec3 lsun = BRDFLighting(cDiffuse, m_sunlight.color, Ndsided, L, V, uniMat.x, uniMat.y);\n"
-                           "vec3 lamb = BRDFLighting_ambiante(cDiffuse, m_sunlight.colorAmbiant, Ndsided, L, V, uniMat.x, uniMat.y);\n"
+                           "vec3 lamb = BRDFLighting_ambiante(cDiffuse, m_sunlight.colorAmbiant, Ndsided, V, uniMat.x, uniMat.y);\n"
                            " color.xyz = lsun * islighted_sun + lamb;\n"
                            " color.w = 1.f;\n"
                            "}\n";

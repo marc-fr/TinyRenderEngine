@@ -279,6 +279,7 @@ namespace rayTracer
       // Note: We still compute the NDF, but we could also include in the importance-sampling (with a weigthed-distribution, or with the facet-normal distribution (TODO)).
 
       const glm::vec3 half = glm::normalize(-dir + dirOutDiffuse);
+      TRE_ASSERT(std::isfinite(half.x));
       const float dotNH = std::max(glm::dot(hitInfo.normal, half), 0.f);
       const float dotVH = std::min(glm::dot(-dir, half), 1.f);
       const float dotNL = std::max(glm::dot(hitInfo.normal, dirOutDiffuse), 0.f);
@@ -1105,11 +1106,11 @@ void app_update()
 
       glActiveTexture(GL_TEXTURE3);
       glBindTexture(GL_TEXTURE_2D, rtShadow.depthHandle());
-      glUniform1i(curShader.getUniformLocation(tre::shader::TexShadowSun0),3);
+      if (curShader.layout().hasSMP_ShadowSun) glUniform1i(curShader.getUniformLocation(tre::shader::TexShadowSun0),3);
 
       glActiveTexture(GL_TEXTURE4);
       glBindTexture(GL_TEXTURE_2D, rtSSAO.get_aoTextureUnit());
-      glUniform1i(curShader.getUniformLocation(tre::shader::TexAO),4);
+      if (curShader.layout().hasSMP_AO) glUniform1i(curShader.getUniformLocation(tre::shader::TexAO),4);
 
       if (showRoom)
       {
