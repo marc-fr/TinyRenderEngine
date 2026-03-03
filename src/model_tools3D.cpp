@@ -480,11 +480,12 @@ void computeTangentFromUV(const s_modelDataLayout &layout, const s_partInfo &par
       const glm::vec2 uC = layout.m_uvs.get<glm::vec2>(Iver + 1) - layout.m_uvs.get<glm::vec2>(Iver);
       const glm::vec2 uD = layout.m_uvs.get<glm::vec2>(Iver + 2) - layout.m_uvs.get<glm::vec2>(Iver);
 
-      const GLfloat det = 1.f / (uC.x * uD.y - uC.y * uD.x);
+      const float det = uC.x * uD.y - uC.y * uD.x;
+      const float invdet = std::abs(det) < 1.e-6f ? 0.f : 1.f / det;
 
       // local tangent "r,s" along "u,v" parametric-parameter
-      const glm::vec3 r = ( uD.y * eC - uC.y * eD ) * det;
-      const glm::vec3 s = ( uC.x * eD - uD.x * eC ) * det;
+      const glm::vec3 r = ( uD.y * eC - uC.y * eD ) * invdet;
+      const glm::vec3 s = ( uC.x * eD - uD.x * eC ) * invdet;
 
       inside[Iver] = true; inside[Iver + 1] = true; inside[Iver + 2] = true;
       tanU[Iver] = r; tanU[Iver + 1] = r; tanU[Iver + 2] = r;
@@ -510,11 +511,12 @@ void computeTangentFromUV(const s_modelDataLayout &layout, const s_partInfo &par
       const glm::vec2 uC = layout.m_uvs.get<glm::vec2>(i1) - layout.m_uvs.get<glm::vec2>(i0);
       const glm::vec2 uD = layout.m_uvs.get<glm::vec2>(i2) - layout.m_uvs.get<glm::vec2>(i0);
 
-      const GLfloat det = 1.f / (uC.x * uD.y - uC.y * uD.x);
+      const float det = uC.x * uD.y - uC.y * uD.x;
+      const float invdet = std::abs(det) < 1.e-6f ? 0.f : 1.f / det;
 
       // local tangent "r,s" along "u,v" parametric-parameter
-      const glm::vec3 r = ( uD.y * eC - uC.y * eD ) * det;
-      const glm::vec3 s = ( uC.x * eD - uD.x * eC ) * det;
+      const glm::vec3 r = ( uD.y * eC - uC.y * eD ) * invdet;
+      const glm::vec3 s = ( uC.x * eD - uD.x * eC ) * invdet;
 
       inside[i0] = true; inside[i1] = true; inside[i2] = true;
       tanU[i0] += r; tanU[i1] += r; tanU[i2] += r;
@@ -528,6 +530,7 @@ void computeTangentFromUV(const s_modelDataLayout &layout, const s_partInfo &par
     if (!inside[iver]) continue;
     const glm::vec3 normal = layout.m_normals.get<glm::vec3>(iver);
     const glm::vec3 tangent = glm::normalize(tanU[iver] - normal * glm::dot(tanU[iver],normal));
+    if (!std::isfinite(tangent.x)) continue;
     // handness
     const float handness = glm::dot( glm::cross(normal,tangent), tanV[iver]) < 0.f ? -1.f : 1.f;
     // store the tangent along "u"

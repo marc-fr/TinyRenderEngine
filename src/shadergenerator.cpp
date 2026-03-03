@@ -424,18 +424,20 @@ void shaderGenerator::createShaderFunction_Light(const int flags, std::string &g
     TRE_ASSERT(m_layout.hasPIX_Position);
     TRE_ASSERT(m_layout.hasPIX_Normal);
 
-    gatherLights += "  vec3 V = - normalize((MView * vec4(pixelPosition, 1.f)).xyz);\n";
+    gatherLights += "  vec3 V = - normalize((MView * vec4(pixelPosition, 1.f)).xyz);\n"
+                    "  vec3 Nws = normalize(pixelNormal);\n";
 
     if (flags & PRGM_MAPNORMAL)
     {
-      gatherLights += "  mat3 TBN = mat3(pixelTangU, pixelTangV, pixelNormal);\n"
-                      "  vec3 Normal_raw = TBN * (texture(TexNormal, pixelUV).xyz * 2.f - 1.f);\n"
-                      "  vec4 Normal_vs = MView * vec4(Normal_raw, 0.f);\n"
-                      "  vec3 N = normalize(Normal_vs.xyz);\n";
+      gatherLights += "  vec3 Tws = normalize(pixelTangU.xyz);\n"
+                      "  vec3 Bws = normalize(pixelTangV.xyz);\n"
+                      "  vec3 nor_map = texture(TexNormal, pixelUV).xyz * 2.f - 1.f;\n"
+                      "  vec3 Nws_map = normalize(Tws * nor_map.x + Bws * nor_map.y + Nws * nor_map.z);\n"
+                      "  vec3 N = normalize((MView * vec4(Nws_map, 0.f)).xyz);\n";
     }
     else
     {
-      gatherLights += "  vec3 N = normalize((MView * vec4(pixelNormal, 0.f)).xyz);\n";
+      gatherLights += "  vec3 N = normalize((MView * vec4(Nws, 0.f)).xyz);\n";
     }
 
     if (flags & PRGM_MAPMAT) gatherLights += "  vec2 matMetalRough = texture(TexMat, pixelUV).xy;\n";
@@ -450,9 +452,9 @@ void shaderGenerator::createShaderFunction_Light(const int flags, std::string &g
       if (flags & PRGM_NO_SELF_SHADOW)
         gatherLights += "  float islighted_sun = ShadowOcclusion_sun_nobias();\n";
       else
-        gatherLights += "  float cosTheta = clamp(dot(pixelNormal, -m_sunlight.direction), 1.e-3f, 1.f);\n"
+        gatherLights += "  float cosTheta = clamp(dot(Nws, -m_sunlight.direction), 1.e-3f, 1.f);\n"
                         "  float tanTheta = sqrt(1.f - cosTheta * cosTheta) / cosTheta;\n"
-                        "  float islighted_sun = ShadowOcclusion_sun(tanTheta, pixelNormal);\n";
+                        "  float islighted_sun = ShadowOcclusion_sun(tanTheta, Nws);\n";
     }
     else
     {
@@ -470,28 +472,19 @@ void shaderGenerator::createShaderFunction_Light(const int flags, std::string &g
     }
     if (!(flags & PRGM_MODELPHONG))
     {
-      gatherLights += "  vec3 lsun = BRDFLighting(albedo, m_sunlight.color,\n"
-                      "                           N, L, V,\n"
-                      "                           matMetalRough.x, matMetalRough.y);\n"
-                      "  vec3 lamb = BRDFLighting_ambiante(albedo, m_sunlight.colorAmbiant,\n"
-                      "                                    N, V,\n"
-                      "                                    matMetalRough.x, matMetalRough.y);\n";
+      gatherLights += "  vec3 lsun = BRDFLighting(albedo, m_sunlight.color, N, L, V, matMetalRough.x, matMetalRough.y);\n"
+                      "  vec3 lamb = BRDFLighting_ambiante(albedo, m_sunlight.colorAmbiant, N, V, matMetalRough.x, matMetalRough.y);\n";
     }
     else
     {
-      gatherLights += "  vec3 lsun = BlinnPhong(albedo, m_sunlight.color,\n"
-                      "                         N, L, V,\n"
-                      "                         matMetalRough.x, matMetalRough.y);\n"
-                      "  vec3 lamb = BlinnPhong_ambiante(albedo, m_sunlight.colorAmbiant,\n"
-                      "                                  N, V,\n"
-                      "                                  matMetalRough.x, matMetalRough.y);\n";
+      gatherLights += "  vec3 lsun = BlinnPhong(albedo, m_sunlight.color, N, L, V, matMetalRough.x, matMetalRough.y);\n"
+                      "  vec3 lamb = BlinnPhong_ambiante(albedo, m_sunlight.colorAmbiant, N, V, matMetalRough.x, matMetalRough.y);\n";
     }
     if (!returnval.empty()) returnval += " + ";
     returnval += "lsun * islighted_sun + lamb * ambiantOcclusion";
   }
   if (flags & PRGM_LIGHT_PTS)
   {
-
     gatherLights += "  vec3 lightColor_pts = vec3(0.0f,0.f,0.f);\n"
                     "  for (int iL=0;iL<" + str_LIGTH_PTS_MAX + ";++iL)\n"
                     "  {\n"
@@ -511,15 +504,11 @@ void shaderGenerator::createShaderFunction_Light(const int flags, std::string &g
 
     if (!(flags & PRGM_MODELPHONG))
     {
-      gatherLights += "    lightColor_pts += BRDFLighting(albedo, lcolor,\n"
-                      "                                   N, L, V,\n"
-                      "                                   matMetalRough.x, matMetalRough.y);\n";
+      gatherLights += "    lightColor_pts += BRDFLighting(albedo, lcolor, N, L, V, matMetalRough.x, matMetalRough.y);\n";
     }
     else
     {
-      gatherLights += "    lightColor_pts += BlinnPhong(albedo, lcolor,\n"
-                      "                                 N, L, V,\n"
-                      "                                 matMetalRough.x, matMetalRough.y);\n";
+      gatherLights += "    lightColor_pts += BlinnPhong(albedo, lcolor, N, L, V, matMetalRough.x, matMetalRough.y);\n";
     }
     gatherLights += "  }\n";
     if (!returnval.empty()) returnval += " + ";;
