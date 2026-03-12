@@ -4,7 +4,6 @@
 #include "tre_utils.h"
 
 #include <vector>
-#include <functional>
 
 namespace tre {
 
@@ -66,9 +65,8 @@ std::size_t decimateCurvature(modelIndexed &model, const std::size_t ipartIn, co
 /// @return the new part. It returns (-1) on failure.
 std::size_t decimateVoxel(modelIndexed &model, const std::size_t ipartIn, const float gridResolution, const bool keepSharpEdges);
 
-/// @brief tetrahedralize from a 3D surface.
-bool tetrahedralize(const s_modelDataLayout &layout, const s_partInfo &part, std::vector<uint> &listTetrahedrons,
-                    std::function<void(float progress)> *progressNotifier = nullptr);
+/// @brief tetrahedralize from a 3D surface. New vertices may be created, in a new separate part.
+bool tetrahedralize(modelIndexed &model, const std::size_t ipartIn, std::size_t maxTetraCount, bool allowNewVertex, std::vector<uint> &listTetrahedrons);
 
 //=============================================================================
 

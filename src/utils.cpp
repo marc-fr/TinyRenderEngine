@@ -168,20 +168,20 @@ bool triangleRaytrace3D(const glm::vec3 &v00, const glm::vec3 &v01, const glm::v
   const glm::vec3 edge2 = v10 - v00;
   const glm::vec3 pvec = glm::cross(direction, edge2);
   // get determinant of 3*3 matrix of the system: det( [-dir,edge1,edge2] )  = (dir*edge2).edge1
-  const GLfloat det = glm::dot(pvec, edge1);
+  const float det = glm::dot(pvec, edge1);
   if (det>-EPSILON && det<EPSILON) return false; // parallel ray and triangle
-  const GLfloat invdet = 1.f/det; // needed because we don't know the sign of det.
+  const float invdet = 1.f/det; // needed because we don't know the sign of det.
   // get the right-hand side member: AP
   const glm::vec3 AP = origin - v00;
   // solve the system: get the "u"
-  const GLfloat coordu = invdet * glm::dot(pvec, AP); // u = (dir*edge2).AP / det
+  const float coordu = invdet * glm::dot(pvec, AP); // u = (dir*edge2).AP / det
   if (coordu < 0.f || coordu > 1.f) return false; // out-of-bound
   // solve the system: get the "v"
   const glm::vec3 qvec = glm::cross(AP, edge1);
-  const GLfloat coordv = invdet * glm::dot(direction, qvec); // v = (AP*edge1).dir / det
+  const float coordv = invdet * glm::dot(direction, qvec); // v = (AP*edge1).dir / det
   if (coordv < 0.f || (coordu+coordv) > 1.f) return false; // out-of-bound
   // solve the system: get the "t"
-  const GLfloat coordt = invdet * glm::dot(edge2, qvec); // t = (AP*edge1).edge2 / det
+  const float coordt = invdet * glm::dot(edge2, qvec); // t = (AP*edge1).edge2 / det
   if (coordt < EPSILON ) return false;
   // we have a shot !
   if (coordUVT != nullptr) *coordUVT = glm::vec3(coordu, coordv, coordt);
@@ -194,20 +194,20 @@ float triangleProject3D(const glm::vec3 &v00, const glm::vec3 &v01, const glm::v
   const glm::vec3 edge2 = v10 - v00;
   const glm::vec3 pvec = glm::cross(direction, edge2);
   // get determinant of 3*3 matrix of the system: det( [-dir,edge1,edge2] )  = (dir*edge2).edge1
-  const GLfloat det = glm::dot(pvec, edge1);
+  const float det = glm::dot(pvec, edge1);
   if (det>-EPSILON && det<EPSILON) return std::numeric_limits<float>::infinity(); // parallel ray and triangle
-  const GLfloat invdet = 1.f/det; // needed because we don't know the sign of det.
+  const float invdet = 1.f/det; // needed because we don't know the sign of det.
   // get the right-hand side member: AP
   const glm::vec3 AP = origin - v00;
   // solve the system: get the "u"
-  const GLfloat coordu = invdet * glm::dot(pvec, AP); // u = (dir*edge2).AP / det
+  const float coordu = invdet * glm::dot(pvec, AP); // u = (dir*edge2).AP / det
   if (coordu < 0.f || coordu > 1.f) return std::numeric_limits<float>::infinity(); // out-of-bound
   // solve the system: get the "v"
   const glm::vec3 qvec = glm::cross(AP, edge1);
-  const GLfloat coordv = invdet * glm::dot(direction, qvec); // v = (AP*edge1).dir / det
+  const float coordv = invdet * glm::dot(direction, qvec); // v = (AP*edge1).dir / det
   if (coordv < 0.f || (coordu+coordv) > 1.f) return std::numeric_limits<float>::infinity(); // out-of-bound
   // solve the system: get the "t"
-  const GLfloat coordt = invdet * glm::dot(edge2, qvec); // t = (AP*edge1).edge2 / det
+  const float coordt = invdet * glm::dot(edge2, qvec); // t = (AP*edge1).edge2 / det
   return coordt;
 }
 

@@ -64,8 +64,7 @@ struct s_taskMeshProcessingContext
 
     const systemtick tick3 = systemclock::now();
 
-    std::function<void(float)> fnNotify = [this](float progress) { this->m_progressTetrahedrization = progress; };
-    tre::modelTools::tetrahedralize(m_mesh->layout(), m_mesh->partInfo(m_part), m_tetrahedrons, &fnNotify);
+    tre::modelTools::tetrahedralize(*m_mesh, m_part, std::numeric_limits<std::size_t>::max(), true, m_tetrahedrons);
 
     const systemtick tick4 = systemclock::now();
 
@@ -233,7 +232,7 @@ int main(int argc, char **argv)
   // - Arguments
 
   char meshFile[256] = TESTIMPORTPATH "resources/objects.obj";
-  //char meshFile[256] = TESTIMPORTPATH "resources/bumbedGrid.obj";
+  //char meshFile[256] = TESTIMPORTPATH "resources/arrow.glb";
 
   if (argc >= 2)
   {
@@ -266,13 +265,14 @@ int main(int argc, char **argv)
 #define TEST_ID 0
 #if TEST_ID == 0
     bool meshesLoadStatus = true;
-    const int meshStrLen = strnlen(meshFile, 256);
+    const std::size_t meshStrLen = strnlen(meshFile, 256);
     const bool isOBJ = meshStrLen > 4 && meshFile[meshStrLen - 4] == '.' && meshFile[meshStrLen - 3] == 'o' && meshFile[meshStrLen - 2] == 'b' && meshFile[meshStrLen - 1] == 'j';
     const bool isGLB = meshStrLen > 4 && meshFile[meshStrLen - 4] == '.' && meshFile[meshStrLen - 3] == 'g' && meshFile[meshStrLen - 2] == 'l' && meshFile[meshStrLen - 1] == 'b';
     tre::modelImporter::s_modelHierarchy mh;
     if (isOBJ)      meshesLoadStatus = tre::modelImporter::addFromWavefront(meshes, meshFile);
     else if (isGLB) meshesLoadStatus = tre::modelImporter::addFromGLTF(meshes, mh, meshFile, true);
     else            meshesLoadStatus = false;
+    tre::modelTools::computeOutNormal(meshes.layout(), meshes.partInfo(0), true); // TMP - the importer should recompute the normal when it's needed.
     if (!meshesLoadStatus)
     {
       TRE_LOG("Fail to load " << meshFile << ". Falls back to simple shapes.");
@@ -282,20 +282,20 @@ int main(int argc, char **argv)
     }
 #elif TEST_ID == 1
     meshes.createPartFromPrimitive_box(glm::mat4(1.f), 2.f);
-    meshes.createPartFromPrimitive_cone(glm::mat4(1.f), 1.f, 1.f, 14);
+    //meshes.createPartFromPrimitive_cone(glm::mat4(1.f), 1.f, 1.f, 14);
     meshes.createPartFromPrimitive_uvtrisphere(glm::mat4(1.f), 1.f, 10, 7);
 #elif TEST_ID == 2 // distorted prisme
-    const float     cosA = cosf(2.6f), sinA = sinf(2.6f);
-    const GLuint    indices[8 * 3] = { 0,1,2,  3,4,5,  0,2,5,5,3,0, 2,1,4,4,5,2, 1,4,3,3,0,1 };
-    const GLfloat   vertices[6 * 3] = { -0.5f,0.f,-1.f,  0.5f,0.f,-1.f,  0.f,0.7f,-1.f,
-                                        -0.5f*cosA,-0.5f*sinA,1.f,  0.5f*cosA,0.5f*sinA,1.f,  -0.7f*sinA,0.7f*cosA,1.f };
-    meshes.createPartFromIndexes(&indices[0], 24, &vertices[0]);
-    meshes.layout().m_normals.get<glm::vec3>(0) = -glm::normalize(meshes.layout().m_positions.get<glm::vec3>(0));
-    meshes.layout().m_normals.get<glm::vec3>(1) = -glm::normalize(meshes.layout().m_positions.get<glm::vec3>(1));
-    meshes.layout().m_normals.get<glm::vec3>(2) = -glm::normalize(meshes.layout().m_positions.get<glm::vec3>(2));
-    meshes.layout().m_normals.get<glm::vec3>(3) = -glm::normalize(meshes.layout().m_positions.get<glm::vec3>(3));
-    meshes.layout().m_normals.get<glm::vec3>(4) = -glm::normalize(meshes.layout().m_positions.get<glm::vec3>(4));
-    meshes.layout().m_normals.get<glm::vec3>(5) = -glm::normalize(meshes.layout().m_positions.get<glm::vec3>(5));
+    const float     cosA = std::cos(0.7f), sinA = std::sin(0.7f);
+    const std::array<GLuint, 8 * 3>  indices  = { 0,2,1,  3,4,5,  2,0,3,3,5,2, 1,2,5,5,4,1, 0,1,4,4,3,0 };
+    const std::array<GLfloat, 6 * 3> vertices = { -0.5f,0.f            ,-1.f,  0.5f,0.f           ,-1.f,   0.f,0.7f           ,-1.f,
+                                                  -0.5f*cosA,-0.5f*sinA, 1.f,  0.5f*cosA,0.5f*sinA, 1.f,  -0.7f*sinA,0.7f*cosA, 1.f };
+    meshes.createPartFromIndexes(indices, &vertices[0]);
+    meshes.layout().m_normals.get<glm::vec3>(0) = glm::normalize(meshes.layout().m_positions.get<glm::vec3>(0));
+    meshes.layout().m_normals.get<glm::vec3>(1) = glm::normalize(meshes.layout().m_positions.get<glm::vec3>(1));
+    meshes.layout().m_normals.get<glm::vec3>(2) = glm::normalize(meshes.layout().m_positions.get<glm::vec3>(2));
+    meshes.layout().m_normals.get<glm::vec3>(3) = glm::normalize(meshes.layout().m_positions.get<glm::vec3>(3));
+    meshes.layout().m_normals.get<glm::vec3>(4) = glm::normalize(meshes.layout().m_positions.get<glm::vec3>(4));
+    meshes.layout().m_normals.get<glm::vec3>(5) = glm::normalize(meshes.layout().m_positions.get<glm::vec3>(5));
 #endif
   }
 
