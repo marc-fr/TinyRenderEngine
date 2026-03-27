@@ -109,12 +109,6 @@ bool shader::loadCustomShaderVF(const s_layout &shaderLayout, const char *source
 
   m_layout = shaderLayout;
 
-  //-- Do some corrections
-
-  m_layout.hasBUF_Normal |= m_layout.hasBUF_TangentU;
-  m_layout.hasUNI_MModel |= m_layout.hasPIX_Position || m_layout.hasBUF_Normal;
-  m_layout.hasUNI_MView  |= m_layout.hasPIX_Normal;
-
   //-- Create the shader source
 
   std::string sourceVert,sourceFrag;
@@ -186,12 +180,6 @@ bool shader::loadCustomShaderVGF(const s_layout &shaderLayout, const char *sourc
 
   m_layout = shaderLayout;
   m_layout.hasPIP_Geom = true;
-
-  //-- Do some corrections
-
-  m_layout.hasBUF_Normal |= m_layout.hasBUF_TangentU;
-  m_layout.hasUNI_MModel |= m_layout.hasPIX_Position || m_layout.hasBUF_Normal;
-  m_layout.hasUNI_MView  |= m_layout.hasPIX_Normal;
 
   // Create the shader source
 
@@ -319,7 +307,11 @@ void shader::setShadowPtsSamplerCount(uint count)
 
 bool shader::activeUBO_sunLight()
 {
-  TRE_ASSERT(m_drawProgram!=0);
+  if (m_drawProgram == 0)
+  {
+    TRE_LOG("Error: cannot active UBO for sun-light because shader '" << m_name << "' is not loaded.");
+    return false;
+  }
 
   UBOhandle_sunLight.create(sizeof(s_UBOdata_sunLight)); // create if needed
 
@@ -332,7 +324,11 @@ bool shader::activeUBO_sunLight()
 
 bool shader::activeUBO_sunShadow()
 {
-  TRE_ASSERT(m_drawProgram!=0);
+  if (m_drawProgram == 0)
+  {
+    TRE_LOG("Error: cannot active UBO for sun-shadow because shader '" << m_name << "' is not loaded.");
+    return false;
+  }
 
   UBOhandle_sunShadow.create(sizeof(s_UBOdata_sunShadow)); // create if needed
 
@@ -345,7 +341,11 @@ bool shader::activeUBO_sunShadow()
 
 bool shader::activeUBO_ptsLight()
 {
-  TRE_ASSERT(m_drawProgram!=0);
+  if (m_drawProgram == 0)
+  {
+    TRE_LOG("Error: cannot active UBO for pts-light because shader '" << m_name << "' is not loaded.");
+    return false;
+  }
 
   UBOhandle_ptsLight.create(sizeof(s_UBOdata_ptstLight)); // create if needed
 
@@ -358,7 +358,11 @@ bool shader::activeUBO_ptsLight()
 
 bool shader::activeUBO_ptsShadow()
 {
-  TRE_ASSERT(m_drawProgram!=0);
+  if (m_drawProgram == 0)
+  {
+    TRE_LOG("Error: cannot active UBO for pts-shadow because shader '" << m_name << "' is not loaded.");
+    return false;
+  }
 
   UBOhandle_ptsShadow.create(sizeof(s_UBOdata_ptsShadow)); // create if needed
 
@@ -381,7 +385,12 @@ void shader::clearUBO()
 
 bool shader::activeUBO_custom(const s_UBOhandle &ubo, const char *name)
 {
-  TRE_ASSERT(m_drawProgram!=0);
+  if (m_drawProgram == 0)
+  {
+    TRE_LOG("Error: cannot active UBO '" << name << "' because shader '" << m_name << "' is not loaded.");
+    return false;
+  }
+
   TRE_ASSERT(ubo.m_bindpoint != GLuint(-1) && ubo.m_buffersize != 0);
 
   const GLuint index = glGetUniformBlockIndex(m_drawProgram, name);
