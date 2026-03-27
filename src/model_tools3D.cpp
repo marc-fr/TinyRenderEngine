@@ -1056,32 +1056,6 @@ struct s_tetrahedron
     else /* (!hasD)*/ adjABC = newtetra;
   }
 
-  bool pointInCircumsphere(const glm::vec3 &pt) const
-  {
-    const glm::vec3 vPA = *ptA - pt;
-    const glm::vec3 vPB = *ptB - pt;
-    const glm::vec3 vPC = *ptC - pt;
-    const glm::vec3 vPD = *ptD - pt;
-    const float     lPA = glm::dot(vPA, vPA);
-    const float     lPB = glm::dot(vPB, vPB);
-    const float     lPC = glm::dot(vPC, vPC);
-    const float     lPD = glm::dot(vPD, vPD);
-
-    const glm::mat3 mSpin = glm::mat3(*ptB - *ptA, *ptC - *ptA, *ptD - *ptA);
-    const float     mSpinDet = -glm::determinant(mSpin);
-    TRE_ASSERT(mSpinDet != 0.f);
-    const float     mSpinSign = mSpinDet > 0.f ? 1.f : -1.f;
-
-    const glm::mat4 m4 = glm::mat4(vPA.x, vPA.y, vPA.z, lPA,
-                                   vPB.x, vPB.y, vPB.z, lPB,
-                                   vPC.x, vPC.y, vPC.z, lPC,
-                                   vPD.x, vPD.y, vPD.z, lPD);
-
-    const float   m4det = mSpinSign * glm::determinant(m4); // suffer from precision issues when fabsf(m4det) is near 0.f
-
-    return m4det > -1.e-6f;
-  }
-
   void swapPoints_A_B() { std::swap(ptA, ptB); std::swap(adjACD, adjBCD); }
   void swapPoints_A_C() { std::swap(ptA, ptC); std::swap(adjABD, adjBCD); }
   void swapPoints_A_D() { std::swap(ptA, ptD); std::swap(adjABC, adjBCD); }
@@ -1255,6 +1229,61 @@ struct s_surface
 
 // ----------------------------------------------------------------------------
 
+/// Triangle form the mesh's skin. Points are given in welding order.
+struct s_meshTriangle
+{
+  const glm::vec3 *ptF, *ptG, *ptH;
+  s_tetrahedron   *tetraNearby;
+  glm::vec3        normal;
+  glm::vec3        edgeNormalizedFG, edgeNormalizedGH, edgeNormalizedHF;
+
+  s_meshTriangle() : ptF(nullptr), ptG(nullptr), ptH(nullptr), tetraNearby(nullptr) {}
+  s_meshTriangle(const glm::vec3 *pF, const glm::vec3 *pG, const glm::vec3 *pH) : ptF(pF), ptG(pG), ptH(pH), tetraNearby(nullptr)
+  {
+    edgeNormalizedFG = *pG - *pF;
+    edgeNormalizedGH = *pH - *pG;
+    edgeNormalizedHF = *pF - *pH;
+    normal = glm::cross(edgeNormalizedHF, edgeNormalizedFG);
+    TRE_ASSERT(glm::dot(normal, normal) != 0.f);
+    normal = glm::normalize(normal);
+    edgeNormalizedFG = glm::normalize(edgeNormalizedFG);
+    edgeNormalizedGH = glm::normalize(edgeNormalizedGH);
+    edgeNormalizedHF = glm::normalize(edgeNormalizedHF);
+  }
+
+  bool hasPoint(const glm::vec3 *pt) const { return (pt == ptF) | (pt == ptG) | (pt == ptH); }
+};
+
+// ----------------------------------------------------------------------------
+
+static bool _pointInCircumsphere(const s_tetrahedron &tetra, const glm::vec3 &pt, const float minVolume)
+{
+  const glm::vec3 vPA = *tetra.ptA - pt;
+  const glm::vec3 vPB = *tetra.ptB - pt;
+  const glm::vec3 vPC = *tetra.ptC - pt;
+  const glm::vec3 vPD = *tetra.ptD - pt;
+  const float     lPA = glm::dot(vPA, vPA);
+  const float     lPB = glm::dot(vPB, vPB);
+  const float     lPC = glm::dot(vPC, vPC);
+  const float     lPD = glm::dot(vPD, vPD);
+
+  const glm::mat3 mSpin = glm::mat3(*tetra.ptB - *tetra.ptA, *tetra.ptC - *tetra.ptA, *tetra.ptD - *tetra.ptA);
+  const float     mSpinDet = -glm::determinant(mSpin);
+  TRE_ASSERT(mSpinDet != 0.f);
+  const float     mSpinSign = mSpinDet > 0.f ? 1.f : -1.f;
+
+  const glm::mat4 m4 = glm::mat4(vPA.x, vPA.y, vPA.z, lPA,
+                                 vPB.x, vPB.y, vPB.z, lPB,
+                                 vPC.x, vPC.y, vPC.z, lPC,
+                                 vPD.x, vPD.y, vPD.z, lPD);
+
+  const float   m4det = mSpinSign * glm::determinant(m4); // suffer from precision issues when fabsf(m4det) is near 0.f
+
+  return m4det > -minVolume;
+}
+
+// ----------------------------------------------------------------------------
+
 static bool _checkInsertionValidity(const std::vector<s_tetrahedron *> &listTetra, s_tetrahedron &tAdd, const glm::vec3 &pt, const float minVolume)
 {
   // Check only surfaces that would be exterior if the tetrahedron is added.
@@ -1275,36 +1304,22 @@ static bool _checkInsertionValidity(const std::vector<s_tetrahedron *> &listTetr
 
   // check surface ABC
   if (tadjABC != nullptr && s_surface(tAdd.ptA, tAdd.ptB, tAdd.ptC, nullptr, *tAdd.ptD).volumeSignedWithPoint(pt) > -minVolume)
-      return false;
+    return false;
 
   // check surface ABD
   if (tadjABD != nullptr && s_surface(tAdd.ptA, tAdd.ptB, tAdd.ptD, nullptr, *tAdd.ptC).volumeSignedWithPoint(pt) > -minVolume)
-      return false;
+    return false;
 
   // check surface ACD
   if (tadjACD != nullptr && s_surface(tAdd.ptA, tAdd.ptC, tAdd.ptD, nullptr, *tAdd.ptB).volumeSignedWithPoint(pt) > -minVolume)
-      return false;
+    return false;
 
   // check surface BCD
   if (tadjBCD != nullptr && s_surface(tAdd.ptB, tAdd.ptC, tAdd.ptD, nullptr, *tAdd.ptA).volumeSignedWithPoint(pt) > -minVolume)
-      return false;
+    return false;
 
   return true;
 }
-
-// ----------------------------------------------------------------------------
-
-/// Triangle form the mesh's skin. Points are given in welding order.
-struct s_meshTriangle
-{
-  const glm::vec3 *ptF, *ptG, *ptH;
-  s_tetrahedron   *tetraNearby;
-
-  s_meshTriangle() : ptF(nullptr), ptG(nullptr), ptH(nullptr), tetraNearby(nullptr) {}
-  s_meshTriangle(const glm::vec3 *pF, const glm::vec3 *pG, const glm::vec3 *pH) : ptF(pF), ptG(pG), ptH(pH), tetraNearby(nullptr) {}
-
-  bool hasPoint(const glm::vec3 *pt) const { return (pt == ptF) | (pt == ptG) | (pt == ptH); }
-};
 
 // ----------------------------------------------------------------------------
 
@@ -1439,23 +1454,25 @@ struct s_tetraReporter
         writeTetra(t);
       }
     }
-    rawOBJ  << "o Step3_" << osprinti3(stepId) << "_Both_" << label << std::endl; // no details for bad ones
+    if (!withDetails) rawOBJ  << "o Step3_" << osprinti3(stepId) << "_Both_" << label << std::endl; // no details for bad ones
     for (std::size_t i = 0; i < allTetras.size(); ++i)
     {
       const s_tetrahedron &t = allTetras[i];
       if (t.valid() && t.metaSideInterior() && t.metaSideExterior())
       {
-        rawOBJ << "g " << "pgroup_TetraId_" << osprinti3(i) << std::endl;
+        if (!withDetails) rawOBJ << "g " << "pgroup_TetraId_" << osprinti3(i) << std::endl;
+        else              rawOBJ  << "o Step3_" << osprinti3(stepId) << "_Both_" << label << "_T" << osprinti3(i) << std::endl;
         writeTetra(t);
       }
     }
-    rawOBJ  << "o Step3_" << osprinti3(stepId) << "_None_" << label << std::endl; // no details for bad ones
+    if (!withDetails) rawOBJ  << "o Step3_" << osprinti3(stepId) << "_None_" << label << std::endl; // no details for bad ones
     for (std::size_t i = 0; i < allTetras.size(); ++i)
     {
       const s_tetrahedron &t = allTetras[i];
       if (t.valid() && !t.metaSideInterior() && !t.metaSideExterior())
       {
-        rawOBJ << "g " << "pgroup_TetraId_" << osprinti3(i) << std::endl;
+        if (!withDetails) rawOBJ << "g " << "pgroup_TetraId_" << osprinti3(i) << std::endl;
+        else              rawOBJ  << "o Step3_" << osprinti3(stepId) << "_None_" << label << "_T" << osprinti3(i) << std::endl;
         writeTetra(t);
       }
     }
@@ -1499,16 +1516,16 @@ bool tetrahedralize(modelIndexed &model, const std::size_t ipartIn, std::size_t 
   const glm::vec3 boxExtend = part.m_bbox.extend();
   const float     boxVolume = boxExtend.x * boxExtend.y * boxExtend.z;
   if (boxVolume == 0.f) return false;
-  const glm::vec3 boxMin = part.m_bbox.m_min - 0.4f * boxExtend;
-  const glm::vec3 boxMax = part.m_bbox.m_max + 0.4f * boxExtend;
+  const glm::vec3 boxMin = part.m_bbox.m_min - 0.2f * boxExtend;
+  const glm::vec3 boxMax = part.m_bbox.m_max + 0.2f * boxExtend;
+
+  const float tetraMinVolume = boxVolume * 1.e-7f;
 
   // record the input triangles
 
   std::vector<s_meshTriangle> inTriangles;
   inTriangles.reserve(part.m_size / 3);
 
-  float minEdgeLength = std::numeric_limits<float>::infinity();
-  float minSurfaceAera = std::numeric_limits<float>::infinity();
   for (std::size_t i = 0; i < part.m_size; i += 3)
   {
     const glm::vec3 &v0 = inPos.get<glm::vec3>(indicesData[i + 0]);
@@ -1518,19 +1535,11 @@ bool tetrahedralize(modelIndexed &model, const std::size_t ipartIn, std::size_t 
     const glm::vec3 e02 = v2 - v0;
     const glm::vec3 e12 = v2 - v1;
     const glm::vec3 n = glm::cross(e01, e02);
+    if (glm::dot(n,n) == 0.f) continue; // degenerated triangle
     const bool      weldingPositive = !inNormal.hasData() || (glm::dot(n, inNormal.get<glm::vec3>(indicesData[i + 0]) + inNormal.get<glm::vec3>(indicesData[i + 1]) + inNormal.get<glm::vec3>(indicesData[i + 2])) >= 0.f);
-    const float     a = 0.5f * glm::length(n);
-    if (a < 1.e-7f) continue; // degenerated triangle
     if (weldingPositive) inTriangles.emplace_back(&v0, &v1, &v2);
     else                 inTriangles.emplace_back(&v0, &v2, &v1);
-    minSurfaceAera = std::min(minSurfaceAera, a);
-    const float     l01 = glm::length(e01);
-    const float     l02 = glm::length(e02);
-    const float     l12 = glm::length(e12);
-    const float     l = std::min(std::min(l01, l02), l12);
-    minEdgeLength = std::min(minEdgeLength, l);
   }
-  const float tetraMinVolumeAA = minSurfaceAera * minEdgeLength / 3.f;
 
   // compute the list of points (index list)
 
@@ -1542,7 +1551,7 @@ bool tetrahedralize(modelIndexed &model, const std::size_t ipartIn, std::size_t 
   if (indices.size() < 3) return false;
 
   const std::size_t indicesInitialSize = indices.size();
-  TRE_LOG("tetrahedralize: will process " << indicesInitialSize << " points (over a part of " << part.m_size / 3 << " triangles)");
+  TRE_LOG("tetrahedralize (1/4): will process " << indicesInitialSize << " points (over a part of " << part.m_size / 3 << " triangles)");
 
   // index remapper
 
@@ -1577,8 +1586,6 @@ bool tetrahedralize(modelIndexed &model, const std::size_t ipartIn, std::size_t 
 
 #define _indP(_p) uint(reinterpret_cast<const float*>(_p) - inPos.m_data) / uint(inPos.m_stride)
 
-  const float tetraMinVolume = glm::max(boxVolume / indices.size() * 1.e-3f, 1.e-7f /* fp-precision limit */); // TODO !!!
-
   // main-step 1: Delaunay triangulation (based on Bowyer-Watson algorithm) without surface-constrain
 
   std::vector<s_tetrahedron*> listTetraToProcess;
@@ -1611,7 +1618,7 @@ bool tetrahedralize(modelIndexed &model, const std::size_t ipartIn, std::size_t 
 
       const glm::vec3  tetraCenter = 0.25f * (*tBest->ptA + *tBest->ptB + *tBest->ptC + *tBest->ptD);
       const glm::mat3  transf = glm::mat3(*tBest->ptB - *tBest->ptA, *tBest->ptC - *tBest->ptA, *tBest->ptD - *tBest->ptA); // copy from s_contact3D::point_treta
-      TRE_ASSERT(fabsf(glm::determinant(transf)) > 1.e-12f); // fast but unsafe if the tetrahedron is degenerated.
+      TRE_ASSERT(std::abs(glm::determinant(transf)) > 1.e-12f); // fast but unsafe if the tetrahedron is degenerated.
       const glm::mat3  transfInv = glm::inverse(transf);
 
       for (std::size_t iP = 0; iP < indices.size(); ++iP)
@@ -1645,10 +1652,10 @@ bool tetrahedralize(modelIndexed &model, const std::size_t ipartIn, std::size_t 
     }
 
     TRE_ASSERT(listTetraToProcess.size() == 1);
-    TRE_ASSERT(listTetraToProcess[0]->pointInCircumsphere(*pt));
 
     // -> prepare the insertion geometry
     s_tetrahedron &tRoot = *listTetraToProcess[0];
+    TRE_ASSERT(_pointInCircumsphere(tRoot, *pt, tetraMinVolume));
     // pt on vertex, edge or surface ?
     const bool onSurfABC = std::abs(s_surface(tRoot.ptA, tRoot.ptB, tRoot.ptC, nullptr, *tRoot.ptD).volumeSignedWithPoint(*pt)) <= tetraMinVolume;
     const bool onSurfABD = std::abs(s_surface(tRoot.ptA, tRoot.ptB, tRoot.ptD, nullptr, *tRoot.ptC).volumeSignedWithPoint(*pt)) <= tetraMinVolume;
@@ -1757,13 +1764,13 @@ bool tetrahedralize(modelIndexed &model, const std::size_t ipartIn, std::size_t 
           else if (tbis == tadjACD) tadjACD = nullptr;
           else if (tbis == tadjBCD) tadjBCD = nullptr;
         }
-        if (tadjABC != nullptr && tadjABC->pointInCircumsphere(*pt) && _checkInsertionValidity(listTetraToProcess, *tadjABC, *pt, tetraMinVolume))
+        if (tadjABC != nullptr && _pointInCircumsphere(*tadjABC, *pt, tetraMinVolume) && _checkInsertionValidity(listTetraToProcess, *tadjABC, *pt, tetraMinVolume))
           listTetraToProcess.push_back(tadjABC);
-        if (tadjABD != nullptr && tadjABD->pointInCircumsphere(*pt) && _checkInsertionValidity(listTetraToProcess, *tadjABD, *pt, tetraMinVolume))
+        if (tadjABD != nullptr && _pointInCircumsphere(*tadjABD, *pt, tetraMinVolume) && _checkInsertionValidity(listTetraToProcess, *tadjABD, *pt, tetraMinVolume))
           listTetraToProcess.push_back(tadjABD);
-        if (tadjACD != nullptr && tadjACD->pointInCircumsphere(*pt) && _checkInsertionValidity(listTetraToProcess, *tadjACD, *pt, tetraMinVolume))
+        if (tadjACD != nullptr && _pointInCircumsphere(*tadjACD, *pt, tetraMinVolume) && _checkInsertionValidity(listTetraToProcess, *tadjACD, *pt, tetraMinVolume))
           listTetraToProcess.push_back(tadjACD);
-        if (tadjBCD != nullptr && tadjBCD->pointInCircumsphere(*pt) && _checkInsertionValidity(listTetraToProcess, *tadjBCD, *pt, tetraMinVolume))
+        if (tadjBCD != nullptr && _pointInCircumsphere(*tadjBCD, *pt, tetraMinVolume) && _checkInsertionValidity(listTetraToProcess, *tadjBCD, *pt, tetraMinVolume))
           listTetraToProcess.push_back(tadjBCD);
       }
       queueStart = queueEnd;
@@ -1848,12 +1855,13 @@ bool tetrahedralize(modelIndexed &model, const std::size_t ipartIn, std::size_t 
             if (listTetra[iT].adjACD != nullptr) listTetra[iT].adjACD->replaceNeigbourTetra(&listTetra[jT], &listTetra[iT]);
             if (listTetra[iT].adjBCD != nullptr) listTetra[iT].adjBCD->replaceNeigbourTetra(&listTetra[jT], &listTetra[iT]);
           }
+          listTetra[jT] = s_tetrahedron();
           listTetra.resize(jT);
         }
       }
     }
 
-    if (listTetra.size() >= maxTetraCount) break;
+    if (listTetra.size() / 2 >= maxTetraCount) break;
   }
 
   if (!indices.empty())
@@ -1869,7 +1877,7 @@ bool tetrahedralize(modelIndexed &model, const std::size_t ipartIn, std::size_t 
     TRE_ASSERT(listTetra[iS].valid());
   }
 
-  TRE_LOG("tetrahedralize: main-step 1: there are " << indicesFailedCount << " insertion-fails, over " << indicesInitialSize << " vertices");
+  TRE_LOG("tetrahedralize (2/4): there are " << indicesFailedCount << " insertion-fails, over " << indicesInitialSize << " vertices");
 
   // main-step 2: Apply surface-constrain (with topologie)
 
@@ -2056,11 +2064,11 @@ bool tetrahedralize(modelIndexed &model, const std::size_t ipartIn, std::size_t 
     TRE_ASSERT(listTetra[iS].valid());
   }
 
-  TRE_LOG("tetrahedralize: main-step 2: there are " << Ntriangles - NtrianglesDirectMatch << " triangles that do not exist from the raw tetrahedrization, over " << Ntriangles << " valid triangles.");
+  TRE_LOG("tetrahedralize (3/4): there are " << Ntriangles - NtrianglesDirectMatch << " triangles that do not exist from the raw tetrahedrization, over " << Ntriangles << " valid triangles.");
 
   // main-step 2: Apply surface-constrain (no topologie)
 
-  if (false && allowNewVertex)
+  if (allowNewVertex && listTetra.size() / 2 < maxTetraCount)
   {
     std::size_t Nnewpoints = 0;
 
@@ -2135,6 +2143,8 @@ bool tetrahedralize(modelIndexed &model, const std::size_t ipartIn, std::size_t 
         // ...
       }
     }
+
+    TRE_LOG("tetrahedralize (3/4): there are " << Nnewpoints << " new vertice generated. The tetrahedral mesh has now " << listTetra.size() << " tetrahedrons.");
   }
 
   // main-step 3: Compute where belongs tetrahedrons
@@ -2145,95 +2155,54 @@ bool tetrahedralize(modelIndexed &model, const std::size_t ipartIn, std::size_t 
 
     const glm::vec3 center = 0.25f * (*t.ptA + *t.ptB + *t.ptC + *t.ptD);
 
-    float    bestDist = std::numeric_limits<float>::infinity();
-    unsigned bestSide = 0; // exterior:1, interior:2
+    float w = 0.f; // signed apparent-area
 
     for (std::size_t jT = 0; jT < Ntriangles; ++jT)
     {
-      s_meshTriangle &tri = inTriangles[jT];
-
-      glm::vec3 triNormal = glm::cross(*tri.ptG - *tri.ptF, *tri.ptH - *tri.ptF);
-      TRE_ASSERT(glm::dot(triNormal, triNormal) > 1.e-7f); // degenerated triangles should have been removed.
-      triNormal = glm::normalize(triNormal);
-
-      const bool hasA = tri.hasPoint(t.ptA);
-      const bool hasB = tri.hasPoint(t.ptB);
-      const bool hasC = tri.hasPoint(t.ptC);
-      const bool hasD = tri.hasPoint(t.ptD);
-      if (hasA + hasB + hasC + hasD == 3) // esay case, the triangle is one of the tetra's surface
-      {
-        bestSide = 1 + (glm::dot(triNormal, *tri.ptF - center) > 0.f);
-        break;
-      }
+      const s_meshTriangle &tri = inTriangles[jT];
 
       float distToTri;
-      const glm::vec3 edgeFG = *tri.ptG - *tri.ptF;
-      const glm::vec3 edgeGH = *tri.ptH - *tri.ptG;
-      const glm::vec3 edgeHF = *tri.ptF - *tri.ptH;
-      const glm::vec3 vFC = center - *tri.ptF;
-      const glm::vec3 vGC = center - *tri.ptG;
-      const glm::vec3 vHC = center - *tri.ptH;
-      if (glm::dot(glm::cross(edgeFG, triNormal), vFC) <= 0.f &&
-          glm::dot(glm::cross(edgeGH, triNormal), vGC) <= 0.f &&
-          glm::dot(glm::cross(edgeHF, triNormal), vHC) <= 0.f)
+      glm::vec3 vFC = center - *tri.ptF;
+      glm::vec3 vGC = center - *tri.ptG;
+      glm::vec3 vHC = center - *tri.ptH;
+      if (glm::dot(glm::cross(tri.edgeNormalizedFG, tri.normal), vFC) <= 0.f &&
+          glm::dot(glm::cross(tri.edgeNormalizedGH, tri.normal), vGC) <= 0.f &&
+          glm::dot(glm::cross(tri.edgeNormalizedHF, tri.normal), vHC) <= 0.f)
       {
-        distToTri = glm::abs(glm::dot(vFC, triNormal)); // dist to plane
+        distToTri = glm::abs(glm::dot(vFC, tri.normal)); // dist to plane
       }
       else
       {
-        const glm::vec3 vFGC =  glm::clamp(glm::dot(vFC, edgeFG) / glm::dot(edgeFG, edgeFG), 0.f, 1.f) * edgeFG - vFC;
-        const glm::vec3 vGHC =  glm::clamp(glm::dot(vGC, edgeGH) / glm::dot(edgeGH, edgeGH), 0.f, 1.f) * edgeGH - vGC;
-        const glm::vec3 vHFC =  glm::clamp(glm::dot(vHC, edgeHF) / glm::dot(edgeHF, edgeHF), 0.f, 1.f) * edgeHF - vHC;
-        distToTri = std::sqrt(std::min(glm::dot(vFGC,vFGC), std::min(glm::dot(vGHC,vGHC), glm::dot(vHFC,vHFC))));
+        const glm::vec3 vFGC =  glm::clamp(glm::dot(vFC, tri.edgeNormalizedFG), 0.f, 1.f) * tri.edgeNormalizedFG - vFC;
+        const glm::vec3 vGHC =  glm::clamp(glm::dot(vGC, tri.edgeNormalizedGH), 0.f, 1.f) * tri.edgeNormalizedGH - vGC;
+        const glm::vec3 vHFC =  glm::clamp(glm::dot(vHC, tri.edgeNormalizedHF), 0.f, 1.f) * tri.edgeNormalizedHF - vHC;
+        distToTri = std::sqrt(std::min(glm::dot(vFGC,vFGC), std::min(glm::dot(vGHC,vGHC), glm::dot(vHFC,vHFC)))); // dist to edge
       }
-      if (distToTri < bestDist)
-      {
-        bestDist = distToTri;
-        bestSide = 1 + (glm::dot(triNormal, *tri.ptF - center) > 0.f);
-      }
+
+      const float		areaSigned = (glm::dot(tri.normal, vFC) < 0.f) ? 1.f : -1.f;
+
+      vFC = glm::normalize(vFC);
+      vGC = glm::normalize(vGC);
+      vHC = glm::normalize(vHC);
+      const float		areaSeen = glm::length(glm::cross(vGC - vFC, vHC- vFC));
+
+      w += areaSeen * areaSigned / (distToTri + tetraMinVolume);
     }
 
-    if (bestSide == 2) t.metaSetSideInterior();
-    if (bestSide == 1) t.metaSetSideExterior();
+    if (w > 0.f) t.metaSetSideInterior();
+    else         t.metaSetSideExterior();
   }
 
   exporter.report_Step3_Interior_Exterior(listTetra, "Direct", true);
 
-  // -> flag remaining tetras (recursive walk from neighbors)
-  while (true)
-  {
-    bool hasUpdate = false;
-    for (std::size_t iT = 0; iT < listTetra.size(); ++iT)
-    {
-      s_tetrahedron &t = listTetra[iT];
-      if (!t.metaSideInterior() && !t.metaSideExterior())
-      {
-        uint nInterior = 0;
-        uint nExterior = 0;
-        if (t.adjABC != nullptr) { nInterior += t.adjABC->metaSideInterior(); nExterior += t.adjABC->metaSideExterior(); }
-        if (t.adjABD != nullptr) { nInterior += t.adjABD->metaSideInterior(); nExterior += t.adjABD->metaSideExterior(); }
-        if (t.adjACD != nullptr) { nInterior += t.adjACD->metaSideInterior(); nExterior += t.adjACD->metaSideExterior(); }
-        if (t.adjBCD != nullptr) { nInterior += t.adjBCD->metaSideInterior(); nExterior += t.adjBCD->metaSideExterior(); }
-        if (nInterior > nExterior) t.metaSetSideInterior();
-        if (nInterior < nExterior) t.metaSetSideExterior();
-        hasUpdate |= (nInterior != nExterior);
-      }
-    }
-    if (!hasUpdate) break;
-  }
-
-  exporter.report_Step3_Interior_Exterior(listTetra, "AfterSpreading");
-
   // final-step: compute output tetrahedra-list
 
-  std::size_t NtetrasRemaining  = 0;
-  bool        hasDeletedInterior = false;
+  bool hasDeletedInterior = false;
 
   listTetrahedrons.reserve(listTetrahedrons.size() + listTetra.size() * 4);
   for (std::size_t iT = 0; iT < listTetra.size(); ++iT)
   {
     const s_tetrahedron &t = listTetra[iT];
-    if (!t.metaSideInterior() && !t.metaSideExterior()) ++NtetrasRemaining;
     const bool hasValidVertices = _indP(t.ptA) < layout.m_vertexCount &&
                                   _indP(t.ptB) < layout.m_vertexCount &&
                                   _indP(t.ptC) < layout.m_vertexCount &&
@@ -2250,16 +2219,12 @@ bool tetrahedralize(modelIndexed &model, const std::size_t ipartIn, std::size_t 
 
 #undef _indP
 
-  if (NtetrasRemaining != 0)
-  {
-    TRE_LOG("tetrahedralize: final-step: there are " << NtetrasRemaining << " un-flagged tetrahedrons.");
-  }
   if (hasDeletedInterior)
   {
-    TRE_LOG("tetrahedralize: final-step: input mesh does not seem to be closed (the interior volume is not well defined).");
+    TRE_LOG("tetrahedralize (4/4): input mesh does not seem to be closed (the interior volume is not well defined).");
   }
 
-  TRE_LOG("tetrahedralize: final-step: ouputs " << listTetrahedrons.size() / 4 << " tetrahedrons from mesh with " << Ntriangles << " triangles.");
+  TRE_LOG("tetrahedralize (4/4): ouputs " << listTetrahedrons.size() / 4 << " tetrahedrons from mesh with " << Ntriangles << " triangles.");
 
   return true;
 }

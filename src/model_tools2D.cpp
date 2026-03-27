@@ -575,8 +575,7 @@ void triangulate(const std::vector<glm::vec2> &envelop, std::vector<uint> &listT
 {
   listTriangles.clear();
 
-  if (envelop.size() < 3)
-    return;
+  if (envelop.size() < 3) return;
 
   const std::size_t Npts = envelop.size();
 
@@ -590,27 +589,14 @@ void triangulate(const std::vector<glm::vec2> &envelop, std::vector<uint> &listT
     boxMax = glm::max(boxMax, pt);
   }
 
-  {
-    glm::vec2 boxExtend = (boxMax - boxMin) * 0.05f;
-    boxMin -= boxExtend;
-    boxMax += boxExtend;
-  }
+  const glm::vec2 boxExtend = (boxMax - boxMin);
+  const float     boxArea = boxExtend.x * boxExtend.y;
+  if (boxArea == 0.f) return;
 
-  // compute minimal area allowed for the triangles
+  const float triMinArea = boxArea * 1.e-6f;
 
-  float minEdgeLength = std::numeric_limits<float>::infinity();
-  float surfaceAera = 0.f;
-  for (std::size_t i = 0; i < Npts; ++i)
-  {
-    const glm::vec2 &v0 = envelop[i != 0 ? i - 1 : Npts - 1];
-    const glm::vec2 &v1 = envelop[i];
-    const glm::vec2 e01 = v1 - v0;
-    const float     l01 = glm::length(e01);
-    surfaceAera += e01.x * (0.f - v0.y) - e01.y * (0.f - v0.x);
-    minEdgeLength = std::min(minEdgeLength, l01);
-  }
-
-  const float triMinArea = glm::max(std::abs(surfaceAera) / Npts * 1.e-3f, 1.e-7f /* fp-precision limit */); // TODO !!!
+  boxMin -= boxExtend * 0.05f;;
+  boxMax += boxExtend * 0.05f;;
 
   // generate the "master"-quad (2 triangles)
 
@@ -708,8 +694,7 @@ void triangulate(const std::vector<glm::vec2> &envelop, std::vector<uint> &listT
       s_triangle *prevTri = iE == 0         ? listTriNew.back()  : listTriNew[iE - 1];
       s_triangle *nextTri = iE == nEdge - 1 ? listTriNew.front() : listTriNew[iE + 1];
       *listTriNew[iE] = s_triangle(pt, edge.pt1, edge.pt2, prevTri, edge.tri21, nextTri);
-      if (edge.tri21 != nullptr)
-        edge.tri21->replaceNeigborTri(edge.tri12, listTriNew[iE]);
+      if (edge.tri21 != nullptr) edge.tri21->replaceNeigborTri(edge.tri12, listTriNew[iE]);
       TRE_ASSERT(listTriNew[iE]->valid());
     }
   }

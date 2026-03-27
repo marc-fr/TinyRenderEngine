@@ -281,9 +281,9 @@ int main(int argc, char **argv)
       meshes.createPartFromPrimitive_uvtrisphere(glm::mat4(1.f), 1.f, 10, 7);
     }
 #elif TEST_ID == 1
-    meshes.createPartFromPrimitive_box(glm::mat4(1.f), 2.f);
+    meshes.createPartFromPrimitive_box(glm::mat4(1.f), 0.5f);
     //meshes.createPartFromPrimitive_cone(glm::mat4(1.f), 1.f, 1.f, 14);
-    meshes.createPartFromPrimitive_uvtrisphere(glm::mat4(1.f), 1.f, 10, 7);
+    meshes.createPartFromPrimitive_uvtrisphere(glm::mat4(1.f), 0.1f, 10, 7);
 #elif TEST_ID == 2 // distorted prisme
     const float     cosA = std::cos(0.7f), sinA = std::sin(0.7f);
     const std::array<GLuint, 8 * 3>  indices  = { 0,2,1,  3,4,5,  2,0,3,3,5,2, 1,2,5,5,4,1, 0,1,4,4,3,0 };
@@ -299,23 +299,8 @@ int main(int argc, char **argv)
 #endif
   }
 
-  // - Re-scale mesh to [-1,1]
-
-  for (std::size_t iPart = 0; iPart < meshes.partCount(); ++iPart)
-  {
-    TRE_LOG("Mesh part " << iPart << " : name = " << meshes.partInfo(iPart).m_name << ", indiceCount = " << meshes.partInfo(iPart).m_size);
-    meshes.computeBBoxPart(iPart);
-    const tre::s_boundbox &bbox = meshes.partInfo(iPart).m_bbox;
-    const glm::vec3 extend = bbox.extend();
-    const float     extendMax = glm::compMax(extend);
-    TRE_ASSERT(extendMax > 0.f);
-    glm::mat4 tr(1.f);
-    tr[0][0] = tr[1][1] = tr[2][2] = 2.f / extendMax;
-    tr[3] = glm::vec4(-bbox.center() * 2.f / extendMax, 1.f);
-    meshes.transformPart(iPart, tr);
-  }
-
   // - Randomize vertex color
+
   {
     const tre::s_modelDataLayout &layout = meshes.layout();
     auto colIt = layout.m_colors.begin<glm::vec4>();
@@ -735,8 +720,12 @@ int main(int argc, char **argv)
 
   glm::mat4 mModelPrev = glm::mat4(1.f);
   glm::mat4 mModel = glm::mat4(1.f);
-
   float mModelScale = 1.f;
+
+  {
+    const glm::vec3 bext = meshes.partInfo(meshPartSelected).m_bbox.extend();
+    mModelScale = 6.f / (1.e-6f + bext.x + bext.y + bext.z);
+  }
 
   // - MAIN LOOP ------------
 
@@ -770,9 +759,17 @@ int main(int argc, char **argv)
         else if (event.key.keysym.sym == SDLK_o) { myTimings.scenetime = 0.f; }
 
         else if (event.key.keysym.sym == SDLK_RIGHT)
+        {
           meshPartSelected = (meshPartSelected == meshPartCount - 1) ? 0 : meshPartSelected + 1;
+          const glm::vec3 bext = meshes.partInfo(meshPartSelected).m_bbox.extend();
+          mModelScale = 6.f / (1.e-6f + bext.x + bext.y + bext.z);
+        }
         else if (event.key.keysym.sym == SDLK_LEFT)
+        {
           meshPartSelected = (meshPartSelected == 0) ? meshPartCount - 1 : meshPartSelected - 1;
+          const glm::vec3 bext = meshes.partInfo(meshPartSelected).m_bbox.extend();
+          mModelScale = 6.f / (1.e-6f + bext.x + bext.y + bext.z);
+        }
 
         if (event.key.keysym.sym == SDLK_LSHIFT) mModelScale *= 1.2f;
         if (event.key.keysym.sym == SDLK_LCTRL) mModelScale /= 1.2f;
