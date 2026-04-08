@@ -146,7 +146,7 @@ public:
 public:
   std::size_t partCount() const { return m_partInfo.size(); }
   std::size_t getPartWithName(const std::string &matchname) const;
-  bool        reorganizeParts(const std::vector<std::string> & matchnames); ///< Re-order parts by matching part-names (only m_partInfo is modified)
+  void        reorganizeParts(const std::vector<std::size_t> & remap); ///< Remap parts (only m_partInfo is modified)
   void        movePart(std::size_t ipart, std::size_t dstIndex); ///< Move the part into the desired index (only m_partInfo is modified)
   void        mergeParts(std::size_t ipart, std::size_t jpart, const bool keepEmpty_jpart = false); ///< Merge part-j into part-i, and remove or clear part-j
   void        mergeAllParts(); ///< Merge all parts into one part

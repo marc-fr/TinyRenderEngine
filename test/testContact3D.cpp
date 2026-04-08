@@ -622,7 +622,7 @@ int app_init(int argc, char **argv)
   // Arguments
 
   std::string addmodel3D_path = TESTIMPORTPATH "resources/objects.obj";
-  std::string addmodel3D_pname = "CubeSmoothed";
+  std::string addmodel3D_pname = "";
 
   if (argc > 1) addmodel3D_path = argv[1];
   if (argc > 2) addmodel3D_pname = argv[2];
@@ -665,11 +665,11 @@ int app_init(int argc, char **argv)
   // Import mesh (optionnal)
   {
     tre::modelStaticIndexed3D importedMesh(tre::modelStaticIndexed3D::VB_POSITION | tre::modelStaticIndexed3D::VB_NORMAL);
-    bool importedMeshValid = tre::modelImporter::addFromWavefront(importedMesh, addmodel3D_path);
-    if (importedMeshValid) importedMeshValid = importedMesh.reorganizeParts({ addmodel3D_pname });
-    if (importedMeshValid)
+    const bool importedMeshValid = tre::modelImporter::addFromWavefront(importedMesh, addmodel3D_path);
+    const std::size_t partToUse = addmodel3D_pname.empty() ? 0 : importedMesh.getPartWithName(addmodel3D_pname);
+    if (importedMeshValid && partToUse != std::size_t(-1))
     {
-      objectPolyFromMesh.loadFromMesh(importedMesh, 0);
+      objectPolyFromMesh.loadFromMesh(importedMesh, partToUse);
       sceneObjects.push_back(&objectPolyFromMesh);
     }
   }

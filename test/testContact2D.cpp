@@ -765,7 +765,7 @@ int app_init(int argc, char **argv)
 
   // arguments
   std::string addmodel3D_path = TESTIMPORTPATH "resources/objects.obj";
-  std::string addmodel3D_pname = "CubeSmoothed";
+  std::string addmodel3D_pname = "";
 
   if (argc > 1) addmodel3D_path = argv[1];
   if (argc > 2) addmodel3D_pname = argv[2];
@@ -801,9 +801,9 @@ int app_init(int argc, char **argv)
   // Import mesh (optionnal)
   std::vector<glm::vec2> tmpMeshEnvelop;
   tre::modelStaticIndexed3D importedMesh;
-  bool importedMeshValid = tre::modelImporter::addFromWavefront(importedMesh, addmodel3D_path);
-  if (importedMeshValid) importedMeshValid = importedMesh.reorganizeParts({ addmodel3D_pname });
-  if (importedMeshValid)
+  const bool importedMeshValid = tre::modelImporter::addFromWavefront(importedMesh, addmodel3D_path);
+  const std::size_t partToUse = addmodel3D_pname.empty() ? 0 : importedMesh.getPartWithName(addmodel3D_pname);
+  if (importedMeshValid && partToUse != std::size_t(-1))
   {
     tre::modelTools::computeConvexeEnvelop2D_XY(importedMesh.layout(), importedMesh.partInfo(0), glm::mat4(1.f), 1.e-2f, tmpMeshEnvelop);
     const tre::s_boundbox &bbox = importedMesh.partInfo(0).m_bbox;

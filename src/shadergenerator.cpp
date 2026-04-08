@@ -583,6 +583,7 @@ void shaderGenerator::createShaderSource_Layout(std::string &sourceVertex, std::
     "precision mediump float;\n"
     "precision mediump int;\n"
     "precision mediump sampler2D;\n"
+    "precision mediump sampler2DArray;\n"
     "precision mediump samplerCube;\n"
     "precision mediump sampler3D;\n";
   sourceVertex += esHeader;

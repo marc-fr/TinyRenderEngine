@@ -49,33 +49,21 @@ std::size_t model::getPartWithName(const std::string &matchname) const
   return std::size_t(-1); // invalid
 }
 
-bool model::reorganizeParts(const std::vector<std::string> &matchnames)
+void model::reorganizeParts(const std::vector<std::size_t> &remap)
 {
-  bool status = true;
   std::vector<s_partInfo> newdrawInfo;
-  for (std::size_t in = 0; in < matchnames.size(); ++in)
+  newdrawInfo.reserve(remap.size());
+  for (std::size_t r : remap)
   {
-    int nFound = 0;
-    for (std::size_t ip=0;ip<m_partInfo.size();++ip)
+    if (r >= m_partInfo.size())
     {
-      if (m_partInfo[ip].m_name.find( matchnames[in] ) != std::string::npos )
-      {
-        if (nFound++ == 0) newdrawInfo.push_back(m_partInfo[ip]);
-      }
+      TRE_LOG("model::reorganizeParts: invalid part " << r);
+      newdrawInfo.push_back(s_partInfo());
+      continue;
     }
-    if (nFound==0)
-    {
-      status = false;
-      TRE_LOG("model::reorganizeParts: part " << matchnames[in] << " not found in parts");
-    }
-    if (nFound>1)
-    {
-      status = false;
-      TRE_LOG("model::reorganizeParts: " << matchnames[in] << " has multiple matches");
-    }
+    newdrawInfo.push_back(m_partInfo[r]);
   }
   m_partInfo = newdrawInfo;
-  return status;
 }
 
 void model::movePart(std::size_t ipart, std::size_t dstIndex)
