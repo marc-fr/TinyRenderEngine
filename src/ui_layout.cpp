@@ -90,11 +90,8 @@ glm::vec2 s_layoutGrid::computeWidgetZones(const widget::s_drawData &dd, const g
           if (totalWidth < wdefaultSize.x)
           {
             uint jx = ix;
-            while (m_colsWidth_User[jx].valid() && jx < jstop) { ++jx; }
-            if (!m_colsWidth_User[jx].valid())
-            {
-              m_colsWidth[jx] += wdefaultSize.x - totalWidth;
-            }
+            while (jx < jstop && m_colsWidth_User[jx].valid()) { ++jx; }
+            if (jx != jstop) m_colsWidth[jx] += wdefaultSize.x - totalWidth;
           }
         }
 
@@ -107,11 +104,8 @@ glm::vec2 s_layoutGrid::computeWidgetZones(const widget::s_drawData &dd, const g
           if (totalHeight < wdefaultSize.y)
           {
             uint jy = iy;
-            while (m_rowsHeight_User[jy].valid() && jy < jstop) { ++jy; }
-            if (!m_rowsHeight_User[jy].valid())
-            {
-              m_rowsHeight[jy] += wdefaultSize.y - totalHeight;
-            }
+            while (jy < jstop && m_rowsHeight_User[jy].valid()) { ++jy; }
+            if (jy != jstop)m_rowsHeight[jy] += wdefaultSize.y - totalHeight;
           }
         }
       }
