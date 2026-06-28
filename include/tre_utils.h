@@ -66,7 +66,7 @@ namespace tre {
 /**
  * @brief class span
  * This warps memory-views on c-style array, std::vector or std::array.
- * std::span is available in C++20 standard, but this code follows C++11 standard.
+ * std::span is available in C++20 standard, but this code is not on C++20 yet
  */
 template<typename _T>
 class span
@@ -79,6 +79,7 @@ public:
     span(_T* ptr, std::size_t len) noexcept : m_ptr(ptr), m_size(len) {}
     span(const std::vector<_T> &v, std::size_t begin, std::size_t len) noexcept : m_ptr(const_cast<_T*>(&v[begin])), m_size(len) {}
     span(const std::vector<_T> &v, std::size_t begin = 0u) noexcept : m_ptr(const_cast<_T*>(&v[begin])), m_size(v.size() <= begin ? 0 : v.size() - begin) {}
+    span(const std::initializer_list<_T> &v) noexcept : m_ptr(const_cast<_T*>(v.begin())), m_size(v.size()) {}
     template<std::size_t _N> span(const std::array<_T, _N> &a) noexcept : m_ptr(const_cast<_T*>(&a[0])), m_size(a.size()) {}
 
     _T       &operator[](std::size_t i) const noexcept { return m_ptr[i]; }

@@ -47,7 +47,7 @@ bool IsOpenGLok(const char * msg)
     else              { TRE_LOG("IsOpenGLok: OpenGL Error code has been gerenated: " << myglerror << errorTxt); }
 #endif
     status = false;
-  }
+}
 #endif
   return status;
 }

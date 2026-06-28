@@ -67,8 +67,8 @@ struct s_colorTheme
   glm::vec4 m_colorSurface = glm::vec4(0.2f, 0.2f, 0.2f, 0.5f); ///< surface (1dp elevation)
   glm::vec4 m_colorPrimary = glm::vec4(0.4f, 0.4f, 0.4f, 0.7f);  ///< plain color for objects
 
-  glm::vec4 m_colorOnSurface = glm::vec4(1.f); ///< text/line on background or surface
-  glm::vec4 m_colorOnObject = glm::vec4(1.f);  ///< text/line on objects
+  glm::vec4 m_colorOnSurface = glm::vec4(0.9f, 0.9f, 0.9f, 1.f); ///< text/line on background or surface
+  glm::vec4 m_colorOnObject = glm::vec4(0.9f, 0.9f, 0.9f, 1.f);  ///< text/line on objects
 
   float            factor = 1.f;
 
@@ -260,11 +260,25 @@ protected:
 
   std::array<std::string, TRE_UI_NLANGUAGES> wtexts;
 
+private:
+  widgetText *set_text(const std::string &) { TRE_FATAL("do not call this."); return this; }
+
 public:
-  widgetText *set_text(const std::string &) { TRE_FATAL("do not call this."); return this; } ///< this has undefined behavior. Use wtexts instead.
-  widgetTextTranslatate* set_texts(tre::span<std::string> values);
-  widgetTextTranslatate* set_texts(tre::span<const char*> values);
-  widgetTextTranslatate* set_text_LangIdx(const std::string &str, std::size_t lidx);
+  widgetTextTranslatate* set_texts(const std::array<std::string, TRE_UI_NLANGUAGES> &values)
+  {
+    TRE_ASSERT(values.size() == TRE_UI_NLANGUAGES);
+    for (std::size_t i = 0; i < TRE_UI_NLANGUAGES; ++i) wtexts[i] = values[i];
+    setUpdateNeededAddress();
+    return this;
+  }
+
+  template<class _Tarray> widgetTextTranslatate* set_texts(const _Tarray &values)
+  {
+    TRE_ASSERT(values.size() == TRE_UI_NLANGUAGES);
+    for (std::size_t i = 0; i < TRE_UI_NLANGUAGES; ++i) wtexts[i] = values[i];
+    setUpdateNeededAddress();
+    return this;
+  }
 
   widget_DECLAREATTRIBUTE(widgetTextTranslatate,bool,adjust,= false, Layout) ///< Fit the size with current text
 };
@@ -385,13 +399,58 @@ class widgetLineChoice : public widget
   widget_DECLAREATTRIBUTE(widgetLineChoice,bool,cyclic,= false, Data)
 
 public:
-  widgetLineChoice* set_values(tre::span<std::string> values); // overload
-  widgetLineChoice* set_values(tre::span<const char*> values); // overload
+  template<class _Tvector> widgetLineChoice* set_values(const _Tvector &values)
+  {
+    wvalues.clear();
+    wvalues.reserve(values.size());
+    for (const auto &v : values) wvalues.push_back(v);
+    setUpdateNeededAddress();
+    return this;
+  }
 
 protected:
   bool wisHoveredLeft = false;
   bool wisHoveredRight = false;
 };
+
+class widgetLineChoiceTranslate : public widgetLineChoice
+{
+public:
+  widgetLineChoiceTranslate() : widgetLineChoice() {}
+  virtual ~widgetLineChoiceTranslate() {}
+
+protected:
+  virtual s_drawElementCount get_drawElementCount() const override;
+  virtual glm::vec2 get_zoneSizeDefault(const s_drawData &) const override;
+  virtual void compute_data(s_drawData &) override;
+
+  std::array<std::vector<std::string>, TRE_UI_NLANGUAGES> wvaluesTr;
+
+private:
+  widgetLineChoice *set_values(const std::vector<std::string> &) { TRE_FATAL("do not call this."); return this; }
+
+public:
+  widgetLineChoiceTranslate* set_valuesTr(std::size_t lid, const std::vector<std::string> &values)
+  {
+    TRE_ASSERT(wvaluesTr[0].empty() || values.size() == wvaluesTr[0].size());
+    wvaluesTr[lid].clear();
+    wvaluesTr[lid].reserve(values.size());
+    for (const auto &v : values) wvaluesTr[lid].push_back(v);
+    setUpdateNeededAddress();
+    return this;
+  }
+
+  template<class _TVector> widgetLineChoiceTranslate* set_valuesTr(std::size_t lid, const _TVector &values)
+  {
+    TRE_ASSERT(wvaluesTr[0].empty() || values.size() == wvaluesTr[0].size());
+    wvaluesTr[lid].clear();
+    wvaluesTr[lid].reserve(values.size());
+    for (const auto &v : values) wvaluesTr[lid].push_back(v);
+    setUpdateNeededAddress();
+    return this;
+  }
+};
+
 
 #undef widget_DECLARECONSTRUCTORS
 #undef widget_DECLARECOMMUNMETHODS
@@ -567,6 +626,7 @@ public:
   window_DECLAREWIDGETHELPER(widgetSliderInt)
   window_DECLAREWIDGETHELPER(widgetBoxCheck)
   window_DECLAREWIDGETHELPER(widgetLineChoice)
+  window_DECLAREWIDGETHELPER(widgetLineChoiceTranslate)
 
 #undef window_DECLAREWIDGETHELPER
 

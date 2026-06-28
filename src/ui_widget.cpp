@@ -15,11 +15,11 @@ void widget::acceptEventBase_focus(s_eventIntern &event)
 {
   if (!wisactive || event.accepted)
   {
-    if (wisactive && wishighlighted == true)
+    if (wisactive && wishighlighted)
     {
       if (wcb_loss_focus != nullptr) wcb_loss_focus(this);
+      set_ishighlighted(false);
     }
-    set_ishighlighted(false);
     return;
   }
 
@@ -111,13 +111,11 @@ void widgetText::compute_data(s_drawData &dd)
     const glm::vec2 pt11(m_zone.z, m_zone.w);
     const glm::vec2 pt10(m_zone.z, m_zone.y);
 
-    glm::vec4 colLine = transformColor(colorFront, COLORTHEME_LIGHTNESS, (!wisactive || wishighlighted) ? -0.2f : 0.2f);
-
+    glm::vec4 colLine = colorFront;
+    if (wisactive) colLine = transformColor(colorFront, COLORTHEME_LIGHTNESS, wishighlighted ? -0.1f : 0.1f);
     fillLine(dd.m_bufferLine, pt00, pt10, colLine);
     fillLine(dd.m_bufferLine, pt10, pt11, colLine);
-
-    colLine = transformColor(colorFront, COLORTHEME_LIGHTNESS, wishighlighted ? 0.2f : -0.2f);
-
+    if (wisactive) colLine = transformColor(colorFront, COLORTHEME_LIGHTNESS, wishighlighted ? 0.1f : -0.1f);
     fillLine(dd.m_bufferLine, pt11, pt01, colLine);
     fillLine(dd.m_bufferLine, pt01, pt00, colLine);
   }
@@ -200,30 +198,6 @@ void widgetTextTranslatate::compute_data(s_drawData &dd)
 
   wtext = wtexts[m_parentWindow->get_parentUI()->get_language()];
   widgetText::compute_data(dd);
-}
-widgetTextTranslatate* widgetTextTranslatate::set_texts(tre::span<std::string> values)
-{
-  TRE_ASSERT(values.size() == wtexts.size());
-  for (std::size_t i = 0; i < wtexts.size(); ++i) wtexts[i] = values[i];
-  setUpdateNeededAddress();
-  setUpdateNeededData();
-  return this;
-}
-widgetTextTranslatate* widgetTextTranslatate::set_texts(tre::span<const char*> values)
-{
-  TRE_ASSERT(values.size() == wtexts.size());
-  for (std::size_t i = 0; i < wtexts.size(); ++i) wtexts[i] = values[i];
-  setUpdateNeededAddress();
-  setUpdateNeededData();
-  return this;
-}
-widgetTextTranslatate* widgetTextTranslatate::set_text_LangIdx(const std::string &str, std::size_t lidx)
-{
-  TRE_ASSERT(lidx < wtexts.size());
-  wtexts[lidx] = str;
-  if (wadjust) setUpdateNeededLayout();
-  setUpdateNeededData();
-  return this;
 }
 
 // widgetTextEdit =============================================================
@@ -522,8 +496,7 @@ glm::vec4 widgetPicture::resolveColorFill() const
 {
   const auto colorMask = m_parentWindow->get_colormask() * glm::vec4(1.f, 1.f, 1.f, wcolorAlpha);
   const auto &colorTheme = m_parentWindow->get_colortheme();
-  const glm::vec4 &colorActive = (wisactive && colorTheme.factor > 0.f) ? glm::vec4(0.9f, 0.9f, 0.9f, 1.f) : glm::vec4(1.f);
-  const glm::vec4 &colorBase = (wcolor.a >= 0.f) ? wcolor : colorActive;
+  const glm::vec4 &colorBase = (wcolor.a >= 0.f) ? wcolor : glm::vec4(1.f);
   return colorTheme.resolveColor(colorBase, wishighlighted ? 0.2f : 0.f) * colorMask;
 }
 
@@ -571,11 +544,11 @@ void widgetBar::compute_data(s_drawData &dd)
     const glm::vec2 pt11(m_zone.z, m_zone.w);
     const glm::vec2 pt10(m_zone.z, m_zone.y);
 
-    glm::vec4 colorBorder = transformColor(colorLine, COLORTHEME_LIGHTNESS, (!wisactive || wishighlighted) ? -0.1f : 0.1f);
+    glm::vec4 colorBorder = colorLine;
+    if (wisactive) colorBorder = transformColor(colorLine, COLORTHEME_LIGHTNESS, wishighlighted ? -0.1f : 0.1f);
     fillLine(dd.m_bufferLine, pt00, pt10, colorBorder);
     fillLine(dd.m_bufferLine, pt10, pt11, colorBorder);
-
-    colorBorder = transformColor(colorLine, COLORTHEME_LIGHTNESS, wishighlighted ? 0.1f : -0.1f);
+    if (wisactive) colorBorder = transformColor(colorLine, COLORTHEME_LIGHTNESS, wishighlighted ? 0.1f : -0.1f);
     fillLine(dd.m_bufferLine, pt11, pt01, colorBorder);
     fillLine(dd.m_bufferLine, pt01, pt00, colorBorder);
   }
@@ -831,14 +804,13 @@ void widgetSlider::compute_data(s_drawData &dd)
     textgenerator::generate(tInfo, & dd.m_model, m_adrText.part, m_adrText.offset, nullptr);
   }
 
-  const glm::vec4 colorBorderTop = transformColor(colorBase, COLORTHEME_LIGHTNESS, wishighlighted ?  0.1f : -0.1f);
-  const glm::vec4 colorBorderBot = transformColor(colorBase, COLORTHEME_LIGHTNESS, (!wisactive || wishighlighted) ? -0.1f :  0.1f);
-
-  fillLine(dd.m_bufferLine, glm::vec2(zoneBack.x, zoneBack.w), glm::vec2(xVal1, zoneBack.w), colorBorderTop);
-  fillLine(dd.m_bufferLine, glm::vec2(xVal2, zoneBack.w), glm::vec2(zoneBack.z, zoneBack.w), colorBorderTop);
-
-  fillLine(dd.m_bufferLine, glm::vec2(zoneBack.x, zoneBack.y), glm::vec2(xVal1, zoneBack.y), colorBorderBot);
-  fillLine(dd.m_bufferLine, glm::vec2(xVal2, zoneBack.y), glm::vec2(zoneBack.z, zoneBack.y), colorBorderBot);
+  glm::vec4 colorBorder = colorBase;
+  if (wisactive) colorBorder = transformColor(colorBase, COLORTHEME_LIGHTNESS, wishighlighted ?  0.1f : -0.1f);
+  fillLine(dd.m_bufferLine, glm::vec2(zoneBack.x, zoneBack.w), glm::vec2(xVal1, zoneBack.w), colorBorder);
+  fillLine(dd.m_bufferLine, glm::vec2(xVal2, zoneBack.w), glm::vec2(zoneBack.z, zoneBack.w), colorBorder);
+  if (wisactive) colorBorder = transformColor(colorBase, COLORTHEME_LIGHTNESS, wishighlighted ? -0.1f :  0.1f);
+  fillLine(dd.m_bufferLine, glm::vec2(zoneBack.x, zoneBack.y), glm::vec2(xVal1, zoneBack.y), colorBorder);
+  fillLine(dd.m_bufferLine, glm::vec2(xVal2, zoneBack.y), glm::vec2(zoneBack.z, zoneBack.y), colorBorder);
 }
 void widgetSlider::acceptEvent(s_eventIntern &event)
 {
@@ -986,14 +958,14 @@ void widgetSliderInt::compute_data(s_drawData &dd)
     }
   }
 
-  const glm::vec4 colorBorderTop = transformColor(colorBase, COLORTHEME_LIGHTNESS, wishighlighted ?  0.1f : -0.1f);
-  const glm::vec4 colorBorderBot = transformColor(colorBase, COLORTHEME_LIGHTNESS, (!wisactive || wishighlighted) ? -0.1f :  0.1f);
 
-  fillLine(dd.m_bufferLine, glm::vec2(zoneBack.x, zoneBack.w), glm::vec2(xVal1, zoneBack.w), colorBorderTop);
-  fillLine(dd.m_bufferLine, glm::vec2(xVal2, zoneBack.w), glm::vec2(zoneBack.z, zoneBack.w), colorBorderTop);
-
-  fillLine(dd.m_bufferLine, glm::vec2(zoneBack.x, zoneBack.y), glm::vec2(xVal1, zoneBack.y), colorBorderBot);
-  fillLine(dd.m_bufferLine, glm::vec2(xVal2, zoneBack.y), glm::vec2(zoneBack.z, zoneBack.y), colorBorderBot);
+  glm::vec4 colorBorder = colorBase;
+  if (wisactive) colorBorder = transformColor(colorBase, COLORTHEME_LIGHTNESS, wishighlighted ?  0.1f : -0.1f);
+  fillLine(dd.m_bufferLine, glm::vec2(zoneBack.x, zoneBack.w), glm::vec2(xVal1, zoneBack.w), colorBorder);
+  fillLine(dd.m_bufferLine, glm::vec2(xVal2, zoneBack.w), glm::vec2(zoneBack.z, zoneBack.w), colorBorder);
+  if (wisactive) colorBorder = transformColor(colorBase, COLORTHEME_LIGHTNESS, wishighlighted ? -0.1f :  0.1f);
+  fillLine(dd.m_bufferLine, glm::vec2(zoneBack.x, zoneBack.y), glm::vec2(xVal1, zoneBack.y), colorBorder);
+  fillLine(dd.m_bufferLine, glm::vec2(xVal2, zoneBack.y), glm::vec2(zoneBack.z, zoneBack.y), colorBorder);
 }
 void widgetSliderInt::acceptEvent(s_eventIntern &event)
 {
@@ -1049,7 +1021,7 @@ void widgetBoxCheck::compute_data(s_drawData &dd)
   const auto &colorTheme = m_parentWindow->get_colortheme();
   const auto colorMask = m_parentWindow->get_colormask() * glm::vec4(1.f, 1.f, 1.f, wcolorAlpha);
   const glm::vec4 &colorBG_raw = wcolor.a >= 0.f ? wcolor : (wvalue ? colorTheme.m_colorPrimary : colorTheme.m_colorSurface);
-  const glm::vec4 &colorBG = colorTheme.resolveColor(colorBG_raw, wishighlighted ? 0.1f : 0.f) * colorMask;
+  const glm::vec4 &colorBG = colorTheme.resolveColor(colorBG_raw, wishighlighted ? 0.2f : 0.f) * colorMask;
   const glm::vec4 colorBorder = colorTheme.m_colorOnSurface * colorMask;
   const glm::vec4 colorCross = colorTheme.resolveColor(colorTheme.m_colorOnObject, wishighlighted ? 0.2f : 0.f) * colorMask * (wvalue ? 1.f : 0.f);
 
@@ -1080,7 +1052,8 @@ void widgetBoxCheck::compute_data(s_drawData &dd)
     const glm::vec2 pt01(m_zone.x, m_zone.w);
     const glm::vec2 pt11(m_zone.z, m_zone.w);
     const glm::vec2 pt10(m_zone.z, m_zone.y);
-    glm::vec4 colorB = transformColor(colorBorder, COLORTHEME_LIGHTNESS, wishighlighted ? 0.1f : -0.1f);
+    glm::vec4 colorB = colorBorder;
+    if (wisactive) colorB = transformColor(colorBorder, COLORTHEME_LIGHTNESS, wishighlighted ? 0.1f : -0.1f);
     fillLine(dd.m_bufferLine, pt11, pt01, colorB);
     fillLine(dd.m_bufferLine, pt01, pt00, colorB);
     if (wisactive) colorB = transformColor(colorBorder, COLORTHEME_LIGHTNESS, wishighlighted ? -0.1f : 0.1f);
@@ -1232,21 +1205,50 @@ void widgetLineChoice::acceptEvent(s_eventIntern &event)
     }
   }
 }
-widgetLineChoice* widgetLineChoice::set_values(tre::span<std::string> values)
+
+// widgetLineChoiceTranslate ======================================================
+
+widget::s_drawElementCount widgetLineChoiceTranslate::get_drawElementCount() const
 {
-  wvalues.clear();
-  wvalues.reserve(values.size());
-  for (const auto &v : values) wvalues.push_back(v);
-  setUpdateNeededAddress();
-  return this;
+  s_drawElementCount res = widgetLineChoice::get_drawElementCount();
+  for (const auto &vs : wvaluesTr)
+  {
+    for (const std::string &txt : vs)
+      res.m_vcountText = std::max(res.m_vcountText, unsigned(textgenerator::geometry_VertexCount(txt.c_str())));
+  }
+  return res;
 }
-widgetLineChoice* widgetLineChoice::set_values(tre::span<const char *> values)
+glm::vec2 widgetLineChoiceTranslate::get_zoneSizeDefault(const s_drawData &dd) const
 {
-  wvalues.clear();
-  wvalues.reserve(values.size());
-  for (const auto &v : values) wvalues.push_back(v);
-  setUpdateNeededAddress();
-  return this;
+  const float hLine = wheightModifier * dd.resolve_sizeH(m_parentWindow->get_lineHeight());
+  const float fsize = wheightModifier * dd.resolve_sizeH(m_parentWindow->get_fontHeight());
+
+  textgenerator::s_textInfo tInfo;
+  textgenerator::s_textInfoOut tOut;
+  tInfo.setupBasic(m_parentWindow->get_parentUI()->get_defaultFont(), nullptr);
+  tInfo.setupSize(hLine, fsize);
+  tInfo.m_fontPixelSize = unsigned(fsize / dd.m_pixelSize.y);
+
+  float textMaxWidth = 0.f;
+  for (const auto &vs : wvaluesTr)
+  {
+    for (const std::string &t : vs)
+    {
+      tInfo.m_text = t.c_str();
+      textgenerator::generate(tInfo, nullptr, 0, 0, &tOut);
+      if (tOut.m_maxboxsize.x > textMaxWidth) textMaxWidth = tOut.m_maxboxsize.x;
+    }
+  }
+  return glm::vec2(textMaxWidth + fsize * 3.f, fsize) + glm::vec2(hLine - fsize);
+}
+void widgetLineChoiceTranslate::compute_data(s_drawData &dd)
+{
+  // we need to clear the text data because the trailing data is not cleared
+  fillNull(dd.m_bufferText, get_drawElementCount().m_vcountText);
+
+  wvalues = wvaluesTr[m_parentWindow->get_parentUI()->get_language()];
+  if (wvalues.empty()) wvalues = wvaluesTr[0];
+  widgetLineChoice::compute_data(dd);
 }
 
 } // namespace ui

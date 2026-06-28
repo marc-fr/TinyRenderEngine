@@ -359,7 +359,7 @@ font::s_fontCache font::loadProceduralLed(const uint ptSize, const uint ptMargin
 
 bool font::load(const std::vector<s_fontCache> &fonts, const bool freeSurfaces)
 {
-  TRE_ASSERT(!fonts.empty());
+  if (fonts.empty()) return false;
 
   for (const auto &cache : fonts)
   {
