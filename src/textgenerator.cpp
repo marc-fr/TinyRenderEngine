@@ -9,12 +9,12 @@ namespace textgenerator {
 
 // ============================================================================
 
-void generate(const s_textInfo &info, modelRaw2D *outMesh, unsigned outPartId, unsigned outOffset, s_textInfoOut *outInfo)
+void generate(const s_textInfo &info, modelRaw2D *outMesh, std::size_t outPartId, std::size_t outOffset, s_textInfoOut *outInfo)
 {
   TRE_ASSERT(info.m_font != nullptr);
   TRE_ASSERT(info.m_text != nullptr);
 
-  const uint maxVertexCount = geometry_VertexCount(info.m_text);
+  const std::size_t maxVertexCount = geometry_VertexCount(info.m_text);
   TRE_ASSERT(outMesh == nullptr || outOffset + maxVertexCount <= outMesh->partInfo(outPartId).m_size)
 
   const bool isBoxValid = (info.m_zone.x < info.m_zone.z) && (info.m_zone.y < info.m_zone.w);

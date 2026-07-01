@@ -478,7 +478,7 @@ void resample_imp(_Sout *outTexture, const uint out_un, const uint out_vn,
   // the tile is 32*32 out-pixels
   const glm::uvec2 tile_nm_out = glm::uvec2(32u);
   const glm::vec2  tile_uv_in = glm::vec2(tile_nm_out) * px_uv;
-  const glm::uvec2 tile_nm_in = tile_uv_in * inWH + 4.f; /* + margin */
+  const glm::ivec2 tile_nm_in = tile_uv_in * inWH + 4.f; /* + margin */
   const glm::ivec4 tile_nnmm_in = glm::ivec4(-tile_nm_in.x, tile_nm_in.x, -tile_nm_in.y, tile_nm_in.y) / 2;
 
   std::vector<_Tcompute> px_data_in;
@@ -499,12 +499,12 @@ void resample_imp(_Sout *outTexture, const uint out_un, const uint out_vn,
       const glm::ivec4 curtile_nnmm_in = glm::ivec4(curtile_nm_C.x, curtile_nm_C.x, curtile_nm_C.y, curtile_nm_C.y) + tile_nnmm_in;
 
       // get in-pixel data
-      for (uint ivL = 0; ivL < tile_nm_in.y; ++ivL)
+      for (int ivL = 0; ivL < tile_nm_in.y; ++ivL)
       {
-        const uint ivIn = uint(glm::clamp(curtile_nnmm_in.z + int(ivL), 0, int(in_vn - 1)));
-        for (uint iuL = 0; iuL < tile_nm_in.x; ++iuL)
+        const uint ivIn = uint(glm::clamp(curtile_nnmm_in.z + ivL, 0, int(in_vn - 1)));
+        for (int iuL = 0; iuL < tile_nm_in.x; ++iuL)
         {
-          const uint iuIn = uint(glm::clamp(curtile_nnmm_in.x + int(iuL), 0, int(in_un - 1)));
+          const uint iuIn = uint(glm::clamp(curtile_nnmm_in.x + iuL, 0, int(in_un - 1)));
           px_data_in[iuL * tile_nm_in.y + ivL] = samplerIn.pixelGet(iuIn, ivIn);
         }
       }
@@ -806,7 +806,7 @@ void resample_toCubeMap_imp(_Sout *outTexture, const uint out_un, const uint out
       const uint iv = (ivRaw < 0) ? uint(-ivRaw) : uint(in_vn * 2 - 1 - ivRaw);
       for (uint iuCache = 0; iuCache < global_nm.x; ++iuCache)
       {
-        const uint iu = (-iuCache - uint(global_nnmm.x) + 3 * in_un) % in_un; // latitude-repeat
+        const uint iu = (3 * in_un - iuCache - uint(global_nnmm.x)) % in_un; // latitude-repeat
         px_data_in[iuCache * global_nm.y + ivCache] = samplerIn.pixelGet(iu, iv);
       }
     }

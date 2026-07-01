@@ -336,7 +336,7 @@ void baseUI2D::draw() const
             glBindTexture(GL_TEXTURE_2D, m_textures[tslot].m_handle);
             isTextureBound[tslot] = true;
           }
-          glUniform1i(m_shader->getUniformLocation(shader::TexDiffuse),1 + tslot);
+          glUniform1i(m_shader->getUniformLocation(shader::TexDiffuse), int(1 + tslot));
         }
         m_model.drawcall(curwin->m_adrPict.part + tslot, 1, false);
       }
@@ -580,7 +580,7 @@ void baseUI3D::draw() const
             glBindTexture(GL_TEXTURE_2D, m_textures[tslot].m_handle);
             isTextureBound[tslot] = true;
           }
-          glUniform1i(m_shader->getUniformLocation(shader::TexDiffuse),1 + tslot);
+          glUniform1i(m_shader->getUniformLocation(shader::TexDiffuse), int(1 + tslot));
         }
         m_model.drawcall(curwin->m_adrPict.part + tslot, 1, false);
       }

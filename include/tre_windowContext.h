@@ -129,7 +129,7 @@ public:
   struct s_view2D
   {
     glm::mat3   m_matView = glm::mat3(1.f);
-    glm::mat3   m_matViewPrev;
+    glm::mat3   m_matViewPrev = glm::mat3(1.f);
 
     windowContext *m_parentWindow = nullptr;
 
@@ -160,7 +160,7 @@ public:
   struct s_view3D
   {
     glm::mat4   m_matView = glm::mat4(1.f);
-    glm::mat4   m_matViewPrev;
+    glm::mat4   m_matViewPrev = glm::mat4(1.f);
 
     windowContext *m_parentWindow = nullptr;
 

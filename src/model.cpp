@@ -2,6 +2,10 @@
 
 #include <fstream>
 
+#pragma warning(disable : 4267) // ignore conversion type mismatch.
+
+constexpr float kPi = float(M_PI);
+
 namespace tre {
 
 // s_partInfo =================================================================
@@ -452,8 +456,8 @@ void s_modelDataLayout::copyVertex(std::size_t ivfirst, std::size_t ivcount, std
 
       for (s_block & block : blocks)
       {
-        const long offset = block.src - dataSrc;
-        if (abs(offset) < long(block.dim))
+        const std::ptrdiff_t offset = block.src - dataSrc;
+        if (abs(offset) < std::ptrdiff_t(block.dim))
         {
           TRE_ASSERT(block.dim == data.m_stride);
           if (offset > 0)
@@ -817,8 +821,8 @@ bool model::readBase(std::istream &inbuffer)
 {
   bool result = true;
 
-  uint partInfoSize = 0;
-  inbuffer.read(reinterpret_cast<char*>(&partInfoSize), sizeof(uint));
+  uint32_t partInfoSize = 0;
+  inbuffer.read(reinterpret_cast<char*>(&partInfoSize), sizeof(uint32_t));
 
   m_partInfo.resize(partInfoSize);
 
@@ -832,8 +836,8 @@ bool model::writeBase(std::ostream &outbuffer) const
 {
   bool result = true;
 
-  const uint partInfoSize = m_partInfo.size();
-  outbuffer.write(reinterpret_cast<const char*>(&partInfoSize), sizeof(uint));
+  const uint32_t partInfoSize = uint32_t(m_partInfo.size());
+  outbuffer.write(reinterpret_cast<const char*>(&partInfoSize), sizeof(uint32_t));
 
   for (const s_partInfo & part : m_partInfo)
     result &= part.write(outbuffer);
@@ -1055,7 +1059,7 @@ std::size_t modelIndexed::createRawPart(std::size_t count)
   const std::size_t vertexStart = get_NextAvailable_vertex();
   reserveIndex(indexStart + count);
   for (std::size_t i = 0; i < count; ++i)
-    m_layout.m_index[indexStart + i] = vertexStart + i;
+    m_layout.m_index[indexStart + i] = GLuint(vertexStart + i);
   // reserve vertex data (keep uninitialized)
   reserveVertex(vertexStart + count);
   // end
@@ -1090,7 +1094,7 @@ void modelIndexed::resizeRawPart(std::size_t ipart, std::size_t count)
   reserveVertex(vertexCountOld + growCount);
 
   for (std::size_t i = 0; i < growCount; ++i)
-    m_layout.m_index[part.m_offset + partSizeOld + i] = vertexCountOld + i;
+    m_layout.m_index[part.m_offset + partSizeOld + i] = GLuint(vertexCountOld + i);
 }
 
 void modelIndexed::fillDataBox(std::size_t ipart, std::size_t offsetI, std::size_t offsetV, const glm::mat4 &transform, float edgeLength, const glm::vec4 & color)
@@ -1281,7 +1285,7 @@ void modelIndexed::fillDataCone(std::size_t ipart, std::size_t offsetI, std::siz
 
   for (std::size_t u = 0; u < subdiv; ++u)
   {
-    const float angle = u * 2.f * M_PI / subdiv;
+    const float angle = u * 2.f * kPi / subdiv;
     m_layout.m_positions.get<glm::vec3>(offsetV + u) = center + axisT1 * (radius * std::cos(angle)) + axisT2 * (radius * std::sin(angle));
   }
   m_layout.m_positions.get<glm::vec3>(offsetV + subdiv + 0) = center;
@@ -1349,7 +1353,7 @@ void modelIndexed::fillDataDisk(std::size_t ipart, std::size_t offsetI, std::siz
 
   for (std::size_t u = 0; u < subdiv; ++u)
   {
-    const float angle = u * 2.f * M_PI / subdiv;
+    const float angle = u * 2.f * kPi / subdiv;
     m_layout.m_positions.get<glm::vec3>(offsetV + u) = center + axisT1 * (radiusOut * std::cos(angle)) + axisT2 * (radiusOut * std::sin(angle));
   }
   if (radiusIn == 0.f)
@@ -1360,7 +1364,7 @@ void modelIndexed::fillDataDisk(std::size_t ipart, std::size_t offsetI, std::siz
   {
     for (std::size_t u = 0; u < subdiv; ++u)
     {
-      const float angle = (u + 0.5f) * 2.f * M_PI / subdiv;
+      const float angle = (u + 0.5f) * 2.f * kPi / subdiv;
       m_layout.m_positions.get<glm::vec3>(offsetV + subdiv + u) = center + axisT1 * (radiusIn * std::cos(angle)) + axisT2 * (radiusIn * std::sin(angle));
     }
   }
@@ -1447,11 +1451,11 @@ void modelIndexed::fillDataTorus(std::size_t ipart, std::size_t offsetI, std::si
 
   for (std::size_t uM = 0; uM < subdiv_main; ++uM)
   {
-    const float angleM = uM * M_PI / (subdiv_main - 1.f);
+    const float angleM = uM * kPi / (subdiv_main - 1.f);
     const glm::vec3 axisM = - std::cos(angleM) * axisT2 + std::sin(angleM) * axisT1;
     for (std::size_t uI = 0; uI < subdiv_in; ++uI)
     {
-      const float angleI = uI * 2.f * M_PI / subdiv_in;
+      const float angleI = uI * 2.f * kPi / subdiv_in;
       m_layout.m_positions.get<glm::vec3>(offsetV + uM * subdiv_in + uI) =
         center + (radiusMain + radiusIn * std::cos(angleI)) * axisM + (radiusIn * std::sin(angleI)) * axisUp;
     }
@@ -1651,7 +1655,7 @@ void modelIndexed::fillDataTube(std::size_t ipart, std::size_t offsetI, std::siz
 
   for (std::size_t ir = 0; ir < subdiv_r; ++ir)
   {
-    const float angle = ir * 2.f * M_PI / subdiv_r;
+    const float angle = ir * 2.f * kPi / subdiv_r;
     const glm::vec3 axisRd = std::cos(angle) * axisT1 + std::sin(angle) * axisT2;
     for (std::size_t ih = 0; ih < subdiv_h + 1; ++ih)
     {
@@ -1744,26 +1748,26 @@ void modelIndexed::fillDataUvtrisphere(std::size_t ipart, std::size_t offsetI, s
   std::size_t vertexCurrent = offsetV;
   for (std::size_t u = 0; u < subdiv_u / 2 ; ++u)
   {
-    const float cosu0 = std::cos((u * 2    ) * M_PI * 2.f / subdiv_u);
-    const float sinu0 = std::sin((u * 2    ) * M_PI * 2.f / subdiv_u);
-    const float cosu1 = std::cos((u * 2 + 1) * M_PI * 2.f / subdiv_u);
-    const float sinu1 = std::sin((u * 2 + 1) * M_PI * 2.f / subdiv_u);
+    const float cosu0 = std::cos((u * 2    ) * kPi * 2.f / subdiv_u);
+    const float sinu0 = std::sin((u * 2    ) * kPi * 2.f / subdiv_u);
+    const float cosu1 = std::cos((u * 2 + 1) * kPi * 2.f / subdiv_u);
+    const float sinu1 = std::sin((u * 2 + 1) * kPi * 2.f / subdiv_u);
 
     const glm::vec3 axisU0 = cosu0 * axisT1 + sinu0 * axisT2;
     const glm::vec3 axisU1 = cosu1 * axisT1 + sinu1 * axisT2;
 
     for (std::size_t v = 0; v < subdiv_v; ++v)
     {
-      const float cosv =   std::sin((v + 1) * M_PI / (subdiv_v + 2)); // in fact, angle is in range [-pi,pi]
-      const float sinv = - std::cos((v + 1) * M_PI / (subdiv_v + 2)); // in fact, angle is in range [-pi,pi]
+      const float cosv =   std::sin((v + 1) * kPi / (subdiv_v + 2)); // in fact, angle is in range [-pi,pi]
+      const float sinv = - std::cos((v + 1) * kPi / (subdiv_v + 2)); // in fact, angle is in range [-pi,pi]
       const glm::vec3 outN = cosv * axisU0 + sinv * axisUp;
       m_layout.m_normals.get<glm::vec3>(vertexCurrent) = outN;
       m_layout.m_positions.get<glm::vec3>(vertexCurrent++) = center + radius * outN;
     }
     for (std::size_t v = 0; v < subdiv_v + 1; ++v)
     {
-      const float cosv =   std::sin((v + 0.5f) * M_PI / (subdiv_v + 2)); // in fact, angle is in range [-pi,pi]
-      const float sinv = - std::cos((v + 0.5f) * M_PI / (subdiv_v + 2)); // in fact, angle is in range [-pi,pi]
+      const float cosv =   std::sin((v + 0.5f) * kPi / (subdiv_v + 2)); // in fact, angle is in range [-pi,pi]
+      const float sinv = - std::cos((v + 0.5f) * kPi / (subdiv_v + 2)); // in fact, angle is in range [-pi,pi]
       const glm::vec3 outN = cosv * axisU1 + sinv * axisUp;
       m_layout.m_normals.get<glm::vec3>(vertexCurrent) = outN;
       m_layout.m_positions.get<glm::vec3>(vertexCurrent++) = center + radius * outN;

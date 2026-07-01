@@ -69,7 +69,7 @@ namespace textgenerator
    * Either outMesh or outInfo can be null.
    * It will write to the outMesh the vertex count given from "geometry_VertexCount". (Trailing vertices will have a full-transparent color.)
    */
-  void generate(const s_textInfo &info, modelRaw2D *outMesh, unsigned outPartId, unsigned outOffset, s_textInfoOut *outInfo);
+  void generate(const s_textInfo &info, modelRaw2D *outMesh, std::size_t outPartId, std::size_t outOffset, s_textInfoOut *outInfo);
 };
 
 } // namespace

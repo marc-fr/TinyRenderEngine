@@ -256,11 +256,8 @@ void windowContext::OpenGLCamera(float near, float far, float fov)
 
 void windowContext::OpenGLResize(const int width, const int height)
 {
-  m_resolutioncurrent.x = width;
-  m_resolutioncurrent.y = height;
-
-  if(m_resolutioncurrent.x <= 0) m_resolutioncurrent.x = 1;
-  if(m_resolutioncurrent.y <= 0) m_resolutioncurrent.y = 1;
+  m_resolutioncurrent.x = std::max(width, 1);
+  m_resolutioncurrent.y = std::max(height, 1);
 
   m_resolutioncurrentInv.x = 1.f / m_resolutioncurrent.x;
   m_resolutioncurrentInv.y = 1.f / m_resolutioncurrent.y;
