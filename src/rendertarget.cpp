@@ -329,7 +329,7 @@ void renderTarget::resolve(renderTarget &targetFBO) const
 
 // ============================================================================
 
-void renderTarget_ShadowMap::computeUBO_forMap(const shader::s_UBOdata_sunLight & uboLight, shader::s_UBOdata_sunShadow &uboShadow, uint shadowIndex)
+void renderTarget_ShadowMap::computeUBO_forMap(shader::s_UBOdata_sunLight & uboLight, uint shadowIndex, float biasFactor /* = 1.f */)
 {
   TRE_ASSERT(m_w>=m_h); // just a matter of implementation
   TRE_ASSERT(glm::length(uboLight.direction)>0.001f);
@@ -393,14 +393,14 @@ void renderTarget_ShadowMap::computeUBO_forMap(const shader::s_UBOdata_sunLight 
 
   tre::compute3DOrthoProjection(m_mProj, 1.1f, 1.1f, -1.1f, 1.1f);
 
-  uboShadow.matPV(shadowIndex) = m_mProj * m_mView;
-  uboShadow.mapInvDim(shadowIndex) = 1.f / glm::vec2(float(m_w), float(m_h));
-  uboShadow.mapBox(shadowIndex) = glm::vec4(viewExtend.x, viewExtend.y, sceneProj.m_min.z, sceneProj.m_max.z);
+  uboLight.mPV[shadowIndex] = m_mProj * m_mView;
+  uboLight.mapInvDimension[shadowIndex] = glm::vec4(1.f / m_w, 1.f / m_h, biasFactor, 0.f);
+  uboLight.mapBoxUVNF[shadowIndex] = glm::vec4(viewExtend.x, viewExtend.y, sceneProj.m_min.z, sceneProj.m_max.z);
 }
 
 // ============================================================================
 
-bool renderTarget_ShadowCubeMap::load(const int texSize)
+bool renderTarget_CubeMap::load(const int texSize)
 {
   TRE_ASSERT(m_drawFBO == 0);
 
@@ -437,14 +437,14 @@ bool renderTarget_ShadowCubeMap::load(const int texSize)
 
   TRE_LOG("FBO created (ID=" << m_drawFBO << ", w=" << m_w << ", h=" << m_h << " [Depth Cube])");
 
-  IsOpenGLok("renderTarget_ShadowCubeMap::load");
+  IsOpenGLok("renderTarget_CubeMap::load");
 
   return true;
 }
 
 // ----------------------------------------------------------------------------
 
-void renderTarget_ShadowCubeMap::clear()
+void renderTarget_CubeMap::clear()
 {
   if (m_drawFBO!=0)     glDeleteFramebuffers(1,&m_drawFBO);
   m_drawFBO=0;
@@ -454,7 +454,7 @@ void renderTarget_ShadowCubeMap::clear()
 
 // ----------------------------------------------------------------------------
 
-void renderTarget_ShadowCubeMap::bindForWritting(GLenum cubeFace) const
+void renderTarget_CubeMap::bindForWritting(GLenum cubeFace) const
 {
   TRE_ASSERT(m_drawFBO != 0);
   glBindFramebuffer(GL_DRAW_FRAMEBUFFER, m_drawFBO);
@@ -463,7 +463,7 @@ void renderTarget_ShadowCubeMap::bindForWritting(GLenum cubeFace) const
 
 // ----------------------------------------------------------------------------
 
-void renderTarget_ShadowCubeMap::bindForReading(GLenum cubeFace) const
+void renderTarget_CubeMap::bindForReading(GLenum cubeFace) const
 {
   TRE_ASSERT(m_drawFBO != 0);
   glBindFramebuffer(GL_READ_FRAMEBUFFER, m_drawFBO);
@@ -472,30 +472,7 @@ void renderTarget_ShadowCubeMap::bindForReading(GLenum cubeFace) const
 
 // ----------------------------------------------------------------------------
 
-void renderTarget_ShadowCubeMap::setRenderingLimits(float near, float far)
-{
-  compute3DFrustumProjection(m_mProj, 1.f, float(M_PI * 0.5), near, far);
-  m_near = near;
-  m_far = far;
-}
-
-// ----------------------------------------------------------------------------
-
-void renderTarget_ShadowCubeMap::computeUBO_forMap(shader::s_UBOdata_ptstLight & uboLight, uint lightIndex, shader::s_UBOdata_ptsShadow &uboShadow)
-{
-  m_cubeCenter = uboLight.pos(lightIndex);
-
-  uboLight.shadow(lightIndex) = 0;
-
-  uboShadow.mapInvDimension = 1.f / glm::vec2(float(m_w), float(m_h));
-  uboShadow.mapBoxUVNF = glm::vec4(m_far, m_far, m_near, m_far);
-
-  computeMViews();
-}
-
-// ----------------------------------------------------------------------------
-
-void renderTarget_ShadowCubeMap::computeMViews()
+void renderTarget_CubeMap::computeMViews()
 {
   const glm::vec4 axisX = glm::vec4(1.f, 0.f, 0.f, 0.f);
   const glm::vec4 axisY = glm::vec4(0.f, 1.f, 0.f, 0.f);

@@ -43,7 +43,6 @@ static tre::texture texture2D;
 
 #ifdef TEST_WITH_SHADOW
 static tre::renderTarget_ShadowMap      sunLight_ShadowMap;
-static tre::shader::s_UBOdata_sunShadow sunShadow_Data;
 static tre::shader                      shaderShadow;
 #endif
 
@@ -158,20 +157,14 @@ static int app_init()
   sunLight_Data.colorAmbiant = glm::vec3(0.1f);
 
 #ifdef TEST_WITH_SHADOW
-  sunShadow_Data.nShadow = 1;
+  sunLight_Data.nShadow = 1;
 
-  // Render-targets
-
+  // Render-target:
   sunLight_ShadowMap.load(2048,2048);
   sunLight_ShadowMap.setSceneBox(tre::s_boundbox(glm::vec3(-2.f), glm::vec3(2.f)));
 
-  const int flagShaderShadow = tre::shader::PRGM_SHADOW_SUN;
-
   shaderInstancedBB.setShadowSunSamplerCount(1);
   shaderMesh3D.setShadowSunSamplerCount(1);
-
-#else
-  const int flagShaderShadow = 0;
 #endif
 
   tre::IsOpenGLok("app_init: load render-targets");
@@ -184,11 +177,11 @@ static int app_init()
 
   shaderInstancedBB.loadShader(tre::shader::PRGM_2Dto3D,
                                tre::shader::PRGM_TEXTURED |
-                               tre::shader::PRGM_LIGHT_SUN | flagShaderShadow |
+                               tre::shader::PRGM_LIGHT_SUN |
                                tre::shader::PRGM_INSTANCED | tre::shader::PRGM_INSTCOLOR | tre::shader::PRGM_ROTATION);
 
   shaderMesh3D.loadShader(tre::shader::PRGM_3D,
-                          tre::shader::PRGM_LIGHT_SUN | flagShaderShadow);
+                          tre::shader::PRGM_LIGHT_SUN);
 
 #ifdef TEST_WITH_FPS
   shaderFps.loadShader(tre::shader::PRGM_2D, tre::shader::PRGM_COLOR | tre::shader::PRGM_TEXTURED);
@@ -303,8 +296,7 @@ static void app_update()
     tre::shader::updateUBO_sunLight(sunLight_Data);
 
 #ifdef TEST_WITH_SHADOW
-    sunLight_ShadowMap.computeUBO_forMap(sunLight_Data, sunShadow_Data, 0);
-    tre::shader::updateUBO_sunShadow(sunShadow_Data);
+    sunLight_ShadowMap.computeUBO_forMap(sunLight_Data, 0);
 #endif
   }
 

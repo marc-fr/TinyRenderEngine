@@ -31,8 +31,8 @@ shaderGenerator::s_layout::s_layout(const e_category cat, const int flags)
   hasPIX_PositionClipspace  = flags & (PRGM_SOFT | PRGM_AO);
 
   hasUNI_MPVM      = (flags != 0) || is3D();
-  hasUNI_MView     = hasPIX_Position || hasPIX_Normal;
-  hasUNI_MModel    = hasPIX_Position || hasPIX_Normal || (flags & (PRGM_INSTANCED));
+  hasUNI_MView     = flags & (PRGM_MASK_LIGHT);
+  hasUNI_MModel    = hasPIX_Position || hasPIX_Normal || hasBUF_TangentU;
   hasUNI_MOrientation = (flags & (PRGM_INSTANCED)) && is3D() && !(flags & (PRGM_ORIENTATION));
   hasUNI_uniColor  = flags & (PRGM_UNICOLOR);
   hasUNI_uniMat    =  (flags & (PRGM_MASK_LIGHT)) && !(flags & (PRGM_MAPMAT));
@@ -41,9 +41,6 @@ shaderGenerator::s_layout::s_layout(const e_category cat, const int flags)
   hasUNI_SoftDistance = flags & (PRGM_SOFT);
 
   hasUBO_sunlight  = flags & (PRGM_LIGHT_SUN);
-  hasUBO_sunshadow = flags & (PRGM_SHADOW_SUN);
-  hasUBO_ptslight  = flags & (PRGM_LIGHT_PTS);
-  hasUBO_ptsshadow = flags & (PRGM_SHADOW_PTS);
 
   hasSMP_Diffuse   = flags & (PRGM_TEXTURED);
   hasSMP_DiffuseB  = hasSMP_Diffuse && (flags & (PRGM_BLEND)) && !(flags & (PRGM_ATLAS) );
@@ -51,8 +48,6 @@ shaderGenerator::s_layout::s_layout(const e_category cat, const int flags)
   hasSMP_CubeB     = hasSMP_Cube && (flags & (PRGM_BLEND)) && !(flags & (PRGM_ATLAS) );
   hasSMP_Normal    = flags & (PRGM_MAPNORMAL);
   hasSMP_Mat       = (flags & (PRGM_MASK_LIGHT)) && (flags & (PRGM_MAPMAT));
-  hasSMP_ShadowSun = flags & (PRGM_SHADOW_SUN);
-  hasSMP_ShadowPts = flags & (PRGM_SHADOW_PTS);
   hasSMP_Depth     = flags & (PRGM_SOFT);
   hasSMP_AO        = flags & (PRGM_AO);
 
@@ -196,7 +191,6 @@ void shaderGenerator::createShaderFunctions_Shadow(std::string &outstring)
 {
   outstring.reserve(outstring.size() + 4096);
 
-  if (m_layout.hasSMP_ShadowSun)
   {
     outstring += "float ShadowOcclusion_sun(float tanTheta, vec3 rawN)\n"
                  "{\n"
@@ -205,12 +199,12 @@ void shaderGenerator::createShaderFunctions_Shadow(std::string &outstring)
     for (uint iS = 0; iS < m_shadowSun_count; ++iS)
     {
       const std::string str_iS = std::to_string(iS);
-      outstring += "  if (" + str_iS + " < m_sunshadow.nShadow)\n"
+      outstring += "  if (" + str_iS + " < usunlight.nShadow)\n"
                    "  {\n"
-                   "    vec2  dxy = m_sunshadow.mapBoxUVNF[" + str_iS + "].xy * m_sunshadow.mapInvDimension[" + str_iS + "];\n"
+                   "    vec2  dxy = usunlight.mapBoxUVNF[" + str_iS + "].xy * usunlight.mapInvDimension[" + str_iS + "].xy;\n"
                   "     float dz = 1.5f * max(dxy.x, dxy.y) * clamp(tanTheta, 1.e-2f, 1.e2f);\n"
-                   "    float bias = dz / (m_sunshadow.mapBoxUVNF[" + str_iS + "].w - m_sunshadow.mapBoxUVNF[" + str_iS + "].z);\n"
-                   "    vec4 projInMap = m_sunshadow.mPV[" + str_iS + "] * vec4(pixelPosition,1.f);\n"
+                   "    float bias = usunlight.mapInvDimension[" + str_iS + "].z * dz / (usunlight.mapBoxUVNF[" + str_iS + "].w - usunlight.mapBoxUVNF[" + str_iS + "].z);\n"
+                   "    vec4 projInMap = usunlight.mPV[" + str_iS + "] * vec4(pixelPosition,1.f);\n"
                    "    vec3 uvw = 0.5f + 0.5f * projInMap.xyz / projInMap.w;\n"
                    "    float texDepth0 = texture(TexShadowSun" + str_iS + ",uvw.xy).r;\n"
                    "    if (tanTheta > 1.e2f)\n"
@@ -222,17 +216,17 @@ void shaderGenerator::createShaderFunctions_Shadow(std::string &outstring)
                    "      float islighted_sun_local = 0.f;\n"
                    "      if (texDepth0 - uvw.z > -bias) { islighted_sun_local += 0.4f; }\n"
                    "      vec3 dxP = vec3(dxy.x, 0.f, 0.f) - dxy.x * rawN.x * rawN;\n"
-                   "      projInMap = m_sunshadow.mPV[" + str_iS + "] * vec4(pixelPosition - dxP,1.f);\n"
+                   "      projInMap = usunlight.mPV[" + str_iS + "] * vec4(pixelPosition - dxP,1.f);\n"
                    "      uvw = 0.5f + 0.5f * projInMap.xyz / projInMap.w;\n"
                    "      if (texture(TexShadowSun" + str_iS + ",uvw.xy).r - uvw.z > -bias) { islighted_sun_local += 0.15f; }\n"
-                   "      projInMap = m_sunshadow.mPV[" + str_iS + "] * vec4(pixelPosition + dxP,1.f);\n"
+                   "      projInMap = usunlight.mPV[" + str_iS + "] * vec4(pixelPosition + dxP,1.f);\n"
                    "      uvw = 0.5f + 0.5f * projInMap.xyz / projInMap.w;\n"
                    "      if (texture(TexShadowSun" + str_iS + ",uvw.xy).r - uvw.z > -bias) { islighted_sun_local += 0.15f; }\n"
                    "      vec3 dyP = vec3(0.f, dxy.y, 0.f) - dxy.y * rawN.y * rawN;\n"
-                   "      projInMap = m_sunshadow.mPV[" + str_iS + "] * vec4(pixelPosition - dyP,1.f);\n"
+                   "      projInMap = usunlight.mPV[" + str_iS + "] * vec4(pixelPosition - dyP,1.f);\n"
                    "      uvw = 0.5f + 0.5f * projInMap.xyz / projInMap.w;\n"
                    "      if (texture(TexShadowSun" + str_iS + ",uvw.xy).r - uvw.z > -bias) { islighted_sun_local += 0.15f; }\n"
-                   "      projInMap = m_sunshadow.mPV[" + str_iS + "] * vec4(pixelPosition + dyP,1.f);\n"
+                   "      projInMap = usunlight.mPV[" + str_iS + "] * vec4(pixelPosition + dyP,1.f);\n"
                    "      uvw = 0.5f + 0.5f * projInMap.xyz / projInMap.w;\n"
                    "      if (texture(TexShadowSun" + str_iS + ",uvw.xy).r - uvw.z > -bias) { islighted_sun_local += 0.15f; }\n"
                    "      islighted_sun = min(islighted_sun, islighted_sun_local);\n"
@@ -243,71 +237,6 @@ void shaderGenerator::createShaderFunctions_Shadow(std::string &outstring)
     outstring += "  return islighted_sun;\n"
                  "}\n";
 
-    outstring += "float ShadowOcclusion_sun_nobias()\n"
-                 "{\n"
-                 "  float islighted_sun = 1.f;\n";
-
-    for (uint iS = 0; iS < m_shadowSun_count; ++iS)
-    {
-      const std::string str_iS = std::to_string(iS);
-      outstring += "  if (" + str_iS + " < m_sunshadow.nShadow)\n"
-                   "  {\n"
-                   "    vec4 projInMap = m_sunshadow.mPV[" + str_iS + "] * vec4(pixelPosition,1.f);\n"
-                   "    vec3 uvw = 0.5f + 0.5f * projInMap.xyz / projInMap.w;\n"
-                   "    float texDepth0 = texture(TexShadowSun" + str_iS + ",uvw.xy).r;\n"
-                   "    if (texDepth0 > 0.f && texDepth0 < 1.f) // neither the near, neither the far plane of the map\n"
-                   "    {\n"
-                   "      float islighted_sun_local = 0.f;\n"
-                   "      if (texDepth0 - uvw.z > 0.f) { islighted_sun_local += 0.4f; }\n"
-                   "      vec2  du  = vec2(m_sunshadow.mapInvDimension[" + str_iS + "].x, 0.f);\n"
-                   "      vec2  dv  = vec2(0.f, m_sunshadow.mapInvDimension[" + str_iS + "].y);\n"
-                   "      if (texture(TexShadowSun" + str_iS + ",uvw.xy + du).r - uvw.z > 0.f) { islighted_sun_local += 0.15f; }\n"
-                   "      if (texture(TexShadowSun" + str_iS + ",uvw.xy - du).r - uvw.z > 0.f) { islighted_sun_local += 0.15f; }\n"
-                   "      if (texture(TexShadowSun" + str_iS + ",uvw.xy + dv).r - uvw.z > 0.f) { islighted_sun_local += 0.15f; }\n"
-                   "      if (texture(TexShadowSun" + str_iS + ",uvw.xy - dv).r - uvw.z > 0.f) { islighted_sun_local += 0.15f; }\n"
-                   "      islighted_sun = min(islighted_sun, islighted_sun_local);\n"
-                   "    }\n"
-                   "  }\n";
-    }
-
-    outstring += "  return islighted_sun;\n"
-                 "}\n";
-  }
-
-  if (m_layout.hasSMP_ShadowPts)
-  {
-    outstring += "float vectorToCubeDepth(vec3 vector, float n, float f)\n"
-                 "{\n"
-                 "  vec3 absVec = abs(vector);\n"
-                 "  float localZ_wspace = max(absVec.x, max(absVec.y, absVec.z));\n"
-                 "  float localZ_cspace = (f+n) / (f-n) - (2.f * f * n) / (f-n) / localZ_wspace;\n"
-                 "  return 0.5f + 0.5f * localZ_cspace;\n"
-                 "}\n";
-
-    outstring += "float ShadowOcclusion_pts(int lightID)\n"
-                 "{\n"
-                 "  float bias = 0.003f;\n"
-                 "  float islighted_pts = 1.f;\n";
-
-    outstring += "  vec3 lightVector = pixelPosition - m_ptslight.position[lightID];\n"
-                 "  float distance = vectorToCubeDepth(lightVector, m_ptsshadow.mapBoxUVNF.z, m_ptsshadow.mapBoxUVNF.w);\n"
-                 "  float sampledDistance = texture(TexShadowPts0, lightVector).r;\n"
-                 "  if (distance > sampledDistance + bias) islighted_pts = 0.f;\n";
-
-    outstring += "  return islighted_pts;\n"
-                 "}\n";
-
-    outstring += "float ShadowOcclusion_pts_nobias(int lightID)\n"
-                 "{\n"
-                 "  float islighted_pts = 1.f;\n";
-
-    outstring += "  vec3 lightVector = pixelPosition - m_ptslight.position[lightID];\n"
-                 "  float distance = vectorToCubeDepth(lightVector, m_ptsshadow.mapBoxUVNF.z, m_ptsshadow.mapBoxUVNF.w);\n"
-                 "  float sampledDistance = texture(TexShadowPts0, lightVector).r;\n"
-                 "  if (distance > sampledDistance) islighted_pts = 0.f;\n";
-
-    outstring += "  return islighted_pts;\n"
-                 "}\n";
   }
 }
 
@@ -408,9 +337,6 @@ void shaderGenerator::createShaderFunction_Light(const int flags, std::string &g
 {
   if (m_layout.category == PRGM_3D_DEPTH || m_layout.is2D()) return;
 
-  //-- Constant strings
-  const std::string str_LIGTH_PTS_MAX = std::to_string(LIGHT_PTS_MAX);
-
   //-- Function implementation.
 
   gatherLights.reserve(gatherLights.size() + 1024);
@@ -446,20 +372,12 @@ void shaderGenerator::createShaderFunction_Light(const int flags, std::string &g
 
   if (flags & PRGM_LIGHT_SUN)
   {
-    gatherLights += "  vec3 L = - normalize((MView * vec4(m_sunlight.direction, 0.f)).xyz);\n";
-    if (flags & PRGM_SHADOW_SUN)
-    {
-      if (flags & PRGM_NO_SELF_SHADOW)
-        gatherLights += "  float islighted_sun = ShadowOcclusion_sun_nobias();\n";
-      else
-        gatherLights += "  float cosTheta = clamp(dot(Nws, -m_sunlight.direction), 1.e-3f, 1.f);\n"
-                        "  float tanTheta = sqrt(1.f - cosTheta * cosTheta) / cosTheta;\n"
-                        "  float islighted_sun = ShadowOcclusion_sun(tanTheta, Nws);\n";
-    }
-    else
-    {
-      gatherLights += "  float islighted_sun = 1.f;\n";
-    }
+    gatherLights += "  vec3 L = - normalize((MView * vec4(usunlight.direction, 0.f)).xyz);\n";
+
+    gatherLights += "  float cosTheta = clamp(dot(Nws, -usunlight.direction), 1.e-3f, 1.f);\n"
+                    "  float tanTheta = sqrt(1.f - cosTheta * cosTheta) / cosTheta;\n"
+                    "  float islighted_sun = ShadowOcclusion_sun(tanTheta, Nws);\n";
+
     if (flags & PRGM_AO)
     {
       TRE_ASSERT(m_layout.hasPIX_PositionClipspace);
@@ -472,48 +390,18 @@ void shaderGenerator::createShaderFunction_Light(const int flags, std::string &g
     }
     if (!(flags & PRGM_MODELPHONG))
     {
-      gatherLights += "  vec3 lsun = BRDFLighting(albedo, m_sunlight.color, N, L, V, matMetalRough.x, matMetalRough.y);\n"
-                      "  vec3 lamb = BRDFLighting_ambiante(albedo, m_sunlight.colorAmbiant, N, V, matMetalRough.x, matMetalRough.y);\n";
+      gatherLights += "  vec3 lsun = BRDFLighting(albedo, usunlight.color, N, L, V, matMetalRough.x, matMetalRough.y);\n"
+                      "  vec3 lamb = BRDFLighting_ambiante(albedo, usunlight.colorAmbiant, N, V, matMetalRough.x, matMetalRough.y);\n";
     }
     else
     {
-      gatherLights += "  vec3 lsun = BlinnPhong(albedo, m_sunlight.color, N, L, V, matMetalRough.x, matMetalRough.y);\n"
-                      "  vec3 lamb = BlinnPhong_ambiante(albedo, m_sunlight.colorAmbiant, N, V, matMetalRough.x, matMetalRough.y);\n";
+      gatherLights += "  vec3 lsun = BlinnPhong(albedo, usunlight.color, N, L, V, matMetalRough.x, matMetalRough.y);\n"
+                      "  vec3 lamb = BlinnPhong_ambiante(albedo, usunlight.colorAmbiant, N, V, matMetalRough.x, matMetalRough.y);\n";
     }
     if (!returnval.empty()) returnval += " + ";
     returnval += "lsun * islighted_sun + lamb * ambiantOcclusion";
   }
-  if (flags & PRGM_LIGHT_PTS)
-  {
-    gatherLights += "  vec3 lightColor_pts = vec3(0.0f,0.f,0.f);\n"
-                    "  for (int iL=0;iL<" + str_LIGTH_PTS_MAX + ";++iL)\n"
-                    "  {\n"
-                    "    if (iL>=m_ptslight.nLight) continue; // bug work-around\n"
-                    "    vec3 lightVector = pixelPosition - m_ptslight.position[iL].xyz;\n"
-                    "    vec3 L = - normalize((MView * vec4(lightVector, 0.f)).xyz);\n"
-                    "    float distance = length(lightVector);\n"
-                    "    vec3 lcolor = m_ptslight.color[iL].xyz * m_ptslight.color[iL].w / (distance * distance + 0.01f);\n";
 
-    if (flags & PRGM_SHADOW_PTS)
-    {
-      if (flags & PRGM_NO_SELF_SHADOW)
-        gatherLights += "    if (m_ptslight.castsShadow[iL] == 0) lcolor *= ShadowOcclusion_pts_nobias(iL);\n";
-      else
-        gatherLights += "    if (m_ptslight.castsShadow[iL] == 0) lcolor *= ShadowOcclusion_pts(iL);\n";
-    }
-
-    if (!(flags & PRGM_MODELPHONG))
-    {
-      gatherLights += "    lightColor_pts += BRDFLighting(albedo, lcolor, N, L, V, matMetalRough.x, matMetalRough.y);\n";
-    }
-    else
-    {
-      gatherLights += "    lightColor_pts += BlinnPhong(albedo, lcolor, N, L, V, matMetalRough.x, matMetalRough.y);\n";
-    }
-    gatherLights += "  }\n";
-    if (!returnval.empty()) returnval += " + ";;
-    returnval += "lightColor_pts";
-  }
   if (returnval.empty())
     gatherLights += "  return albedo;\n";
   else
@@ -571,7 +459,6 @@ void shaderGenerator::createShaderSource_Layout(std::string &sourceVertex, std::
   sourceFragment.clear();
 
   // constant str
-  const std::string str_LIGHT_PTS_MAX = std::to_string(LIGHT_PTS_MAX);
   const std::string str_SHADOW_SUN_MAX = std::to_string(SHADOW_SUN_MAX);
 
   const std::string prefixOut = (m_layout.hasPIP_Geom) ? "geom" : "pixel";
@@ -699,11 +586,10 @@ void shaderGenerator::createShaderSource_Layout(std::string &sourceVertex, std::
   if (m_layout.hasSMP_CubeB)         sourceFragment += "uniform samplerCube TexCubeB;\n";
   if (m_layout.hasSMP_Normal)        sourceFragment += "uniform sampler2D TexNormal;\n";
   if (m_layout.hasSMP_Mat)           sourceFragment += "uniform sampler2D TexMat;\n";
-  if (m_layout.hasSMP_ShadowSun && m_shadowSun_count >= 1) sourceFragment += "uniform sampler2D TexShadowSun0;\n";
-  if (m_layout.hasSMP_ShadowSun && m_shadowSun_count >= 2) sourceFragment += "uniform sampler2D TexShadowSun1;\n";
-  if (m_layout.hasSMP_ShadowSun && m_shadowSun_count >= 3) sourceFragment += "uniform sampler2D TexShadowSun2;\n";
-  if (m_layout.hasSMP_ShadowSun && m_shadowSun_count >= 4) sourceFragment += "uniform sampler2D TexShadowSun3;\n";
-  if (m_layout.hasSMP_ShadowPts && m_shadowPts_count >= 1) sourceFragment += "uniform samplerCube TexShadowPts0;\n";
+  if (m_shadowSun_count >= 1)        sourceFragment += "uniform sampler2D TexShadowSun0;\n";
+  if (m_shadowSun_count >= 2)        sourceFragment += "uniform sampler2D TexShadowSun1;\n";
+  if (m_shadowSun_count >= 3)        sourceFragment += "uniform sampler2D TexShadowSun2;\n";
+  if (m_shadowSun_count >= 4)        sourceFragment += "uniform sampler2D TexShadowSun3;\n";
   if (m_layout.hasSMP_Depth)         sourceFragment += "uniform sampler2D TexDepth;\n";
   if (m_layout.hasSMP_AO)            sourceFragment += "uniform sampler2D TexAO;\n";
 
@@ -722,51 +608,19 @@ void shaderGenerator::createShaderSource_Layout(std::string &sourceVertex, std::
                              "  vec3 direction;\n"
                              "  vec3 color;\n"
                              "  vec3 colorAmbiant;\n"
-                             "} m_sunlight;\n";
-    sourceFragment += def;
-  }
-  if (m_layout.hasUBO_sunshadow)
-  {
-    TRE_ASSERT(m_layout.category == PRGM_3D || m_layout.category == PRGM_2Dto3D);
-    const std::string def =  "layout (std140) uniform s_sunshadow\n"
-                             "{\n"
                              "  mat4 mPV[" + str_SHADOW_SUN_MAX + "];\n"
                              "  vec4 mapBoxUVNF[" + str_SHADOW_SUN_MAX + "];\n"
-                             "  vec2 mapInvDimension[" + str_SHADOW_SUN_MAX + "];\n"
+                             "  vec4 mapInvDimension[" + str_SHADOW_SUN_MAX + "];\n"
                              "  int  nShadow;\n"
-                             "} m_sunshadow;\n";
-    sourceFragment += def;
-  }
-  if (m_layout.hasUBO_ptslight)
-  {
-    TRE_ASSERT(m_layout.category == PRGM_3D || m_layout.category == PRGM_2Dto3D);
-    const std::string def =  "layout (std140) uniform s_ptslight\n"
-                             "{\n"
-                             "  vec3 position[" + str_LIGHT_PTS_MAX + "];\n"
-                             "  vec4 color[" + str_LIGHT_PTS_MAX + "];\n"
-                             "  int  castsShadow[" + str_LIGHT_PTS_MAX + "];\n"
-                             "  int  nLight;\n"
-                             "} m_ptslight;\n";
-    sourceFragment += def;
-  }
-  if (m_layout.hasUBO_ptsshadow)
-  {
-    TRE_ASSERT(m_layout.category == PRGM_3D || m_layout.category == PRGM_2Dto3D);
-    const std::string def =  "layout (std140) uniform s_ptsshadow\n"
-                             "{\n"
-                             "  vec4 mapBoxUVNF;\n"
-                             "  vec2 mapInvDimension;\n"
-                             "} m_ptsshadow;\n";
+                             "} usunlight;\n";
     sourceFragment += def;
   }
 
   // generic functions
-  if (m_layout.hasUBO_ptslight || m_layout.hasUBO_sunlight || m_layout.hasGEN_Lighting)
+  if (m_layout.hasUBO_sunlight || m_layout.hasGEN_Lighting)
   {
     createShaderFunctions_Light(sourceFragment);
-
-    if (m_layout.hasSMP_ShadowSun || m_layout.hasSMP_ShadowPts)
-      createShaderFunctions_Shadow(sourceFragment);
+    createShaderFunctions_Shadow(sourceFragment);
   }
 }
 
@@ -1075,7 +929,7 @@ void shaderGenerator::createShaderSource_FragmentMain(const int flags, std::stri
   }
   else if (m_layout.category == PRGM_3D_DEPTH)
   {
-    TRE_ASSERT(flags == 0);
+    TRE_ASSERT((flags & PRGM_MASK_LIGHT) == 0);
   }
   else
   {

@@ -70,7 +70,7 @@ public:
   ~renderTarget_ShadowMap() {}
 
   void setSceneBox(const s_boundbox &newbox) { m_sceneBox = newbox; }
-  void computeUBO_forMap(const shader::s_UBOdata_sunLight &uboLight, shader::s_UBOdata_sunShadow & uboShadow, uint shadowIndex); ///< Get the light direction from the UBO, compute the Proj-view matrix, fill data in the UBO (matrices, invDimension).
+  void computeUBO_forMap(shader::s_UBOdata_sunLight &uboLight, uint shadowIndex, float biasFactor = 1.f); ///< Get the light direction from the UBO, compute the Proj-view matrix, fill data in the UBO.
 
   const glm::mat4 &mProj() const { return m_mProj; }
   const glm::mat4 &mView() const { return m_mView; }
@@ -85,14 +85,14 @@ protected:
 // ============================================================================
 
 /**
- * @brief This class provides render-targets and helpers for cube shadow-maps
- *
+ * @brief This class provides render-targets and helpers for cube render-target
+ * Note: for now, only for depth-map (shadow-map) purpose. So only depth-buffer is created, and no color-buffer.
  */
-class renderTarget_ShadowCubeMap
+class renderTarget_CubeMap
 {
 public:
-  renderTarget_ShadowCubeMap() { setRenderingLimits(0.1f, 1000.f); computeMViews(); }
-  ~renderTarget_ShadowCubeMap() { TRE_ASSERT(m_drawFBO == 0); }
+  renderTarget_CubeMap() { computeMViews(); }
+  ~renderTarget_CubeMap() { TRE_ASSERT(m_drawFBO == 0); }
 
   bool load(const int texSize);
   void clear();
@@ -104,12 +104,7 @@ public:
   int h() const { return m_h; }
   GLuint depthHandle() const { TRE_ASSERT(m_depthhandle != 0); return m_depthhandle; }
 
-  const glm::mat4 &mProj() const { return m_mProj; }
   const glm::mat4 &mView(GLenum cubeFace) const { return m_mViewes[cubeFace - GL_TEXTURE_CUBE_MAP_POSITIVE_X]; }
-
-  void setRenderingLimits(float near, float far);
-
-  void computeUBO_forMap(shader::s_UBOdata_ptstLight & uboLight, uint lightIndex, shader::s_UBOdata_ptsShadow & uboShadow); ///< Get the light center from the UBO, compute the Proj-view matrices, fill data in the UBO (remapZ, invDimension).
 
 protected:
 
@@ -119,12 +114,9 @@ protected:
   GLuint        m_drawFBO = 0;
 
   GLuint        m_depthhandle = 0; ///< cube-map texture.
+
   glm::mat4     m_mViewes[6];
-
-  glm::mat4     m_mProj;
-
   glm::vec3     m_cubeCenter = glm::vec3(0.f);
-  float         m_near, m_far;
 };
 
 // ============================================================================

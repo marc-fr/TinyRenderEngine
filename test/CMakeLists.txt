@@ -42,29 +42,26 @@ target_link_libraries(testAudioMixer ${LINK_LIB_LIST})
 add_executable(testBasic WIN32 testBasic.cpp)
 target_link_libraries(testBasic ${LINK_LIB_LIST})
 
-add_executable(testDemoScene WIN32 testDemoScene.cpp)
-target_link_libraries(testDemoScene ${LINK_LIB_LIST})
-
-add_executable(testGui WIN32 testGui.cpp)
-target_link_libraries(testGui ${LINK_LIB_LIST})
-
-add_executable(testMesh2D WIN32 testMesh2D.cpp)
-target_link_libraries(testMesh2D ${LINK_LIB_LIST})
-
-if(NOT ENABLE_OPENGL_ES)
-add_executable(testMesh3D WIN32 testMesh3D.cpp)
-target_link_libraries(testMesh3D ${LINK_LIB_LIST})
-endif()
-
 add_executable(testContact2D WIN32 testContact2D.cpp)
 target_link_libraries(testContact2D ${LINK_LIB_LIST})
 
 add_executable(testContact3D WIN32 testContact3D.cpp)
 target_link_libraries(testContact3D ${LINK_LIB_LIST})
 
+add_executable(testGui WIN32 testGui.cpp)
+target_link_libraries(testGui ${LINK_LIB_LIST})
+
 add_executable(testLighting WIN32 testLighting.cpp)
 target_link_libraries(testLighting ${LINK_LIB_LIST})
 
+add_executable(testMesh2D WIN32 testMesh2D.cpp)
+target_link_libraries(testMesh2D ${LINK_LIB_LIST})
+
+add_executable(testMesh3D WIN32 testMesh3D.cpp)
+target_link_libraries(testMesh3D ${LINK_LIB_LIST})
+
+add_executable(testShadow WIN32 testShadow.cpp)
+target_link_libraries(testShadow ${LINK_LIB_LIST})
+
 add_executable(testTextureCompression WIN32 testTextureCompression.cpp)
 target_link_libraries(testTextureCompression ${LINK_LIB_LIST})
-

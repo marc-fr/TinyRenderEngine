@@ -18,8 +18,9 @@
 #include <random>
 #include <chrono>
 
-#ifndef TRE_EMSCRIPTEN // emscripten supports threads but don't use it
 #define RAYTRACER_THREADED
+
+#ifdef RAYTRACER_THREADED
 #include <thread>
 #include <atomic>
 #endif
@@ -728,13 +729,13 @@ int app_init(std::string meshPath)
   shaderPhong.setShadowSunSamplerCount(1);
   shaderPhong.loadShader(tre::shader::PRGM_3D,
                          tre::shader::PRGM_UNICOLOR |
-                         tre::shader::PRGM_LIGHT_SUN | tre::shader::PRGM_SHADOW_SUN | tre::shader::PRGM_AO |
+                         tre::shader::PRGM_LIGHT_SUN | tre::shader::PRGM_AO |
                          tre::shader::PRGM_MODELPHONG);
 
   shaderGGX.setShadowSunSamplerCount(1);
   shaderGGX.loadShader(tre::shader::PRGM_3D,
                         tre::shader::PRGM_UNICOLOR |
-                        tre::shader::PRGM_LIGHT_SUN | tre::shader::PRGM_SHADOW_SUN | tre::shader::PRGM_AO);
+                        tre::shader::PRGM_LIGHT_SUN | tre::shader::PRGM_AO);
 
   shaderDepth.loadShader(tre::shader::PRGM_3D_DEPTH, 0);
 
@@ -974,10 +975,9 @@ void app_update()
   sunLight.color = (renderMainLight ? 1.f : 0.f) * lightColor;
   sunLight.colorAmbiant = renderAmbiantIntensity * lightColor;
 
-  tre::shader::s_UBOdata_sunShadow sunShadow;
-  sunShadow.nShadow = renderShadow && !showSamplingSphere ? 1 : 0;
+  sunLight.nShadow = renderShadow && !showSamplingSphere ? 1 : 0;
   rtShadow.setSceneBox(tre::s_boundbox(roomSize, roomSize, roomSize));
-  rtShadow.computeUBO_forMap(sunLight, sunShadow, 0);
+  rtShadow.computeUBO_forMap(sunLight, 0);
 
   {
     myWindow.SDLEvent_newFrame();
@@ -1048,8 +1048,6 @@ void app_update()
 
     // shadow render pass ----------
 
-    tre::shader::updateUBO_sunShadow(sunShadow);
-
     if (renderShadow)
     {
       rtShadow.bindForWritting();
@@ -1059,11 +1057,11 @@ void app_update()
 
       if (showRoom)
       {
-        shaderDepth.setUniformMatrix(sunShadow.matPV(0));
+        shaderDepth.setUniformMatrix(sunLight.mPV[0]);
         meshRoom.drawcall(0, 1);
       }
 
-      shaderDepth.setUniformMatrix(sunShadow.matPV(0) * modelTransform);
+      shaderDepth.setUniformMatrix(sunLight.mPV[0] * modelTransform);
       meshes.drawcall(modelPart, 1);
     }
 
@@ -1106,7 +1104,7 @@ void app_update()
 
       glActiveTexture(GL_TEXTURE3);
       glBindTexture(GL_TEXTURE_2D, rtShadow.depthHandle());
-      if (curShader.layout().hasSMP_ShadowSun) glUniform1i(curShader.getUniformLocation(tre::shader::TexShadowSun0),3);
+      if (sunLight.nShadow > 0 && curShader.getShadowSunSamplerCount() > 0) glUniform1i(curShader.getUniformLocation(tre::shader::TexShadowSun0),3);
 
       glActiveTexture(GL_TEXTURE4);
       glBindTexture(GL_TEXTURE_2D, rtSSAO.get_aoTextureUnit());

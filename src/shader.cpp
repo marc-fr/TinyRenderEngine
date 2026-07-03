@@ -12,9 +12,6 @@ bool shader::loadShader(e_category cat, int flags, const char *pname)
 
   //-- Layout
 
-  if (flags & PRGM_SHADOW_SUN) flags |= PRGM_LIGHT_SUN;
-  if (flags & PRGM_SHADOW_PTS) flags |= PRGM_LIGHT_PTS;
-
   m_layout = s_layout(cat, flags);
 
   //-- Create the shader source
@@ -79,7 +76,7 @@ bool shader::loadCustomShader(const s_layout & shaderLayout , const char * sourc
 
   m_layout.hasBUF_Normal |= m_layout.hasBUF_TangentU;
   m_layout.hasUNI_MModel |= m_layout.hasPIX_Position || m_layout.hasBUF_Normal;
-  m_layout.hasUNI_MView  |= m_layout.hasPIX_Normal || m_layout.hasUBO_ptslight || m_layout.hasUBO_sunlight;
+  m_layout.hasUNI_MView  |= m_layout.hasPIX_Normal || m_layout.hasUBO_sunlight;
 
   //-- Create the shader source
 
@@ -230,7 +227,6 @@ static const std::array<const char*, shader::NCOMUNIFORMVAR> kUniformName =
   "SoftDistance",
   "TexDiffuse", "TexDiffuseB", "TexCube", "TexCubeB", "TexNormal", "TexMat",
   "TexShadowSun0", "TexShadowSun1", "TexShadowSun2", "TexShadowSun3",
-  "TexShadowPts0",
   "TexDepth", "TexAO"
 };
 
@@ -296,15 +292,6 @@ void shader::setShadowSunSamplerCount(uint count)
 
 // ----------------------------------------------------------------------------
 
-void shader::setShadowPtsSamplerCount(uint count)
-{
-  TRE_ASSERT(m_drawProgram == 0); // cannot be changed dynamically after compilation.
-  TRE_ASSERT(count <= 1);
-  m_shadowPts_count = count;
-}
-
-// ----------------------------------------------------------------------------
-
 bool shader::activeUBO_sunLight()
 {
   if (m_drawProgram == 0)
@@ -322,63 +309,9 @@ bool shader::activeUBO_sunLight()
 
 // ----------------------------------------------------------------------------
 
-bool shader::activeUBO_sunShadow()
-{
-  if (m_drawProgram == 0)
-  {
-    TRE_LOG("Error: cannot active UBO for sun-shadow because shader '" << m_name << "' is not loaded.");
-    return false;
-  }
-
-  UBOhandle_sunShadow.create(sizeof(s_UBOdata_sunShadow)); // create if needed
-
-  const GLuint index = glGetUniformBlockIndex(m_drawProgram, "s_sunshadow");
-  glUniformBlockBinding(m_drawProgram, index, UBOhandle_sunShadow.m_bindpoint);
-  return IsOpenGLok("shader::activeUBO_sunShadow");
-}
-
-// ----------------------------------------------------------------------------
-
-bool shader::activeUBO_ptsLight()
-{
-  if (m_drawProgram == 0)
-  {
-    TRE_LOG("Error: cannot active UBO for pts-light because shader '" << m_name << "' is not loaded.");
-    return false;
-  }
-
-  UBOhandle_ptsLight.create(sizeof(s_UBOdata_ptstLight)); // create if needed
-
-  const GLuint index = glGetUniformBlockIndex(m_drawProgram, "s_ptslight");
-  glUniformBlockBinding(m_drawProgram, index, UBOhandle_ptsLight.m_bindpoint);
-  return IsOpenGLok("shader::activeUBO_ptsLight");
-}
-
-// ----------------------------------------------------------------------------
-
-bool shader::activeUBO_ptsShadow()
-{
-  if (m_drawProgram == 0)
-  {
-    TRE_LOG("Error: cannot active UBO for pts-shadow because shader '" << m_name << "' is not loaded.");
-    return false;
-  }
-
-  UBOhandle_ptsShadow.create(sizeof(s_UBOdata_ptsShadow)); // create if needed
-
-  const GLuint index = glGetUniformBlockIndex(m_drawProgram, "s_ptsshadow");
-  glUniformBlockBinding(m_drawProgram, index, UBOhandle_ptsShadow.m_bindpoint);
-  return IsOpenGLok("shader::activeUBO_ptsShadow");
-}
-
-// ----------------------------------------------------------------------------
-
 void shader::clearUBO()
 {
   UBOhandle_sunLight.clear();
-  UBOhandle_sunShadow.clear();
-  UBOhandle_ptsLight.clear();
-  UBOhandle_ptsShadow.clear();
 }
 
 // ----------------------------------------------------------------------------
@@ -459,9 +392,6 @@ bool shader::linkProgram(const char *sourceVert, const char *sourceFrag)
   // UBOs
   bool status = true;
   if (m_layout.hasUBO_sunlight) status &= activeUBO_sunLight();
-  if (m_layout.hasUBO_sunshadow) status &= activeUBO_sunShadow();
-  if (m_layout.hasUBO_ptslight) status &= activeUBO_ptsLight();
-  if (m_layout.hasUBO_ptsshadow) status &= activeUBO_ptsShadow();
 
   return status;
 }
@@ -533,9 +463,6 @@ bool shader::linkProgram(const char *sourceVert, const char *sourceGeom, const c
   // UBOs
   bool status = true;
   if (m_layout.hasUBO_sunlight) status &= activeUBO_sunLight();
-  if (m_layout.hasUBO_sunshadow) status &= activeUBO_sunShadow();
-  if (m_layout.hasUBO_ptslight) status &= activeUBO_ptsLight();
-  if (m_layout.hasUBO_ptsshadow) status &= activeUBO_ptsShadow();
 
   return true;
 }
@@ -607,14 +534,7 @@ void shader::compute_name(e_category cat, int flags, const char * pname)
     if (flags & PRGM_MAPMAT) m_name += "m";
     if (flags & PRGM_MAPNORMAL) m_name += "n";
     if (flags & PRGM_LIGHT_SUN) m_name += "s";
-    if (flags & PRGM_LIGHT_PTS) m_name += "p";
   }
-
-  std::string pre_shadow;
-  if (flags & PRGM_SHADOW_SUN) pre_shadow += "s";
-  if (flags & PRGM_SHADOW_PTS) pre_shadow += "p";
-  if (!pre_shadow.empty())  pre_shadow = "_SHADOW" + pre_shadow;
-  m_name += pre_shadow;
 
   if (flags & PRGM_AO) m_name += "_AO";
   if (flags & PRGM_BACKGROUND) m_name += "_BG";
@@ -672,11 +592,5 @@ void shader::s_UBOhandle::clear()
 GLuint shader::UBObindpoint_incr = 0;
 
 shader::s_UBOhandle shader::UBOhandle_sunLight = shader::s_UBOhandle();
-
-shader::s_UBOhandle shader::UBOhandle_sunShadow = shader::s_UBOhandle();
-
-shader::s_UBOhandle shader::UBOhandle_ptsLight = shader::s_UBOhandle();
-
-shader::s_UBOhandle shader::UBOhandle_ptsShadow = shader::s_UBOhandle();
 
 } // namespace

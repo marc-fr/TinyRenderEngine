@@ -27,9 +27,6 @@ namespace tre {
  *
  * Uniform-Buffer-Objects
  * - SunLight
- * - SunShadow
- * - PtsLight
- * - PtsShadow
  *
  */
 class shaderGenerator
@@ -55,10 +52,6 @@ public:
     // options - ligthing
     PRGM_MASK_LIGHT = 0x00F000,
     PRGM_LIGHT_SUN  = 0x001000, ///< enable uni-directional light
-    PRGM_LIGHT_PTS  = 0x002000, ///< enable point lights
-    PRGM_SHADOW_SUN = 0x004000, ///< enable shadow cast with PRGM_LIGHT_SUN
-    PRGM_SHADOW_PTS = 0x008000, ///< enable shadow cast with PRGM_LIGHT_PTS
-    PRGM_NO_SELF_SHADOW = 0x010000, ///< disable self-shadowing (no-bias)
     PRGM_AO         = 0x020000, ///< enable Ambiant-Occlusion
     // options - material
     PRGM_MODELPHONG = 0x000800, ///< choose Phong-Blinn lighting, instead of GGX
@@ -105,9 +98,6 @@ public:
     bool hasUNI_SoftDistance;
     // UBO
     bool hasUBO_sunlight;
-    bool hasUBO_sunshadow;
-    bool hasUBO_ptslight;
-    bool hasUBO_ptsshadow;
     // Texture sampler
     bool hasSMP_Diffuse;
     bool hasSMP_DiffuseB;
@@ -115,8 +105,6 @@ public:
     bool hasSMP_CubeB;
     bool hasSMP_Normal;
     bool hasSMP_Mat;
-    bool hasSMP_ShadowSun;
-    bool hasSMP_ShadowPts;
     bool hasSMP_AO;
     bool hasSMP_Depth;
     // Output(s) of the fragment shader
@@ -140,7 +128,6 @@ public:
 protected:
 
   static const unsigned SHADOW_SUN_MAX = 4;
-  static const unsigned LIGHT_PTS_MAX = 8;
 
   void createShaderFunctions_Light(std::string & outstring); ///< Generic functions for BRDF lighting
   void createShaderFunctions_Shadow(std::string & outstring); ///< Generic functions for Shadowing
@@ -156,7 +143,6 @@ protected:
 
   s_layout m_layout;
   unsigned m_shadowSun_count = 0; ///< It defines how many samplers are defined in the shader, at the build time (not dynamic).
-  unsigned m_shadowPts_count = 0; ///< It defines how many samplers are defined in the shader, at the build time (not dynamic).
 };
 
 } // namespace

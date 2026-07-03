@@ -341,6 +341,7 @@ int main(int argc, char **argv)
   sunLight.color = glm::vec3(0.9f);
   sunLight.colorAmbiant = glm::vec3(0.4f);
 
+#ifdef OPENGL_ES
   tre::shader shaderWireframe;
   tre::shader shaderWireframePlain;
   {
@@ -439,6 +440,7 @@ int main(int argc, char **argv)
     shaderWireframe.loadCustomShaderGF(shLayout, srcGeom_Wireframe_line, srcFrag_Wireframe, "wirefrime_line");
     shaderWireframePlain.loadCustomShaderGF(shLayout, srcGeom_Wireframe_plain, srcFrag_Wireframe, "wirefrime_plain");
   }
+#endif // OPENGL_ES
 
   tre::shader shaderDataVisu;
   {
@@ -446,11 +448,11 @@ int main(int argc, char **argv)
     "vec3 Light(vec3 albedo)\n"
     "{\n"
     "  vec3 N = normalize((MView * vec4(pixelNormal, 0.f)).xyz);\n"
-    "  vec3 L = - normalize((MView * vec4(m_sunlight.direction, 0.f)).xyz);\n"
+    "  vec3 L = - normalize((MView * vec4(usunlight.direction, 0.f)).xyz);\n"
     "  vec3 V = - normalize((MView * vec4(pixelPosition, 1.f)).xyz);\n"
     "  float islighted_sun = 1.f;\n"
-    "  vec3 lsun = BlinnPhong(albedo, m_sunlight.color, N, L, V, uniMat.x, uniMat.y);\n"
-    "  vec3 lamb = BlinnPhong_ambiante(albedo, m_sunlight.colorAmbiant, N, L, uniMat.x, uniMat.y);\n"
+    "  vec3 lsun = BlinnPhong(albedo, usunlight.color, N, L, V, uniMat.x, uniMat.y);\n"
+    "  vec3 lamb = BlinnPhong_ambiante(albedo, usunlight.colorAmbiant, N, L, uniMat.x, uniMat.y);\n"
     "  return lsun * islighted_sun + lamb;\n"
     "}\n"
     "void main(){\n"
@@ -470,8 +472,13 @@ int main(int argc, char **argv)
   // - load UI
 
   int shaderMode = 0;
+#ifdef OPENGL_ES
   const int NshaderMode = 4;
-  tre::shader* listShader[NshaderMode] = { &shaderMainMaterial, &shaderWireframe, &shaderWireframePlain, &shaderDataVisu};
+  tre::shader* listShader[NshaderMode] = { &shaderMainMaterial, &shaderDataVisu, &shaderWireframe, &shaderWireframePlain};
+#else
+  const int NshaderMode = 2;
+  tre::shader* listShader[NshaderMode] = { &shaderMainMaterial, &shaderDataVisu};
+#endif
 
   int visuMode = 0;
   static const int NvisuMode = 5;
@@ -507,7 +514,7 @@ int main(int argc, char **argv)
   wUI_main.create_widgetText(2, 1)->wcb_animate = [&shaderMode, &visuMode](tre::ui::widget *self, float)
   {
     static const char* listDataVisu[NvisuMode] = { "area", "quality", "curvature", "distance", "radom" };
-    if (shaderMode == 3)
+    if (shaderMode == 1)
       static_cast<tre::ui::widgetText*>(self)->set_text(listDataVisu[visuMode]);
     else
       static_cast<tre::ui::widgetText*>(self)->set_text("");
@@ -845,7 +852,7 @@ int main(int argc, char **argv)
       glViewport(0, 0, myWindow.m_resolutioncurrent.x / 2, myWindow.m_resolutioncurrent.y);
 
       int shaderModeOrigin = shaderMode;
-      if ((!meshContextSelected.m_completed || meshContextSelected.m_ongoing) && shaderModeOrigin == 3)
+      if ((!meshContextSelected.m_completed || meshContextSelected.m_ongoing) && shaderModeOrigin == 1)
         shaderModeOrigin = 0;
       tre::shader & curShader = * listShader[shaderModeOrigin];
 
@@ -879,18 +886,17 @@ int main(int argc, char **argv)
     // - render mesh transform (right)
     {
       glViewport(myWindow.m_resolutioncurrent.x / 2, 0, myWindow.m_resolutioncurrent.x / 2, myWindow.m_resolutioncurrent.y);
+      glEnable(GL_DEPTH_TEST);
 
       tre::shader & curShader = * listShader[shaderMode];
 
       glUseProgram(curShader.m_drawProgram);
-      if (shaderMode == 3)
+      if (shaderMode == 1)
         glUniform4fv(curShader.getUniformLocation(tre::shader::uniColor), 1, glm::value_ptr(uChoiceVisu));
       else
         glUniform4fv(curShader.getUniformLocation(tre::shader::uniColor), 1, glm::value_ptr(ucolorMain));
 
       curShader.setUniformMatrix(mPV * curModel, curModel);
-
-      glEnable(GL_DEPTH_TEST);
 
       if (meshContextSelected.m_completed && !meshContextSelected.m_ongoing)
       {
@@ -962,8 +968,10 @@ int main(int argc, char **argv)
 
   shaderFlat.clearShader();
   shaderMainMaterial.clearShader();
+#ifdef OPENGL_ES
   shaderWireframe.clearShader();
   shaderWireframePlain.clearShader();
+#endif
   shaderDataVisu.clearShader();
 
   tre::shader::clearUBO();

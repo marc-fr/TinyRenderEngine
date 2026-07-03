@@ -45,7 +45,7 @@ LDFLAGS = -sUSE_SDL=2 -sFULL_ES3=1 -sGL_DEBUG=1 -sINITIAL_MEMORY=256Mb -sSTACK_S
 
 default : all
 
-all : $(OBJDIR) $(OPUS_RULE) testBasic.html testDemoScene.html testAudioMixer.html testLighting.html testTextureCompression.html testContact2D.html testContact3D.html
+all : $(OBJDIR) $(OPUS_RULE) testAudioMixer.html testBasic.html testContact2D.html testContact3D.html testLighting.html testShadow.html testTextureCompression.html
 
 clean :
 	@rm -f $(OBJDIR)/*.o test*
