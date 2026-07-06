@@ -50,7 +50,13 @@ bool addFromWavefront(modelIndexed &outModel, const std::string &objfile, const 
  * @param isBinary
  * @return
  */
-bool addFromGLTF(modelIndexed &outModel, s_modelHierarchy &outHierarchy, const std::string &gltffile, const bool isBinary = false /* glb file */);
+bool addFromGLTF(modelIndexed &outModel, s_modelHierarchy &outHierarchy, const std::string &gltffile, const bool isBinary);
+
+inline bool addFromGLTF(modelIndexed &outModel, const std::string &gltffile, const bool isBinary)
+{
+  s_modelHierarchy outHierarchy;
+  return addFromGLTF(outModel, outHierarchy, gltffile, isBinary);
+}
 
 //=============================================================================
 

@@ -577,20 +577,6 @@ static void _numberList_to_Vector(const std::string &str, std::vector<std::size_
 
 // ----------------------------------------------------------------------------
 
-static void _GLTF_readNode(const json::s_node &nns, std::size_t &meshId, glm::vec3 &tr, glm::quat &rot, std::vector<std::size_t> &children)
-{
-  TRE_ASSERT(nns.m_key.compare("list-element") == 0);
-  tr = glm::vec3(0.f);
-  rot = glm::quat(1.f, 0.f, 0.f, 0.f);
-  for (const json::s_node &nn : nns.m_list)
-  {
-    if      (nn.m_key.compare("mesh") == 0) sscanf(nn.m_valueStr.data(),"%zu",&meshId);
-    else if (nn.m_key.compare("translation") == 0) sscanf(nn.m_valueStr.data(),"%f %f %f",&tr.x, &tr.y, &tr.z);
-    else if (nn.m_key.compare("rotation") == 0) sscanf(nn.m_valueStr.data(),"%f %f %f %f",&rot.x, &rot.y, &rot.z,&rot.w);
-    else if (nn.m_key.compare("children") == 0) _numberList_to_Vector(nn.m_valueStr, children);
-  }
-}
-
 static void _GLTF_readAccessor(const json::s_node &na, std::size_t &bufferViewId, std::size_t &count, bool &isHalfPrecision, const char *expectedType)
 {
   TRE_ASSERT(na.m_key.compare("list-element") == 0);
@@ -720,6 +706,7 @@ bool modelImporter::addFromGLTF(modelIndexed &outModel, s_modelHierarchy &outHie
 
   json::s_node *readScenes = nullptr;
   json::s_node *readNodes = nullptr;
+  json::s_node *readSkins = nullptr;
   json::s_node *readMeshes = nullptr;
   json::s_node *readAccessors = nullptr;
   json::s_node *readBufferViews = nullptr;
@@ -729,6 +716,7 @@ bool modelImporter::addFromGLTF(modelIndexed &outModel, s_modelHierarchy &outHie
   {
     if      (n.m_key.compare("scenes")      == 0) readScenes = &n;
     else if (n.m_key.compare("nodes")       == 0) readNodes = &n;
+    else if (n.m_key.compare("skins")       == 0) readSkins = &n;
     else if (n.m_key.compare("meshes")      == 0) readMeshes = &n;
     else if (n.m_key.compare("accessors")   == 0) readAccessors = &n;
     else if (n.m_key.compare("bufferViews") == 0) readBufferViews = &n;
@@ -744,67 +732,100 @@ bool modelImporter::addFromGLTF(modelIndexed &outModel, s_modelHierarchy &outHie
   // read and check parts
   struct s_partRead
   {
-    std::size_t m_partId = std::size_t(-1);
-    std::size_t m_indexCount = std::size_t(-1);
-    std::size_t m_vertexCount = std::size_t(-1);
-    std::size_t m_bufferViewId_pos = std::size_t(-1);
-    std::size_t m_bufferViewId_normal = std::size_t(-1);
-    std::size_t m_bufferViewId_uv = std::size_t(-1);
-    std::size_t m_bufferViewId_index = std::size_t(-1);
+    std::size_t m_meshId = -1; // idx in the GLTF mesh array
+    std::size_t m_partId = -1; // idx in the output model
+    std::size_t m_indexCount = 0;
+    std::size_t m_vertexCount = 0;
+    std::size_t m_bufferViewId_pos = -1;
+    std::size_t m_bufferViewId_normal = -1;
+    std::size_t m_bufferViewId_uv = -1;
+    std::size_t m_bufferViewId_color = -1;
+    std::size_t m_bufferViewId_joint = -1; // for skin meshes
+    std::size_t m_bufferViewId_weight = -1; // for skin meshes
+    std::size_t m_bufferViewId_index = -1;
     std::string m_name;
     bool        m_indiceHalf = false; // U16:true, U32:false
+    std::size_t m_materialIdx = -1; // read, but not used
   };
   std::vector<s_partRead> partRead;
-  for (const json::s_node &n : readMeshes->m_list)
+  for (std::size_t in = 0, stop = readMeshes->m_list.size(); in < stop; ++in)
   {
+    const json::s_node &n = readMeshes->m_list[in];
     TRE_ASSERT(n.m_key.compare("list-element") == 0);
-    partRead.emplace_back();
     // read the mesh
+    std::string partName;
+    const json::s_node *primitives = nullptr;
     for (const json::s_node &nn : n.m_list)
     {
       if (nn.m_key.compare("name") == 0)
       {
-        partRead.back().m_name = nn.m_valueStr;
+        partName = nn.m_valueStr;
       }
       else if (nn.m_key.compare("primitives") == 0)
       {
-        TRE_ASSERT(nn.m_list.size() == 1); // for now, only support mesh with only one "primitive" def // TODO: duplicate the "partRead"
-        s_partRead &curPartRead = partRead.back();
-        TRE_ASSERT(nn.m_list[0].m_key.compare("list-element") == 0);
-        for (const json::s_node &np : nn.m_list[0].m_list)
-        {
-          if (np.m_key.compare("attributes") == 0)
-          {
-            for (const json::s_node &na : np.m_list)
-            {
-              if      (na.m_key.compare("POSITION") == 0) sscanf(na.m_valueStr.data(),"%zu",&curPartRead.m_bufferViewId_pos); // for now, it stores the accessor id.
-              else if (na.m_key.compare("NORMAL") == 0) sscanf(na.m_valueStr.data(),"%zu",&curPartRead.m_bufferViewId_normal); // for now, it stores the accessor id.
-              else if (na.m_key.compare("TEXCOORD_0") == 0) sscanf(na.m_valueStr.data(),"%zu",&curPartRead.m_bufferViewId_uv); // for now, it stores the accessor id.
-              else    { TRE_LOG("model::loadfromGLTF: unkown attribute \"" << na.m_key << "\""); }
-            }
-          }
-          else if (np.m_key.compare("indices") == 0)
-          {
-            sscanf(np.m_valueStr.data(),"%zu",&curPartRead.m_bufferViewId_index); // for now, it stores the accessor id.
-          }
-          else if (np.m_key.compare("modes") == 0)
-          {
-            std::size_t m = 0;
-            sscanf(np.m_valueStr.data(),"%zu",&m);
-            if (m != 4) // GL_TRIANGLES
-            {
-              TRE_LOG("model::loadfromGLTF: the primitives mode is not TRIANGLES(4): " <<  m << ". This part may not be rendered correctly.");
-            }
-          }
-          else
-          {
-            TRE_LOG("model::loadfromGLTF: unkown primitives \"" <<  np.m_key << "\"");
-          }
-        }
+        if (primitives != nullptr) { TRE_LOG("model::loadfromGLTF: mesh to multiple \"primitives\". No supported."); continue; }
+        primitives = &nn;
       }
       else
       {
         TRE_LOG("model::loadfromGLTF: unkown mesh property \"" <<  nn.m_key << "\"");
+      }
+    }
+    if (partName.empty())
+    {
+      TRE_LOG("model::loadfromGLTF: mesh without name");
+      partName = "no-name-" + std::to_string(partRead.size()-1);
+    }
+    if (primitives == nullptr || primitives->m_list.empty())
+    {
+      TRE_LOG("model::loadfromGLTF: mesh \"" << partName << "\" has no primitive. Skip.");
+      continue;
+    }
+    // get the primitives
+    for (const json::s_node &prim : primitives->m_list)
+    {
+      partRead.emplace_back();
+      s_partRead &curPartRead = partRead.back();
+      curPartRead.m_meshId = in;
+      if (primitives->m_list.size() == 1) curPartRead.m_name = partName;
+      else                                curPartRead.m_name = partName + "-" + std::to_string(partRead.size()-1);
+      TRE_ASSERT(prim.m_key.compare("list-element") == 0);
+      for (const json::s_node &np : prim.m_list)
+      {
+        if (np.m_key.compare("attributes") == 0)
+        {
+          for (const json::s_node &na : np.m_list)
+          {
+            if      (na.m_key.compare("POSITION") == 0) sscanf(na.m_valueStr.data(),"%zu",&curPartRead.m_bufferViewId_pos); // for now, it stores the accessor id.
+            else if (na.m_key.compare("NORMAL") == 0) sscanf(na.m_valueStr.data(),"%zu",&curPartRead.m_bufferViewId_normal); // for now, it stores the accessor id.
+            else if (na.m_key.compare("TEXCOORD_0") == 0) sscanf(na.m_valueStr.data(),"%zu",&curPartRead.m_bufferViewId_uv); // for now, it stores the accessor id.
+            else if (na.m_key.compare("COLOR_0") == 0) sscanf(na.m_valueStr.data(),"%zu",&curPartRead.m_bufferViewId_color); // for now, it stores the accessor id.
+            else if (na.m_key.compare("JOINTS_0") == 0) sscanf(na.m_valueStr.data(),"%zu",&curPartRead.m_bufferViewId_joint); // for now, it stores the accessor id.
+            else if (na.m_key.compare("WEIGHTS_0") == 0) sscanf(na.m_valueStr.data(),"%zu",&curPartRead.m_bufferViewId_weight); // for now, it stores the accessor id.
+            else    { TRE_LOG("model::loadfromGLTF: unkown attribute \"" << na.m_key << "\" in part \"" << curPartRead.m_name << "\""); }
+          }
+        }
+        else if (np.m_key.compare("indices") == 0)
+        {
+          sscanf(np.m_valueStr.data(),"%zu",&curPartRead.m_bufferViewId_index); // for now, it stores the accessor id.
+        }
+        else if (np.m_key.compare("material") == 0)
+        {
+          sscanf(np.m_valueStr.data(),"%zu",&curPartRead.m_materialIdx);
+        }
+        else if (np.m_key.compare("modes") == 0)
+        {
+          std::size_t m = 0;
+          sscanf(np.m_valueStr.data(),"%zu",&m);
+          if (m != 4) // GL_TRIANGLES
+          {
+            TRE_LOG("model::loadfromGLTF: the primitives mode is not TRIANGLES(4): " <<  m << ". The part \"" << curPartRead.m_name << "\" may not be rendered correctly.");
+          }
+        }
+        else
+        {
+          TRE_LOG("model::loadfromGLTF: unkown primitives \"" <<  np.m_key << "\" in part \"" << curPartRead.m_name << "\"");
+        }
       }
     }
   }
@@ -839,6 +860,33 @@ bool modelImporter::addFromGLTF(modelIndexed &outModel, s_modelHierarchy &outHie
       std::size_t c = 0;
       bool dummy = false;
       _GLTF_readAccessor(na, curPartRead.m_bufferViewId_uv, c, dummy, "VEC2");
+    }
+    // -> color
+    if (curPartRead.m_bufferViewId_color < readAccessors->m_list.size())
+    {
+      const json::s_node &na = readAccessors->m_list[curPartRead.m_bufferViewId_color];
+      curPartRead.m_bufferViewId_color = std::size_t(-1); // reset
+      std::size_t c = 0;
+      bool dummy = false;
+      _GLTF_readAccessor(na, curPartRead.m_bufferViewId_color, c, dummy, "VEC4");
+    }
+    // -> joint
+    if (curPartRead.m_bufferViewId_joint < readAccessors->m_list.size())
+    {
+      const json::s_node &na = readAccessors->m_list[curPartRead.m_bufferViewId_joint];
+      curPartRead.m_bufferViewId_joint = std::size_t(-1); // reset
+      std::size_t c = 0;
+      bool dummy = false;
+      _GLTF_readAccessor(na, curPartRead.m_bufferViewId_joint, c, dummy, "VEC4");
+    }
+    // -> weight
+    if (curPartRead.m_bufferViewId_weight < readAccessors->m_list.size())
+    {
+      const json::s_node &na = readAccessors->m_list[curPartRead.m_bufferViewId_weight];
+      curPartRead.m_bufferViewId_weight = std::size_t(-1); // reset
+      std::size_t c = 0;
+      bool dummy = false;
+      _GLTF_readAccessor(na, curPartRead.m_bufferViewId_weight, c, dummy, "VEC4");
     }
     // -> index
     if (curPartRead.m_bufferViewId_index < readAccessors->m_list.size())
@@ -946,6 +994,10 @@ bool modelImporter::addFromGLTF(modelIndexed &outModel, s_modelHierarchy &outHie
     const glm::vec3 *bufferPos = nullptr;
     const glm::vec3 *bufferNor = nullptr;
     const glm::vec2 *bufferUV = nullptr;
+    const glm::vec4 *bufferColor = nullptr;
+    const uint32_t  *bufferJoint32_x4 = nullptr;
+    const uint16_t  *bufferJoint16_x4 = nullptr;
+    const glm::vec4 *bufferWeight = nullptr;
     const uint32_t  *bufferInd32 = nullptr;
     const uint16_t  *bufferInd16 = nullptr;
 
@@ -953,8 +1005,8 @@ bool modelImporter::addFromGLTF(modelIndexed &outModel, s_modelHierarchy &outHie
     {
       std::size_t bufIdx = 0, bufOffset = 0;
       _GLTF_readBufferView(readBufferViews->m_list[curPartRead.m_bufferViewId_pos], bufIdx, bufOffset, curPartRead.m_vertexCount * 3 * sizeof(float));
-      if (bufOffset < readBuffersResolved[bufIdx].m_rawData.size())
-        bufferPos =  reinterpret_cast<const glm::vec3*>(& readBuffersResolved[bufIdx].m_rawData[bufOffset]);
+      TRE_ASSERT(bufOffset < readBuffersResolved[bufIdx].m_rawData.size());
+      bufferPos =  reinterpret_cast<const glm::vec3*>(& readBuffersResolved[bufIdx].m_rawData[bufOffset]);
     }
     if (bufferPos == nullptr)
     {
@@ -966,8 +1018,8 @@ bool modelImporter::addFromGLTF(modelIndexed &outModel, s_modelHierarchy &outHie
     {
       std::size_t bufIdx = 0, bufOffset = 0;
       _GLTF_readBufferView(readBufferViews->m_list[curPartRead.m_bufferViewId_normal], bufIdx, bufOffset, curPartRead.m_vertexCount * 3 * sizeof(float));
-      if (bufOffset < readBuffersResolved[bufIdx].m_rawData.size())
-        bufferNor =  reinterpret_cast<const glm::vec3*>(& readBuffersResolved[bufIdx].m_rawData[bufOffset]);
+      TRE_ASSERT(bufOffset < readBuffersResolved[bufIdx].m_rawData.size());
+      bufferNor =  reinterpret_cast<const glm::vec3*>(& readBuffersResolved[bufIdx].m_rawData[bufOffset]);
     }
     if (bufferNor == nullptr && outLayout.m_normals.hasData())
     {
@@ -978,12 +1030,24 @@ bool modelImporter::addFromGLTF(modelIndexed &outModel, s_modelHierarchy &outHie
     {
       std::size_t bufIdx = 0, bufOffset = 0;
       _GLTF_readBufferView(readBufferViews->m_list[curPartRead.m_bufferViewId_uv], bufIdx, bufOffset, curPartRead.m_vertexCount * 2 * sizeof(float));
-      if (bufOffset < readBuffersResolved[bufIdx].m_rawData.size())
-        bufferUV =  reinterpret_cast<const glm::vec2*>(& readBuffersResolved[bufIdx].m_rawData[bufOffset]);
+      TRE_ASSERT(bufOffset < readBuffersResolved[bufIdx].m_rawData.size());
+      bufferUV =  reinterpret_cast<const glm::vec2*>(& readBuffersResolved[bufIdx].m_rawData[bufOffset]);
     }
     if (bufferUV == nullptr && outLayout.m_uvs.hasData())
     {
       TRE_LOG("model::loadfromGLTF: no uv-buffer found for mesh \"" << curPartInfo.m_name << "\" but the model has uv-data. Zeros will be written.");
+    }
+
+    if (curPartRead.m_bufferViewId_color < readBufferViews->m_list.size())
+    {
+      std::size_t bufIdx = 0, bufOffset = 0;
+      _GLTF_readBufferView(readBufferViews->m_list[curPartRead.m_bufferViewId_color], bufIdx, bufOffset, curPartRead.m_vertexCount * 4 * sizeof(float));
+      TRE_ASSERT(bufOffset < readBuffersResolved[bufIdx].m_rawData.size());
+      bufferColor = reinterpret_cast<const glm::vec4*>(& readBuffersResolved[bufIdx].m_rawData[bufOffset]);
+    }
+    if (bufferColor == nullptr && outLayout.m_colors.hasData())
+    {
+      TRE_LOG("model::loadfromGLTF: no color-buffer found for mesh \"" << curPartInfo.m_name << "\" but the model has color-data. Zeros will be written.");
     }
 
     if (curPartRead.m_bufferViewId_index < readBufferViews->m_list.size())
@@ -1002,11 +1066,6 @@ bool modelImporter::addFromGLTF(modelIndexed &outModel, s_modelHierarchy &outHie
       return false;
     }
 
-    const bool fillNor = (bufferNor != nullptr && outLayout.m_normals.hasData());
-    const bool fillNor_geom = (bufferNor == nullptr && outLayout.m_normals.hasData());
-    const bool fillUV = (bufferUV != nullptr && outLayout.m_uvs.hasData());
-    const bool fillUV_zero = (bufferUV == nullptr && outLayout.m_uvs.hasData());
-
     // fill vertex-data
     for (std::size_t iv = 0; iv < curPartRead.m_vertexCount; ++iv)
     {
@@ -1015,11 +1074,17 @@ bool modelImporter::addFromGLTF(modelIndexed &outModel, s_modelHierarchy &outHie
 
       const_cast<s_partInfo&>(curPartInfo).m_bbox.addPointInBox(pos);
 
-      if (fillNor) outLayout.m_normals.get<glm::vec3>(vertexOffset + iv) = *bufferNor++;
-      else if (fillNor_geom) outLayout.m_normals.get<glm::vec3>(vertexOffset + iv) = glm::vec3(0.f);
+      if (outLayout.m_normals.hasData())
+        outLayout.m_normals.get<glm::vec3>(vertexOffset + iv) = bufferNor != nullptr ? *bufferNor++ : glm::vec3(0.f);
 
-      if (fillUV) outLayout.m_uvs.get<glm::vec2>(vertexOffset + iv) = *bufferUV++;
-      else if (fillUV_zero) outLayout.m_uvs.get<glm::vec2>(vertexOffset + iv) = glm::vec2(0.f);
+      if (outLayout.m_uvs.hasData())
+        outLayout.m_uvs.get<glm::vec2>(vertexOffset + iv) = bufferUV != nullptr ? *bufferUV++ : glm::vec2(0.f);
+
+      if (outLayout.m_colors.hasData())
+        outLayout.m_colors.get<glm::vec4>(vertexOffset + iv) = bufferColor != nullptr ? *bufferColor++ : glm::vec4(0.f);
+
+      if (outLayout.m_skins.hasData())
+        outLayout.m_skins.get<glm::vec2>(vertexOffset + iv) = glm::vec2(0.f); // TODO
     }
 
     // fill index-data
@@ -1032,12 +1097,6 @@ bool modelImporter::addFromGLTF(modelIndexed &outModel, s_modelHierarchy &outHie
     {
       for (std::size_t ii = 0; ii < curPartInfo.m_size; ++ii)
         outLayout.m_index[curPartInfo.m_offset + ii] = vertexOffset + (uint32_t(*bufferInd16++) & 0x0000FFFF);
-    }
-
-    if (fillNor_geom)
-    {
-      // Get the weigthed normal of each triangle, and accumulate on vertices
-      // Loop on vertices, and normalize
     }
   }
 
@@ -1053,7 +1112,18 @@ bool modelImporter::addFromGLTF(modelIndexed &outModel, s_modelHierarchy &outHie
       static void appendNodeToHierarchy(const std::vector<s_nodeRead> &nr, const std::vector<s_partRead> &pr, std::size_t nid, s_modelHierarchy &out) // recursive
       {
         const s_nodeRead &nri = nr[nid];
-        out.m_partId = pr[nri.m_meshId].m_partId;
+        out.m_partId = -1;
+        if (nri.m_meshId != -1)
+        {
+          for (const s_partRead &prl : pr)
+          {
+            if (prl.m_meshId == nri.m_meshId)
+            {
+              out.m_partId = prl.m_partId;
+              break; // TODO: we can have multiple entries ...
+            }
+          }
+        }
         out.m_transform = nri.m_tr;
         for (std::size_t cid : nri.m_children)
         {
@@ -1067,13 +1137,25 @@ bool modelImporter::addFromGLTF(modelIndexed &outModel, s_modelHierarchy &outHie
 
     for (const json::s_node &nn : readNodes->m_list)
     {
+      TRE_ASSERT(nn.m_key.compare("list-element") == 0);
+      std::size_t meshId = -1;
+      std::size_t sinkId = -1;
+      std::vector<std::size_t> children;
+      glm::vec3 tr = glm::vec3(0.f);
+      glm::quat rot = glm::quat(1.f, 0.f, 0.f, 0.f);
+      for (const json::s_node &nns : nn.m_list)
+      {
+        if      (nns.m_key.compare("mesh") == 0) sscanf(nns.m_valueStr.data(),"%zu",&meshId);
+        else if (nns.m_key.compare("skin") == 0) sscanf(nns.m_valueStr.data(),"%zu",&sinkId);
+        else if (nns.m_key.compare("translation") == 0) sscanf(nns.m_valueStr.data(),"%f %f %f",&tr.x, &tr.y, &tr.z);
+        else if (nns.m_key.compare("rotation") == 0) sscanf(nns.m_valueStr.data(),"%f %f %f %f",&rot.x, &rot.y, &rot.z,&rot.w);
+        else if (nns.m_key.compare("children") == 0) _numberList_to_Vector(nns.m_valueStr, children);
+      }
       nodeRead.emplace_back();
-      glm::vec3 trs;
-      glm::quat rot;
-      _GLTF_readNode(nn, nodeRead.back().m_meshId, trs, rot, nodeRead.back().m_children);
-      nodeRead.back().m_tr = glm::mat4_cast(rot);
-      nodeRead.back().m_tr[3] = glm::vec4(trs, 1.f);
-      TRE_ASSERT(nodeRead.back().m_meshId < partRead.size());
+      s_nodeRead &curNode = nodeRead.back();
+      curNode.m_tr = glm::mat4_cast(rot);
+      curNode.m_tr[3] = glm::vec4(tr, 1.f);
+      curNode.m_meshId = meshId; // might be invalid (-1)
     }
 
     for (const json::s_node &n : readScenes->m_list)

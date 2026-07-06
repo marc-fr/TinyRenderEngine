@@ -70,10 +70,11 @@ struct s_modelDataLayout
     }
   };
   s_vertexData m_positions;
-  s_vertexData m_colors;
   s_vertexData m_normals;
   s_vertexData m_tangents;
   s_vertexData m_uvs;
+  s_vertexData m_colors;
+  s_vertexData m_skins;
   std::size_t  m_vertexCount = 0;
   /// @}
 
@@ -399,11 +400,15 @@ protected:
 class modelStaticIndexed3D : public modelIndexed
 {
 public:
-  static const int VB_POSITION = 0x0010;
-  static const int VB_UV       = 0x0001;
-  static const int VB_NORMAL   = 0x0002;
-  static const int VB_TANGENT  = 0x0004;
-  static const int VB_COLOR    = 0x0008;
+  enum e_VB_Type
+  {
+    VB_POSITION = 0x0001,
+    VB_NORMAL   = 0x0002,
+    VB_TANGENT  = 0x0004,
+    VB_UV       = 0x0008,
+    VB_COLOR    = 0x0010,
+    VB_SKIN     = 0x0020,
+  };
 
   modelStaticIndexed3D() = default;
   modelStaticIndexed3D(int flags) : m_flags(flags | VB_POSITION) {}
@@ -484,12 +489,15 @@ protected:
 class modelInstanced
 {
 public:
-  static const int VI_POSITION      = 0x1000; // note: position(x,y,z) + size(w)
-  static const int VI_ORIENTATION   = 0x0100; // note: the 3 firsts columns of the orientation matrix // TODO : use quaternion
-  static const int VI_ATLAS         = 0x0200;
-  static const int VI_BLEND         = 0x0400;
-  static const int VI_COLOR         = 0x0800;
-  static const int VI_ROTATION      = 0x2000; // note: scalar
+  enum e_VI_Type
+  {
+    VI_POSITION      = 0x1000, // note: position(x,y,z) + size(w)
+    VI_ORIENTATION   = 0x0100, // note: the 3 firsts columns of the orientation matrix // TODO : use quaternion
+    VI_ATLAS         = 0x0200,
+    VI_BLEND         = 0x0400,
+    VI_COLOR         = 0x0800,
+    VI_ROTATION      = 0x2000, // note: scalar
+  };
 
   modelInstanced() = default;
   modelInstanced(int flags) : m_flagsInstanced(flags | VI_POSITION) {}

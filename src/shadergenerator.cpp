@@ -20,6 +20,7 @@ shaderGenerator::s_layout::s_layout(const e_category cat, const int flags)
   hasBUF_UV        = flags & (PRGM_TEXTURED | PRGM_MAPNORMAL | PRGM_MAPMAT);
   hasBUF_Color     = flags & (PRGM_COLOR);
   hasBUF_TangentU  = flags & (PRGM_MAPNORMAL) && (!(cat == PRGM_2D || cat == PRGM_2Dto3D));
+  hasBUF_Skin      = false;
   hasBUF_InstancedPosition    = flags & (PRGM_INSTANCED);
   hasBUF_InstancedColor       = (flags & (PRGM_INSTANCED)) && (flags & (PRGM_INSTCOLOR));
   hasBUF_InstancedAtlasBlend  = (flags & (PRGM_INSTANCED)) && (flags & (PRGM_BLEND | PRGM_ATLAS));
@@ -519,6 +520,10 @@ void shaderGenerator::createShaderSource_Layout(std::string &sourceVertex, std::
                     "out vec3 " + prefixOut + "TangV;\n";
     sourceFragment += "in vec3 " "pixel" "TangU;\n"
                       "in vec3 " "pixel" "TangV;\n"; // implicit
+  }
+  if (m_layout.hasBUF_Skin)
+  {
+    sourceVertex += "layout(location = 12) in vec2 vertexSkin;\n";
   }
   if (m_layout.hasBUF_InstancedPosition)
   {

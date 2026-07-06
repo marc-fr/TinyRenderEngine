@@ -476,8 +476,9 @@ void s_modelDataLayout::copyVertex(std::size_t ivfirst, std::size_t ivcount, std
   s_block::addBlock(blocks, m_positions, ivfirst, dstfirst);
   s_block::addBlock(blocks, m_normals  , ivfirst, dstfirst);
   s_block::addBlock(blocks, m_tangents , ivfirst, dstfirst);
-  s_block::addBlock(blocks, m_colors   , ivfirst, dstfirst);
   s_block::addBlock(blocks, m_uvs      , ivfirst, dstfirst);
+  s_block::addBlock(blocks, m_colors   , ivfirst, dstfirst);
+  s_block::addBlock(blocks, m_skins    , ivfirst, dstfirst);
 
   for (const s_block & block : blocks)
     memcpy(const_cast<GLfloat*>(block.dst), block.src, block.dim * ivcount  * sizeof(GLfloat));
@@ -578,12 +579,14 @@ void s_modelDataLayout::clear()
   m_positions.m_size = 0;
   m_normals.m_data = nullptr;
   m_normals.m_size = 0;
+  m_tangents.m_data = nullptr;
+  m_tangents.m_size = 0;
   m_uvs.m_data = nullptr;
   m_uvs.m_size = 0;
   m_colors.m_data = nullptr;
   m_colors.m_size = 0;
-  m_tangents.m_data = nullptr;
-  m_tangents.m_size = 0;
+  m_skins.m_data = nullptr;
+  m_skins.m_size = 0;
 
   m_instanceCount = 0;
   m_instancedPositions.m_data = nullptr;
@@ -1187,8 +1190,9 @@ void modelIndexed::fillDataBox(std::size_t ipart, std::size_t offsetI, std::size
     m_layout.m_normals.get<glm::vec3>(offsetV + 23) = outNormalx1x;
   }
 
-  TRE_ASSERT(m_layout.m_uvs.m_size == 0); // we dont handle UVs generation.
   TRE_ASSERT(m_layout.m_tangents.m_size == 0); // we dont handle tangents generation.
+  TRE_ASSERT(m_layout.m_uvs.m_size == 0); // we dont handle UVs generation.
+  TRE_ASSERT(m_layout.m_skins.m_size == 0); // we dont handle skins generation.
 
   if (m_layout.m_colors.m_size != 0)
   {
@@ -1315,9 +1319,9 @@ void modelIndexed::fillDataCone(std::size_t ipart, std::size_t offsetI, std::siz
   TRE_ASSERT(indicePtr == m_layout.m_index.getPointer(offsetI) + fillDataCone_ISize(subdiv));
 
   TRE_ASSERT(m_layout.m_normals.m_size == 0); // we dont generate the normals for now. TODO
-
-  TRE_ASSERT(m_layout.m_uvs.m_size == 0); // we dont handle UVs generation.
   TRE_ASSERT(m_layout.m_tangents.m_size == 0); // we dont handle tangents generation.
+  TRE_ASSERT(m_layout.m_uvs.m_size == 0); // we dont handle UVs generation.
+  TRE_ASSERT(m_layout.m_skins.m_size == 0); // we dont handle skins generation.
 
   if (m_layout.m_colors.m_size != 0)
   {
@@ -1416,8 +1420,9 @@ void modelIndexed::fillDataDisk(std::size_t ipart, std::size_t offsetI, std::siz
       m_layout.m_normals.get<glm::vec3>(offsetV + i) = outNormal;
   }
 
-  TRE_ASSERT(m_layout.m_uvs.m_size == 0); // we dont handle UVs generation.
   TRE_ASSERT(m_layout.m_tangents.m_size == 0); // we dont handle tangents generation.
+  TRE_ASSERT(m_layout.m_uvs.m_size == 0); // we dont handle UVs generation.
+  TRE_ASSERT(m_layout.m_skins.m_size == 0); // we dont handle skins generation.
 
   if (m_layout.m_colors.m_size != 0)
   {
@@ -1490,6 +1495,7 @@ void modelIndexed::fillDataTorus(std::size_t ipart, std::size_t offsetI, std::si
   TRE_ASSERT(m_layout.m_normals.m_size == 0); // we dont generate the normals for now. TODO
   TRE_ASSERT(m_layout.m_tangents.m_size == 0); // we dont generate the tangents for now. TODO
   TRE_ASSERT(m_layout.m_uvs.m_size == 0); // we dont handle UVs (for now ?)
+  TRE_ASSERT(m_layout.m_skins.m_size == 0); // we dont handle skins generation.
 
   if (m_layout.m_colors.m_size != 0)
   {
@@ -1573,6 +1579,15 @@ void modelIndexed::fillDataSquare(std::size_t ipart, std::size_t offsetI, std::s
     m_layout.m_colors.get<glm::vec4>(offsetV + 3) = color;
   }
 
+  if (m_layout.m_skins.m_size != 0)
+  {
+    TRE_ASSERT(m_layout.m_skins.m_size == 2);
+    m_layout.m_skins.get<glm::vec2>(offsetV + 0) = glm::vec2(0.f);
+    m_layout.m_skins.get<glm::vec2>(offsetV + 1) = glm::vec2(0.f);
+    m_layout.m_skins.get<glm::vec2>(offsetV + 2) = glm::vec2(1.f);
+    m_layout.m_skins.get<glm::vec2>(offsetV + 3) = glm::vec2(1.f);
+  }
+
   {
     const glm::vec4 t0 = glm::abs(halfSizeOu * transform[0]);
     const glm::vec4 t2 = glm::abs(halfSizeOu * transform[2]);
@@ -1613,8 +1628,9 @@ void modelIndexed::fillDataSquareWireframe(std::size_t ipart, std::size_t offset
   m_layout.m_index[offsetI + 7] = offsetV + 0;
 
   TRE_ASSERT(m_layout.m_normals.m_size == 0);
-  TRE_ASSERT(m_layout.m_uvs.m_size == 0); // we dont handle UVs generation.
   TRE_ASSERT(m_layout.m_tangents.m_size == 0); // we dont handle tangents generation.
+  TRE_ASSERT(m_layout.m_uvs.m_size == 0); // we dont handle UVs generation.
+  TRE_ASSERT(m_layout.m_skins.m_size == 0); // we dont handle skins generation.
 
   if (m_layout.m_colors.m_size != 0)
   {
@@ -1699,6 +1715,7 @@ void modelIndexed::fillDataTube(std::size_t ipart, std::size_t offsetI, std::siz
   TRE_ASSERT(m_layout.m_normals.m_size == 0); // we dont generate the normals for now. TODO
   TRE_ASSERT(m_layout.m_tangents.m_size == 0); // we dont generate the tangents for now. TODO
   TRE_ASSERT(m_layout.m_uvs.m_size == 0); // we dont handle UVs (for now ?)
+  TRE_ASSERT(m_layout.m_skins.m_size == 0); // we dont handle skins generation.
 
   if (m_layout.m_colors.m_size != 0)
   {
@@ -1839,8 +1856,9 @@ void modelIndexed::fillDataUvtrisphere(std::size_t ipart, std::size_t offsetI, s
     m_layout.m_normals.m_stride = 0;
   }
 
-  TRE_ASSERT(m_layout.m_uvs.m_size == 0); // we dont handle UVs (for now ?)
   TRE_ASSERT(m_layout.m_tangents.m_size == 0); // we dont generate the tangents (for now ?)
+  TRE_ASSERT(m_layout.m_uvs.m_size == 0); // we dont handle UVs (for now ?)
+  TRE_ASSERT(m_layout.m_skins.m_size == 0); // we dont handle skins generation.
 
   if (m_layout.m_colors.m_size != 0)
   {
@@ -2303,9 +2321,10 @@ void modelStaticIndexed3D::resizeVertex(std::size_t count)
 
   if (m_flags & VB_POSITION) sumSize += m_layout.m_positions.m_size = 3;
   if (m_flags & VB_NORMAL  ) sumSize += m_layout.m_normals.m_size = 3;
-  if (m_flags & VB_COLOR   ) sumSize += m_layout.m_colors.m_size = 4;
   if (m_flags & VB_TANGENT ) sumSize += m_layout.m_tangents.m_size = 4;
   if (m_flags & VB_UV      ) sumSize += m_layout.m_uvs.m_size = 2;
+  if (m_flags & VB_COLOR   ) sumSize += m_layout.m_colors.m_size = 4;
+  if (m_flags & VB_SKIN    ) sumSize += m_layout.m_skins.m_size = 2;
 
   TRE_ASSERT(m_layout.m_vertexCount * sumSize == m_VBuffer.size() || m_VBuffer.empty() /*buffer is cleared when loading*/);
 
@@ -2331,6 +2350,7 @@ void modelStaticIndexed3D::resizeVertex(std::size_t count)
     COPYDATA(VB_NORMAL  , m_layout.m_normals)
     COPYDATA(VB_TANGENT , m_layout.m_tangents)
     COPYDATA(VB_UV      , m_layout.m_uvs)
+    COPYDATA(VB_SKIN    , m_layout.m_skins)
 
 #undef COPYDATA
   }
@@ -2348,6 +2368,7 @@ void modelStaticIndexed3D::resizeVertex(std::size_t count)
     _memcpy_safe(m_VBuffer.data() + offset * count, m_VBuffer.data() + offset * count_old, count_old * _vdata.m_size); \
   }
 
+    COPYDATA(VB_SKIN    , m_layout.m_skins)
     COPYDATA(VB_UV      , m_layout.m_uvs)
     COPYDATA(VB_TANGENT , m_layout.m_tangents)
     COPYDATA(VB_NORMAL  , m_layout.m_normals)
@@ -2372,6 +2393,7 @@ void modelStaticIndexed3D::resizeVertex(std::size_t count)
   SETLAYOUT(VB_NORMAL  , m_layout.m_normals)
   SETLAYOUT(VB_TANGENT , m_layout.m_tangents)
   SETLAYOUT(VB_UV      , m_layout.m_uvs)
+  SETLAYOUT(VB_SKIN    , m_layout.m_skins)
 
 #undef SETLAYOUT
 
@@ -2508,9 +2530,10 @@ void modelStaticIndexed3D::loadIntoGPU_VertexBuffer()
 
   if (m_flags & VB_POSITION) _bind_vertexAttribPointer_float(m_layout.m_positions, 0, m_VBuffer.data());
   if (m_flags & VB_NORMAL  ) _bind_vertexAttribPointer_float(m_layout.m_normals  , 1, m_VBuffer.data());
+  if (m_flags & VB_TANGENT ) _bind_vertexAttribPointer_float(m_layout.m_tangents , 4, m_VBuffer.data());
   if (m_flags & VB_UV      ) _bind_vertexAttribPointer_float(m_layout.m_uvs      , 2, m_VBuffer.data());
   if (m_flags & VB_COLOR   ) _bind_vertexAttribPointer_float(m_layout.m_colors   , 3, m_VBuffer.data());
-  if (m_flags & VB_TANGENT ) _bind_vertexAttribPointer_float(m_layout.m_tangents , 4, m_VBuffer.data());
+  if (m_flags & VB_SKIN    ) _bind_vertexAttribPointer_float(m_layout.m_skins    ,12, m_VBuffer.data());
 
   IsOpenGLok("modelStaticIndexed3D::loadIntoGPU");
 
@@ -2518,9 +2541,10 @@ void modelStaticIndexed3D::loadIntoGPU_VertexBuffer()
     m_VBuffer.clear();
     if (m_flags & VB_POSITION) m_layout.m_positions.m_data = nullptr;
     if (m_flags & VB_NORMAL  ) m_layout.m_normals.m_data = nullptr;
+    if (m_flags & VB_TANGENT ) m_layout.m_tangents.m_data = nullptr;
     if (m_flags & VB_UV      ) m_layout.m_uvs.m_data = nullptr;
     if (m_flags & VB_COLOR   ) m_layout.m_colors.m_data = nullptr;
-    if (m_flags & VB_TANGENT ) m_layout.m_tangents.m_data = nullptr;
+    if (m_flags & VB_SKIN    ) m_layout.m_skins.m_data = nullptr;
   }
 }
 
@@ -2534,9 +2558,10 @@ void modelSemiDynamic3D::resizeVertex(std::size_t count)
 
   if (m_flagsDynamic & VB_POSITION) sumSize += m_layout.m_positions.m_size = 3;
   if (m_flagsDynamic & VB_NORMAL  ) sumSize += m_layout.m_normals.m_size = 3;
-  if (m_flagsDynamic & VB_COLOR   ) sumSize += m_layout.m_colors.m_size = 4;
   if (m_flagsDynamic & VB_TANGENT ) sumSize += m_layout.m_tangents.m_size = 4;
   if (m_flagsDynamic & VB_UV      ) sumSize += m_layout.m_uvs.m_size = 2;
+  if (m_flagsDynamic & VB_COLOR   ) sumSize += m_layout.m_colors.m_size = 4;
+  if (m_flagsDynamic & VB_SKIN    ) sumSize += m_layout.m_skins.m_size = 2;
 
   TRE_ASSERT(m_layout.m_vertexCount * sumSize == m_VBufferDyn.size() || m_VBufferDyn.empty());
 
@@ -2562,6 +2587,7 @@ void modelSemiDynamic3D::resizeVertex(std::size_t count)
   SETLAYOUT(VB_NORMAL  , m_layout.m_normals)
   SETLAYOUT(VB_TANGENT , m_layout.m_tangents)
   SETLAYOUT(VB_UV      , m_layout.m_uvs)
+  SETLAYOUT(VB_SKIN    , m_layout.m_skins)
 
 #undef SETLAYOUT
 
@@ -2685,9 +2711,10 @@ void modelSemiDynamic3D::loadIntoGPU_VertexBuffer(const bool clearCPUbuffer)
 
   if (m_flagsDynamic & VB_POSITION) _bind_vertexAttribPointer_float(m_layout.m_positions, 0, m_VBufferDyn.data());
   if (m_flagsDynamic & VB_NORMAL  ) _bind_vertexAttribPointer_float(m_layout.m_normals  , 1, m_VBufferDyn.data());
+  if (m_flagsDynamic & VB_TANGENT ) _bind_vertexAttribPointer_float(m_layout.m_tangents , 4, m_VBufferDyn.data());
   if (m_flagsDynamic & VB_UV      ) _bind_vertexAttribPointer_float(m_layout.m_uvs      , 2, m_VBufferDyn.data());
   if (m_flagsDynamic & VB_COLOR   ) _bind_vertexAttribPointer_float(m_layout.m_colors   , 3, m_VBufferDyn.data());
-  if (m_flagsDynamic & VB_TANGENT ) _bind_vertexAttribPointer_float(m_layout.m_tangents , 4, m_VBufferDyn.data());
+  if (m_flagsDynamic & VB_SKIN    ) _bind_vertexAttribPointer_float(m_layout.m_skins    ,12, m_VBufferDyn.data());
 
   IsOpenGLok("modelSemiDynamic3D::loadIntoGPU");
 
@@ -2696,9 +2723,10 @@ void modelSemiDynamic3D::loadIntoGPU_VertexBuffer(const bool clearCPUbuffer)
     m_VBufferDyn.clear();
     if (m_flagsDynamic & VB_POSITION) m_layout.m_positions.m_data = nullptr;
     if (m_flagsDynamic & VB_NORMAL  ) m_layout.m_normals.m_data   = nullptr;
+    if (m_flagsDynamic & VB_TANGENT ) m_layout.m_tangents.m_data  = nullptr;
     if (m_flagsDynamic & VB_UV      ) m_layout.m_uvs.m_data       = nullptr;
     if (m_flagsDynamic & VB_COLOR   ) m_layout.m_colors.m_data    = nullptr;
-    if (m_flagsDynamic & VB_TANGENT ) m_layout.m_tangents.m_data  = nullptr;
+    if (m_flagsDynamic & VB_SKIN    ) m_layout.m_skins.m_data     = nullptr;
   }
 }
 

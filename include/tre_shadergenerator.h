@@ -24,6 +24,7 @@ namespace tre {
  * 7: instanceAtlasBlend(vec4) | instanceAtlasBlend(vec4)
  * 8-9-10: --                  | instanceOrientation(mat3 -> 3 * vec3.xyz0)
  * 11: instanceRotation(float) | instanceRotation(float)
+ * 12: --                      | vertexSkin(vec2)
  *
  * Uniform-Buffer-Objects
  * - SunLight
@@ -77,6 +78,7 @@ public:
     bool hasBUF_UV;                   ///< Implicitly, "pixelUV" is available in the fragment shader
     bool hasBUF_Color;                ///< Implicitly, "pixelColor" is available in the fragment shader
     bool hasBUF_TangentU;             ///< Implicitly, "pixelTangU" and "pixelTangV" are available in the fragment shader
+    bool hasBUF_Skin;
     bool hasBUF_InstancedPosition;
     bool hasBUF_InstancedColor;       ///< Implicitly, "pixelColor" is available in the fragment shader
     bool hasBUF_InstancedAtlasBlend;
