@@ -58,11 +58,14 @@ $(OBJDIR) :
 $(OBJDIR)/%.o : $(CORE_SRCDIR)/%.cpp
 	$(CXX) $(CXXFLAGS) $(DEFINE) $(INC) -c -o $@ $<
 
-$(OBJDIR)/%.o : $(ROOTDIR)/test/%.cpp
+$(OBJDIR)/%.o : $(ROOTDIR)/tests/%.cpp
+	$(CXX) $(CXXFLAGS) $(DEFINE) $(INC) -c -o $@ $< -DTESTIMPORTPATH=\"resources-dir/\"
+
+$(OBJDIR)/%.o : $(ROOTDIR)/tools/%.cpp
 	$(CXX) $(CXXFLAGS) $(DEFINE) $(INC) -c -o $@ $< -DTESTIMPORTPATH=\"resources-dir/\"
 
 %.html : $(CORE_OBJ) $(OBJDIR)/%.o
-	$(CXX) -o $@ $^ $(LDFLAGS) --preload-file ../test/resources@resources-dir/resources/
+	$(CXX) -o $@ $^ $(LDFLAGS) --preload-file ../resources@resources-dir/resources/
 
 #-
 

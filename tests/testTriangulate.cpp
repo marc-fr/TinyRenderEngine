@@ -140,7 +140,7 @@ int main(int argc, char **argv)
   SDL_GetDesktopDisplayMode(0,&currentdm);
   TRE_LOG("SDL Desktop resolution : " << currentdm.w << " * " << currentdm.h);
 
-  if (!myWindow.SDLCreateWindow(int(currentdm.w * 0.8 / 8)*8, int(currentdm.h * 0.8 / 8)*8, "test Mesh 2D", SDL_WINDOW_RESIZABLE))
+  if (!myWindow.SDLCreateWindow(int(currentdm.w * 0.8 / 8)*8, int(currentdm.h * 0.8 / 8)*8, "test Triangulate", SDL_WINDOW_RESIZABLE))
     return -2;
 
   if (!myWindow.OpenGLInit())

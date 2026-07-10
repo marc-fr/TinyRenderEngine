@@ -3,7 +3,7 @@
 set(LINK_LIB_LIST ${PROJECT_NAME} ${OPENGL_LIBRARY} ${GLEW_SHARED_LIBRARY_RELEASE} ${SDL2_LIBRARY} ${SDL2_IMAGE_LIBRARY} ${FREETYPE_LIBRARIES} ${TIFF_LIBRARIES} ${OPUS_LIBRARIES})
 message(STATUS "${PROJECT_NAME} : LINK_LIB_LIST is ${LINK_LIB_LIST}")
 
-add_definitions(-DTESTIMPORTPATH=\"${CMAKE_SOURCE_DIR}/test/\")
+add_definitions(-DTESTIMPORTPATH=\"${CMAKE_SOURCE_DIR}/\")
 
 include_directories(${CMAKE_SOURCE_DIR})
 
@@ -29,39 +29,10 @@ else()
   message(WARNING "${PROJECT_NAME}: Compiler Id Unknown: target-architecture is not set.")
 endif()
 
-## Add console-tests
+## Add executables
 
-add_executable(testTextureSampling testTextureSampling.cpp)
-target_link_libraries(testTextureSampling ${LINK_LIB_LIST})
+add_executable(meshViewer WIN32 meshViewer.cpp)
+target_link_libraries(meshViewer ${LINK_LIB_LIST})
 
-## Add graphic-tests
-
-add_executable(testAudioMixer WIN32 testAudioMixer.cpp)
-target_link_libraries(testAudioMixer ${LINK_LIB_LIST})
-
-add_executable(testBasic WIN32 testBasic.cpp)
-target_link_libraries(testBasic ${LINK_LIB_LIST})
-
-add_executable(testContact2D WIN32 testContact2D.cpp)
-target_link_libraries(testContact2D ${LINK_LIB_LIST})
-
-add_executable(testContact3D WIN32 testContact3D.cpp)
-target_link_libraries(testContact3D ${LINK_LIB_LIST})
-
-add_executable(testGui WIN32 testGui.cpp)
-target_link_libraries(testGui ${LINK_LIB_LIST})
-
-add_executable(testLighting WIN32 testLighting.cpp)
-target_link_libraries(testLighting ${LINK_LIB_LIST})
-
-add_executable(testMesh2D WIN32 testMesh2D.cpp)
-target_link_libraries(testMesh2D ${LINK_LIB_LIST})
-
-add_executable(testMesh3D WIN32 testMesh3D.cpp)
-target_link_libraries(testMesh3D ${LINK_LIB_LIST})
-
-add_executable(testShadow WIN32 testShadow.cpp)
-target_link_libraries(testShadow ${LINK_LIB_LIST})
-
-add_executable(testTextureCompression WIN32 testTextureCompression.cpp)
-target_link_libraries(testTextureCompression ${LINK_LIB_LIST})
+add_executable(tickCompanion WIN32 tickCompanion.cpp)
+target_link_libraries(tickCompanion ${LINK_LIB_LIST})

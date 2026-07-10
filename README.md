@@ -5,7 +5,7 @@ such as mesh operations, contact algorithm, GUI.
 It empowers game programmers to create prototypes.
 It favors simplicity to embed and to use. 
 
-It is written in C++11, with the usage of the STL.
+It is written in C++17, with the usage of the STL.
 Usage of third-parties is kept limited.
 The main target platform is desktop that supports OpenGL 3.3 (primilary Windows and Linux).
 The web-assembly platform is also supported, with the help of [Emscriten](https://emscripten.org/) and the compatibility with OpenGL ES 3. 
@@ -16,7 +16,10 @@ No specific build process is required.
 You can either build a static/dynamic library from it (a CMake project is included, that handles being included inside another project),
 or directly add the sources files into your existing project.
 
-Some examples are provided in the [tests](./tests) directory.
+Some samples are provided in the [tests](./tests) directory.
+
+Additional tools are provided in the [tools](./tools) directory.
+
 
 ## Features
 
@@ -25,9 +28,6 @@ Some examples are provided in the [tests](./tests) directory.
 The contact algorithms perform intersection test between two ojbects.
 It can additionally return the barycenter of the interpenetration, with the minimal translation needed to make the objects not penetrating with each others.
 
-Here the map of supported 2D contacts:
-
-![contact-2D-point](doc/contact-2D.jpg)
 
 ### Mesh operations
 
@@ -37,14 +37,13 @@ These algorithms are not designed to be run in a real-time context, but for pre-
 
 * compute of the bounding-box
 
-* compute of the barycentric center, the aera (in 2D) and the volume (3D)
+* compute of the barycentric center, the aera (in 2D) and the volume (in 3D)
 
 * compute of the convexe hull (**WIP**)
 
 * simplification by reducing the number of vertices (**WIP**)
 
-* triangulation (in 2D)
-  ![mesh-2D-triangulation](doc/triangulation.jpg)
+* triangulation (in 2D) and tetrahedrization (in 3D)
 
 
 ### Textures utilities

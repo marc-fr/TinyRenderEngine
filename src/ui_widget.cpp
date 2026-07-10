@@ -1116,6 +1116,8 @@ glm::vec2 widgetLineChoice::get_zoneSizeDefault(const s_drawData &dd) const
 }
 void widgetLineChoice::compute_data(s_drawData &dd)
 {
+  TRE_ASSERT(!wvalues.empty());
+
   const auto &colorTheme = m_parentWindow->get_colortheme();
   const auto colorMask = m_parentWindow->get_colormask() * glm::vec4(1.f, 1.f, 1.f, wcolorAlpha);
 
