@@ -3,8 +3,51 @@
 
 #include <map>
 #include <fstream>
+#include <charconv>
 
 namespace tre {
+
+// == Helpers =================================================================
+
+/// Fast but stricter numeric parsing (no leading space, no "+" sign, ...)
+template <typename _T>
+void _readNumber(const std::string &str, _T &ret)
+{
+  std::from_chars(str.data(), str.c_str() + str.length(), ret);
+}
+
+// ----------------------------------------------------------------------------
+
+static void _readFloat3(const std::string &str, float &f0, float &f1, float &f2)
+{
+  char *strPtr = nullptr;
+  f0 = strtof(str.c_str(), &strPtr);
+  f1 = strtof(strPtr, &strPtr);
+  f2 = strtof(strPtr, &strPtr);
+}
+
+// ----------------------------------------------------------------------------
+
+static void _numberList_to_Vector(const std::string &str, std::vector<std::size_t> &outV)
+{
+  if (str.empty()) return;
+  std::size_t sep = str.find(' ');
+  std::size_t b = 0u;
+  while (sep != std::string::npos)
+  {
+    std::size_t vread = 0u;
+    std::from_chars(str.data() + b, str.c_str() + sep, vread);
+    outV.push_back(vread);
+    b = sep + 1;
+    sep = str.find(' ', b);
+  }
+  if (b < str.size())
+  {
+    std::size_t vread = 0u;
+    std::from_chars(str.data() + b, str.c_str() + str.size(), vread);
+    outV.push_back(vread);
+  }
+}
 
 // == OBJ =====================================================================
 
@@ -554,36 +597,13 @@ bool readFileBlock(std::ifstream &ins, std::vector<s_node> &out)
 
 // ----------------------------------------------------------------------------
 
-static void _numberList_to_Vector(const std::string &str, std::vector<std::size_t> &outV)
-{
-  if (str.empty()) return;
-  std::size_t sep = str.find(' ');
-  std::size_t b = 0u;
-  while (sep != std::string::npos)
-  {
-    std::size_t vread = 0u;
-    sscanf(str.substr(b, sep - b).data(),"%zu",&vread);
-    outV.push_back(vread);
-    b = sep + 1;
-    sep = str.find(' ', b);
-  }
-  if (b < str.size())
-  {
-    std::size_t vread = 0u;
-    sscanf(str.substr(b).data(),"%zu",&vread);
-    outV.push_back(vread);
-  }
-}
-
-// ----------------------------------------------------------------------------
-
 static void _GLTF_readAccessor(const json::s_node &na, std::size_t &bufferViewId, std::size_t &count, bool &isHalfPrecision, const char *expectedType)
 {
   TRE_ASSERT(na.m_key.compare("list-element") == 0);
   for (const json::s_node &nn : na.m_list)
   {
-    if      (nn.m_key.compare("bufferView") == 0) sscanf(nn.m_valueStr.data(),"%zu",&bufferViewId);
-    else if (nn.m_key.compare("count") == 0) sscanf(nn.m_valueStr.data(),"%zu",&count);
+    if      (nn.m_key.compare("bufferView") == 0) _readNumber(nn.m_valueStr, bufferViewId);
+    else if (nn.m_key.compare("count") == 0) _readNumber(nn.m_valueStr, count);
     else if (nn.m_key.compare("type") == 0)
     {
       if (nn.m_valueStr.compare(expectedType) != 0) { TRE_LOG("model::loadfromGLTF: un-expected type \"" << nn.m_valueStr << "\" of a " << expectedType << " buffer"); }
@@ -591,7 +611,7 @@ static void _GLTF_readAccessor(const json::s_node &na, std::size_t &bufferViewId
     else if (nn.m_key.compare("componentType") == 0)
     {
       std::size_t ctype = 0;
-      sscanf(nn.m_valueStr.data(),"%zu",&ctype);
+      _readNumber(nn.m_valueStr, ctype);
       isHalfPrecision = (ctype == 5123);
     }
   }
@@ -602,12 +622,12 @@ static void _GLTF_readBufferView(const json::s_node &nbf, std::size_t &bufferId,
   TRE_ASSERT(nbf.m_key.compare("list-element") == 0);
   for (const json::s_node &nn : nbf.m_list)
   {
-    if      (nn.m_key.compare("buffer") == 0) sscanf(nn.m_valueStr.data(),"%zu",&bufferId);
-    else if (nn.m_key.compare("byteOffset") == 0) sscanf(nn.m_valueStr.data(),"%zu",&byteOffset);
+    if      (nn.m_key.compare("buffer") == 0) _readNumber(nn.m_valueStr, bufferId);
+    else if (nn.m_key.compare("byteOffset") == 0) _readNumber(nn.m_valueStr, byteOffset);
     else if (nn.m_key.compare("byteLength") == 0)
     {
       std::size_t rbl = 0;
-      sscanf(nn.m_valueStr.data(),"%zu",&rbl);
+      _readNumber(nn.m_valueStr, rbl);
       if (rbl != expectedByteLength) { TRE_LOG("model::loadfromGLTF: un-expected byte-length (" << rbl << ") for a buffer (expected: " << expectedByteLength << ")"); } }
   }
 }
@@ -796,27 +816,27 @@ bool modelImporter::addFromGLTF(modelIndexed &outModel, s_modelHierarchy &outHie
         {
           for (const json::s_node &na : np.m_list)
           {
-            if      (na.m_key.compare("POSITION") == 0) sscanf(na.m_valueStr.data(),"%zu",&curPartRead.m_bufferViewId_pos); // for now, it stores the accessor id.
-            else if (na.m_key.compare("NORMAL") == 0) sscanf(na.m_valueStr.data(),"%zu",&curPartRead.m_bufferViewId_normal); // for now, it stores the accessor id.
-            else if (na.m_key.compare("TEXCOORD_0") == 0) sscanf(na.m_valueStr.data(),"%zu",&curPartRead.m_bufferViewId_uv); // for now, it stores the accessor id.
-            else if (na.m_key.compare("COLOR_0") == 0) sscanf(na.m_valueStr.data(),"%zu",&curPartRead.m_bufferViewId_color); // for now, it stores the accessor id.
-            else if (na.m_key.compare("JOINTS_0") == 0) sscanf(na.m_valueStr.data(),"%zu",&curPartRead.m_bufferViewId_joint); // for now, it stores the accessor id.
-            else if (na.m_key.compare("WEIGHTS_0") == 0) sscanf(na.m_valueStr.data(),"%zu",&curPartRead.m_bufferViewId_weight); // for now, it stores the accessor id.
+            if      (na.m_key.compare("POSITION") == 0) _readNumber(na.m_valueStr, curPartRead.m_bufferViewId_pos); // for now, it stores the accessor id.
+            else if (na.m_key.compare("NORMAL") == 0) _readNumber(na.m_valueStr, curPartRead.m_bufferViewId_normal); // for now, it stores the accessor id.
+            else if (na.m_key.compare("TEXCOORD_0") == 0) _readNumber(na.m_valueStr, curPartRead.m_bufferViewId_uv); // for now, it stores the accessor id.
+            else if (na.m_key.compare("COLOR_0") == 0) _readNumber(na.m_valueStr, curPartRead.m_bufferViewId_color); // for now, it stores the accessor id.
+            else if (na.m_key.compare("JOINTS_0") == 0)_readNumber(na.m_valueStr, curPartRead.m_bufferViewId_joint); // for now, it stores the accessor id.
+            else if (na.m_key.compare("WEIGHTS_0") == 0) _readNumber(na.m_valueStr, curPartRead.m_bufferViewId_weight); // for now, it stores the accessor id.
             else    { TRE_LOG("model::loadfromGLTF: unkown attribute \"" << na.m_key << "\" in part \"" << curPartRead.m_name << "\""); }
           }
         }
         else if (np.m_key.compare("indices") == 0)
         {
-          sscanf(np.m_valueStr.data(),"%zu",&curPartRead.m_bufferViewId_index); // for now, it stores the accessor id.
+          _readNumber(np.m_valueStr, curPartRead.m_bufferViewId_index); // for now, it stores the accessor id.
         }
         else if (np.m_key.compare("material") == 0)
         {
-          sscanf(np.m_valueStr.data(),"%zu",&curPartRead.m_materialIdx);
+          _readNumber(np.m_valueStr, curPartRead.m_materialIdx);
         }
         else if (np.m_key.compare("modes") == 0)
         {
           std::size_t m = 0;
-          sscanf(np.m_valueStr.data(),"%zu",&m);
+          _readNumber(np.m_valueStr, m);
           if (m != 4) // GL_TRIANGLES
           {
             TRE_LOG("model::loadfromGLTF: the primitives mode is not TRIANGLES(4): " <<  m << ". The part \"" << curPartRead.m_name << "\" may not be rendered correctly.");
@@ -924,7 +944,7 @@ bool modelImporter::addFromGLTF(modelIndexed &outModel, s_modelHierarchy &outHie
       if (nn.m_key.compare("byteLength") == 0)
       {
         std::size_t blen = 0;
-        sscanf(nn.m_valueStr.data(),"%zu",&blen);
+        _readNumber(nn.m_valueStr,blen);
         currentBuffer.m_rawData.resize(blen + 4); // encoding can introduce padding.
       }
       else if (nn.m_key.compare("uri") == 0)
@@ -1145,8 +1165,8 @@ bool modelImporter::addFromGLTF(modelIndexed &outModel, s_modelHierarchy &outHie
       glm::quat rot = glm::quat(1.f, 0.f, 0.f, 0.f);
       for (const json::s_node &nns : nn.m_list)
       {
-        if      (nns.m_key.compare("mesh") == 0) sscanf(nns.m_valueStr.data(),"%zu",&meshId);
-        else if (nns.m_key.compare("skin") == 0) sscanf(nns.m_valueStr.data(),"%zu",&sinkId);
+        if      (nns.m_key.compare("mesh") == 0) _readNumber(nns.m_valueStr, meshId);
+        else if (nns.m_key.compare("skin") == 0) _readNumber(nns.m_valueStr, sinkId);
         else if (nns.m_key.compare("translation") == 0) sscanf(nns.m_valueStr.data(),"%f %f %f",&tr.x, &tr.y, &tr.z);
         else if (nns.m_key.compare("rotation") == 0) sscanf(nns.m_valueStr.data(),"%f %f %f %f",&rot.x, &rot.y, &rot.z,&rot.w);
         else if (nns.m_key.compare("children") == 0) _numberList_to_Vector(nns.m_valueStr, children);
@@ -1155,6 +1175,7 @@ bool modelImporter::addFromGLTF(modelIndexed &outModel, s_modelHierarchy &outHie
       s_nodeRead &curNode = nodeRead.back();
       curNode.m_tr = glm::mat4_cast(rot);
       curNode.m_tr[3] = glm::vec4(tr, 1.f);
+      curNode.m_children = children;
       curNode.m_meshId = meshId; // might be invalid (-1)
     }
 
