@@ -116,7 +116,7 @@ struct s_partProcessingContext
     // create tetra mesh
     if (m_tetrahedrons.size() >= 4)
     {
-      TRE_ASSERT(listTetra.size() % 4 == 0);
+      TRE_ASSERT(m_tetrahedrons.size() % 4 == 0);
       const std::size_t inTetraCount = m_tetrahedrons.size() / 4;
       const std::size_t outVertexCount = inTetraCount * 12;
 
@@ -707,7 +707,7 @@ static void app_update()
   {
     myWindow.SDLEvent_onWindow(event);
     myControls.treatSDLEvent(event);
-    
+
     if (!myView3D.m_mouseBound) bUI_main.acceptEvent(event);
   }
 

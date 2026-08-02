@@ -906,6 +906,8 @@ static const std::vector<const char *> kuiColorThemeNames = { "Light blue" };
 
 // -----------------------------------------------------------------------------
 
+static void onColorThemeChanged();
+
 static bool myInit()
 {
   if (!winContext.SDLInit(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_AUDIO) ||
