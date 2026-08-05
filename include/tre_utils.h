@@ -5,11 +5,12 @@
 
 #include <array>
 #include <vector>
-#include <iostream>
 
 // macros =====================================================================
 
 #ifdef TRE_PRINTS
+
+#include <iostream>
 
 #ifdef _WIN32
 
@@ -140,7 +141,7 @@ class chunkVector
 private:
   typedef std::array<_T, chunkSize> chunkElement;
   std::vector<chunkElement *> m_chunks;
-  std::size_t                 m_size; ///< nbr of elements
+  std::size_t                 m_size = 0; ///< nbr of elements
 
 public:
   chunkVector() { static_assert((chunkSize != 0) && (chunkSize & (chunkSize - 1)) == 0, "chunkVector requires a power-of-two chunk-size."); }
@@ -172,6 +173,11 @@ public:
   {
     reserve(size);
     m_size = size;
+  }
+
+  void        grow(std::size_t addsize = 1)
+  {
+    resize(m_size + addsize);
   }
 
   void        push_back(const _T &element)
@@ -214,11 +220,9 @@ template<typename _T, std::size_t capacity>
 class arrayCounted : public std::array<_T, capacity>
 {
 private:
-  std::size_t m_sizeCounted;
+  std::size_t m_sizeCounted = 0;
 
 public:
-  arrayCounted() : m_sizeCounted(0) {}
-
   bool        emptyCounted() const noexcept { return m_sizeCounted == 0; }
   std::size_t sizeCounted() const noexcept { return m_sizeCounted; }
 
@@ -228,6 +232,11 @@ public:
   {
     TRE_ASSERT(size <= capacity);
     m_sizeCounted = size;
+  }
+
+  void        grow(std::size_t addsize = 1)
+  {
+    resize(m_size + addsize);
   }
 
   void        push_back(const _T& element)
@@ -572,7 +581,7 @@ template<class _T> void sortRadix(tre::span<_T> array)
 
   unsigned counter[256];
 
-  for (uint ishift = 0, s = 0; ishift < 4; ++ishift, s += 8)
+  for (unsigned ishift = 0, s = 0; ishift < 4; ++ishift, s += 8)
   {
     memset(counter, 0, sizeof(unsigned) * 256); // reset counter
 
