@@ -236,7 +236,7 @@ public:
 
   void        grow(std::size_t addsize = 1)
   {
-    resize(m_size + addsize);
+    resize(m_sizeCounted + addsize);
   }
 
   void        push_back(const _T& element)
