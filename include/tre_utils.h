@@ -5,12 +5,11 @@
 
 #include <array>
 #include <vector>
+#include <iostream>
 
 // macros =====================================================================
 
 #ifdef TRE_PRINTS
-
-#include <iostream>
 
 #ifdef _WIN32
 
