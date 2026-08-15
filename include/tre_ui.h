@@ -740,7 +740,7 @@ protected:
   modelRaw2D    m_model; ///< main mesh-model: part0: solid-boxes, part1: solid-lines, part2: pictures, part[3-...]: pictures(texts)
 
   modelRaw2D & getDrawModel() { return m_model; } // DEPRECATED.
-  glm::vec4 * __restrict getDrawBuffer(const unsigned offset = 0) const { return reinterpret_cast<glm::vec4 *>(m_model.layout().m_positions.m_data) + (2 * offset); }
+  glm::vec4 * __restrict getDrawBuffer(const std::size_t offset = 0) const { return reinterpret_cast<glm::vec4 *>(m_model.layout().m_positions.m_data) + (2 * offset); }
 
   shader       *m_shader = nullptr; ///< Global shader for solid drawing
   bool          m_shaderOwner = true;

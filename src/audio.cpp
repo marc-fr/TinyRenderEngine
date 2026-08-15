@@ -326,7 +326,7 @@ bool soundData::s_Opus::loadFromOPUS(const std::string &filename)
 
     if ((oggPage.ogg_headerType & 0x4) != 0)
     {
-      TRE_ASSERT(oggPage.ogg_granPos <= std::numeric_limits<uint>::max());
+      TRE_ASSERT(oggPage.ogg_granPos <= std::numeric_limits<unsigned>::max());
       m_nSamples = unsigned(oggPage.ogg_granPos - opusH_preSkip);
       break; // last page
     }

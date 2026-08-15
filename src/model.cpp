@@ -1897,8 +1897,8 @@ bool modelIndexed::read_IndexBuffer(std::istream & inbuffer)
 bool modelIndexed::write_IndexBuffer(std::ostream & outbuffer) const
 {
   uint32_t header[2]; // {indexcount, buffersize}
-  header[0] = m_layout.m_indexCount; TRE_ASSERT(m_layout.m_indexCount <= std::numeric_limits<uint>::max());
-  header[1] = m_IBuffer.size();
+  header[0] = uint32_t(m_layout.m_indexCount); TRE_ASSERT(m_layout.m_indexCount <= std::numeric_limits<uint32_t>::max());
+  header[1] = uint32_t(m_IBuffer.size());
   outbuffer.write(reinterpret_cast<const char*>(&header[0]), sizeof(header));
   outbuffer.write(reinterpret_cast<const char*>(m_IBuffer.data()), m_IBuffer.size() * sizeof(GLuint));
   return true;

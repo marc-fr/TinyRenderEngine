@@ -615,7 +615,7 @@ void s_uiManager::applySceneOptions()
 
   if (menuWmain != nullptr) menuWmain->set_colSpacement(0, tre::ui::s_size(float(m_sceneOption.m_ui_col0Spacing), tre::ui::SIZE_PIXEL), false);
 
-  if (menuWmain != nullptr) menuWmain->set_fontSize(tre::ui::s_size(m_sceneOption.m_ui_sizePixel, tre::ui::SIZE_PIXEL));
+  if (menuWmain != nullptr) menuWmain->set_fontSize(tre::ui::s_size(m_sceneOption.m_ui_sizePixel * 1.f, tre::ui::SIZE_PIXEL));
 
 }
 

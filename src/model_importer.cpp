@@ -258,9 +258,9 @@ bool modelImporter::addFromWavefront(modelIndexed &outModel, const std::string &
       const s_partRead &curPartRead = partRead[iPartRead];
       const s_partInfo &curPartInfo = outModel.partInfo(curPartRead.m_partId);
 
-      unsigned i = unsigned(curPartRead.m_vertexOffset + (pi - vertexOffsetIn));
-      unsigned j = unsigned(curPartRead.m_vertexOffset + (pj - vertexOffsetIn));
-      unsigned k = unsigned(curPartRead.m_vertexOffset + (pk - vertexOffsetIn));
+      std::size_t i = curPartRead.m_vertexOffset + (pi - vertexOffsetIn);
+      std::size_t j = curPartRead.m_vertexOffset + (pj - vertexOffsetIn);
+      std::size_t k = curPartRead.m_vertexOffset + (pk - vertexOffsetIn);
 
       if (vertexKey[pi] != ki)
       {
@@ -321,9 +321,9 @@ bool modelImporter::addFromWavefront(modelIndexed &outModel, const std::string &
 
       TRE_ASSERT(iIndex + 2 < curPartInfo.m_size);
 
-      outLayout.m_index[curPartInfo.m_offset + iIndex + 0] = i;
-      outLayout.m_index[curPartInfo.m_offset + iIndex + 1] = j;
-      outLayout.m_index[curPartInfo.m_offset + iIndex + 2] = k;
+      outLayout.m_index[curPartInfo.m_offset + iIndex + 0] = GLuint(i);
+      outLayout.m_index[curPartInfo.m_offset + iIndex + 1] = GLuint(j);
+      outLayout.m_index[curPartInfo.m_offset + iIndex + 2] = GLuint(k);
 
       iIndex += 3;
     }
