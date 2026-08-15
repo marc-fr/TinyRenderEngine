@@ -66,8 +66,8 @@ public:
   void setUniformMatrix(const glm::mat3 & MPVM, const glm::mat3 & MModel = glm::mat3(1.f)) const;
   void setUniformMatrix(const glm::mat4 & MPVM, const glm::mat4 & MModel = glm::mat4(1.f), const glm::mat4 & MView = glm::mat4(1.f)) const;
 
-  void  setShadowSunSamplerCount(uint count); ///< Before the shader compilation, set the nbr of maximal sun-shadows. By default, no sampler will be declared (value = 0).
-  uint  getShadowSunSamplerCount() const { return m_shadowSun_count; }
+  void     setShadowSunSamplerCount(unsigned count); ///< Before the shader compilation, set the nbr of maximal sun-shadows. By default, no sampler will be declared (value = 0).
+  unsigned getShadowSunSamplerCount() const { return m_shadowSun_count; }
   /// @}
 
   /// @name UBO
@@ -86,7 +86,7 @@ public:
     glm::mat4 mPV[SHADOW_SUN_MAX];             ///< For each shadow-map, the proj-view matrix
     glm::vec4 mapBoxUVNF[SHADOW_SUN_MAX];      ///< For each shadow-map, the world-dimension of the shadow-map "frustrum" zone (dX, dY, near, far)
     glm::vec4 mapInvDimension[SHADOW_SUN_MAX]; ///< For each shadow-map, the inverse of the dimension of the texture (1/width, 1/height), and the bias value
-    uint      nShadow = 0;
+    unsigned  nShadow = 0;
     float     _padding_4[3];
   };
   bool activeUBO_sunLight(); ///< Create the UBO if needed, and bind it to the current shader
@@ -99,12 +99,12 @@ public:
    */
   struct s_UBOhandle
   {
-    GLuint  m_handle = 0;             ///< GPU buffer attached to the UBO
-    GLuint  m_bindpoint = GLuint(-1); ///< shader binding-point for the UBO
-    uint    m_buffersize = 0;         ///< Buffer byte-size
+    GLuint   m_handle = 0;             ///< GPU buffer attached to the UBO
+    GLuint   m_bindpoint = GLuint(-1); ///< shader binding-point for the UBO
+    unsigned m_buffersize = 0;         ///< Buffer byte-size
     s_UBOhandle() {}
     ~s_UBOhandle() { TRE_ASSERT(m_handle==0); }
-    void create(uint sizeofdata);
+    void create(unsigned sizeofdata);
     void update(const void* data);
     void clear();
   };

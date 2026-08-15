@@ -30,7 +30,7 @@ void generate(const s_textInfo &info, modelRaw2D *outMesh, std::size_t outPartId
   maxboxsize.y = info.m_lineHeight;
   float posx = info.m_zone.x;
   float posy = info.m_zone.w + 0.6f * (info.m_fontHeight - info.m_lineHeight);
-  uint vidx = outOffset;
+  std::size_t vidx = outOffset;
   for (std::size_t ich = 0, iLen = std::strlen(info.m_text); ich < iLen; ++ich)
   {
     unsigned char idchar = info.m_text[ich];
@@ -105,7 +105,7 @@ void generate(const s_textInfo &info, modelRaw2D *outMesh, std::size_t outPartId
 
   if (outMesh != nullptr)
   {
-    for (uint stop = outOffset + maxVertexCount; vidx < stop; vidx += 6)
+    for (std::size_t stop = outOffset + maxVertexCount; vidx < stop; vidx += 6)
       outMesh->fillDataRectangle(outPartId, vidx, glm::vec4(0.f), glm::vec4(0.f), glm::vec4(0.f));
   }
 

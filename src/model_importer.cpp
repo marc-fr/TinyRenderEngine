@@ -201,7 +201,7 @@ bool modelImporter::addFromWavefront(modelIndexed &outModel, const std::string &
     else if (line.substr(0,2) == "f ")
     {
       std::array<int, 9> readBuffer;
-      uint readCount = 0;
+      unsigned readCount = 0;
       for (std::size_t is = 2, iprev = 2, stop = line.size(); is < stop; ++is)
       {
         if (line[is] == '/' || line[is] == ' ' || is + 1 == stop)
@@ -239,28 +239,28 @@ bool modelImporter::addFromWavefront(modelIndexed &outModel, const std::string &
 
       // A same vertex "position" could be used multiple times. So we need to duplicate it if the "normal" or "uv" differ.
 
-      const uint ki = (pi & 0xFFFF) | ((ni & 0xFFF) << 16) | ((ti & 0xF) << 28);
-      const uint kj = (pj & 0xFFFF) | ((nj & 0xFFF) << 16) | ((tj & 0xF) << 28);
-      const uint kk = (pk & 0xFFFF) | ((nk & 0xFFF) << 16) | ((tk & 0xF) << 28);
+      const unsigned ki = (pi & 0xFFFF) | ((ni & 0xFFF) << 16) | ((ti & 0xF) << 28);
+      const unsigned kj = (pj & 0xFFFF) | ((nj & 0xFFF) << 16) | ((tj & 0xF) << 28);
+      const unsigned kk = (pk & 0xFFFF) | ((nk & 0xFFF) << 16) | ((tk & 0xF) << 28);
 
-      pi = (pi < 0) ? uint(totalVertexIn) + pi : pi - 1;
-      pj = (pj < 0) ? uint(totalVertexIn) + pj : pj - 1;
-      pk = (pk < 0) ? uint(totalVertexIn) + pk : pk - 1;
+      pi = (pi < 0) ? unsigned(totalVertexIn) + pi : pi - 1;
+      pj = (pj < 0) ? unsigned(totalVertexIn) + pj : pj - 1;
+      pk = (pk < 0) ? unsigned(totalVertexIn) + pk : pk - 1;
 
-      ni = (ni < 0) ? uint(totalNormalIn) + ni  : ni - 1;
-      nj = (nj < 0) ? uint(totalNormalIn) + nj  : nj - 1;
-      nk = (nk < 0) ? uint(totalNormalIn) + nk  : nk - 1;
+      ni = (ni < 0) ? unsigned(totalNormalIn) + ni  : ni - 1;
+      nj = (nj < 0) ? unsigned(totalNormalIn) + nj  : nj - 1;
+      nk = (nk < 0) ? unsigned(totalNormalIn) + nk  : nk - 1;
 
-      ti = (ti < 0) ? uint(totalUVIn) + ti      : ti - 1;
-      tj = (tj < 0) ? uint(totalUVIn) + tj      : tj - 1;
-      tk = (tk < 0) ? uint(totalUVIn) + tk      : tk - 1;
+      ti = (ti < 0) ? unsigned(totalUVIn) + ti      : ti - 1;
+      tj = (tj < 0) ? unsigned(totalUVIn) + tj      : tj - 1;
+      tk = (tk < 0) ? unsigned(totalUVIn) + tk      : tk - 1;
 
       const s_partRead &curPartRead = partRead[iPartRead];
       const s_partInfo &curPartInfo = outModel.partInfo(curPartRead.m_partId);
 
-      uint i = curPartRead.m_vertexOffset + (pi - vertexOffsetIn);
-      uint j = curPartRead.m_vertexOffset + (pj - vertexOffsetIn);
-      uint k = curPartRead.m_vertexOffset + (pk - vertexOffsetIn);
+      unsigned i = unsigned(curPartRead.m_vertexOffset + (pi - vertexOffsetIn));
+      unsigned j = unsigned(curPartRead.m_vertexOffset + (pj - vertexOffsetIn));
+      unsigned k = unsigned(curPartRead.m_vertexOffset + (pk - vertexOffsetIn));
 
       if (vertexKey[pi] != ki)
       {

@@ -730,7 +730,7 @@ void gizmo::_checkSelectionQuads(const CRay &ray, glm::ivec4 &outSelectionAxis, 
   int  hintMin = -1;
 
   // Check plane
-  for (uint iAxis = 0; iAxis < 3; ++iAxis)
+  for (int iAxis = 0; iAxis < 3; ++iAxis)
   {
     const glm::vec3 planeNormal = frame[iAxis];
     const glm::vec3 planeTangU = frame[(iAxis + 1)%3];
@@ -807,7 +807,7 @@ void gizmo::_checkSelectionAxis(const CRay &ray, glm::ivec4 &outSelectionAxis, g
   //Note: we assume that ray.m_origin == m_CameraPosition
 
   // Check axis
-  for (uint iAxis = 0; iAxis < 3; ++iAxis)
+  for (int iAxis = 0; iAxis < 3; ++iAxis)
   {
     const glm::vec3 axis = frame[iAxis];
     const glm::vec3 cross = glm::cross(axis, ray.m_direction);
@@ -884,7 +884,7 @@ void gizmo::_checkSelectionSphere(const CRay &ray, glm::ivec4 &outSelectionAxis,
   float   distMin = 1.e30f;
 
   // Check ring X-Y-Z
-  for (uint iAxis = 0; iAxis < 3; ++iAxis)
+  for (int iAxis = 0; iAxis < 3; ++iAxis)
   {
       const glm::vec3 planeNormal = frame[iAxis];
       const float  tAxisPlane = glm::dot(planeNormal, camToPos) / glm::dot(planeNormal, ray.m_direction);

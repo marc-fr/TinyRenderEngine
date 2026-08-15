@@ -31,8 +31,8 @@ public:
 
   baker & operator =(const baker &) = delete;
 
-  bool openBakedFile_forWrite(const std::string &filename, uint fileversion); ///< Opens a write-stream to a binary formatted file
-  bool openBakedFile_forRead(const std::string &filename, uint &fileversion); ///< Opens a read-stream from a binary formatted file.
+  bool openBakedFile_forWrite(const std::string &filename, unsigned fileversion); ///< Opens a write-stream to a binary formatted file
+  bool openBakedFile_forRead(const std::string &filename, unsigned &fileversion); ///< Opens a read-stream from a binary formatted file.
 
   std::ostream &getBlockWriteAndAdvance(); ///< Get the buffer for writing a 'block'.  openBakedFile_forWrite must be called before.
   std::istream &getBlockReadAndAdvance(); ///< Get the buffer for reading a 'block'. openBakedFile_forRead must be called before.

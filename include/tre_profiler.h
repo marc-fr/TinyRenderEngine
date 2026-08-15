@@ -118,7 +118,7 @@ private:
     float                        m_globalTime = 0.f;
   };
   std::array<s_frame, 0x100> m_recordsOverFrames;
-  uint                       m_frameIndex = 0;
+  unsigned                   m_frameIndex = 0;
 
   bool                     m_enabled = false;
   bool                     m_paused = false;

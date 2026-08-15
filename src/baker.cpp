@@ -17,7 +17,7 @@ static const char k_footer[4] = { 'E', 'O', 'F', 0x00 };
 
 // ============================================================================
 
-bool baker::openBakedFile_forWrite(const std::string & filename, uint fileversion)
+bool baker::openBakedFile_forWrite(const std::string & filename, unsigned fileversion)
 {
   m_fileOutDescriptor = new std::ofstream(filename.c_str(), std::ofstream::binary);
 
@@ -50,7 +50,7 @@ bool baker::openBakedFile_forWrite(const std::string & filename, uint fileversio
 
 // ============================================================================
 
-bool baker::openBakedFile_forRead(const std::string &filename, uint &fileversion)
+bool baker::openBakedFile_forRead(const std::string &filename, unsigned &fileversion)
 {
   m_fileInDescriptor = new std::ifstream(filename.c_str(), std::ifstream::binary);
 
@@ -76,8 +76,8 @@ bool baker::openBakedFile_forRead(const std::string &filename, uint &fileversion
 
   myFile.seekg(std::ifstream::pos_type(header.m_blockTableAdress));
 
-  uint nblocks = 0;
-  myFile.read(reinterpret_cast<char*>(& nblocks), sizeof(uint));
+  uint32_t nblocks = 0;
+  myFile.read(reinterpret_cast<char*>(& nblocks), sizeof(uint32_t));
   m_blocksAdress.resize(nblocks);
   for (uint64_t &bAd : m_blocksAdress)
     myFile.read(reinterpret_cast<char*>(& bAd), sizeof(uint64_t));
@@ -142,9 +142,9 @@ void baker::flushAndCloseFile()
     header.m_blockTableAdress = uint64_t(m_fileOutDescriptor->tellp());
     TRE_ASSERT(header.m_blockTableAdress != uint64_t(-1));
     // write table
-    const uint nBlocks = uint(m_blocksAdress.size());
-    m_fileOutDescriptor->write(reinterpret_cast<const char*>(& nBlocks), sizeof(uint));
-    for (uint iB = nBlocks; iB-- > 0; )
+    const uint32_t nBlocks = uint32_t(m_blocksAdress.size());
+    m_fileOutDescriptor->write(reinterpret_cast<const char*>(& nBlocks), sizeof(uint32_t));
+    for (uint32_t iB = nBlocks; iB-- > 0; )
       m_fileOutDescriptor->write(reinterpret_cast<const char*>(& m_blocksAdress[iB]), sizeof(uint64_t));
     // write EOF-stamp.
     header.m_footerAdress = uint64_t(m_fileOutDescriptor->tellp());

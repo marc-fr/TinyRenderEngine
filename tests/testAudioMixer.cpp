@@ -201,17 +201,17 @@ public:
   }
 
   template<class _soundData, class _soundSampler>
-  static void genWaveForm(const _soundData &data, SDL_Surface *tex, uint y0, uint y1)
+  static void genWaveForm(const _soundData &data, SDL_Surface *tex, int y0, int y1)
   {
     TRE_ASSERT(tex->format->BytesPerPixel == 4);
-    const uint halfHeight_px = (y1 - y0 - 1) / 2;
-    const uint zeroLine_px = y0 + halfHeight_px;
-    const uint width = tex->w;
+    const int halfHeight_px = (y1 - y0 - 1) / 2;
+    const int zeroLine_px = y0 + halfHeight_px;
+    const int width = tex->w;
     uint32_t * __restrict pixels = reinterpret_cast<uint32_t*>(tex->pixels);
 
-    const uint samples = data.m_nSamples;
+    const int samples = data.m_nSamples;
     if (samples == 0) return;
-    const uint samplesPerPixel = std::max(1u, samples / width);
+    const int samplesPerPixel = std::max(1, samples / width);
     std::vector<float> buffer;
     buffer.resize(samplesPerPixel * 2);
 
@@ -220,9 +220,9 @@ public:
 
     sampler.m_repet = false;
 
-    for (uint x = 0; x < width; ++x)
+    for (int x = 0; x < width; ++x)
     {
-      sampler.m_cursor = (x * samples) / width;
+      sampler.m_cursor = float(x * samples) / float(width);
       sampler.m_valuePeak = 0.f;
       sampler.m_valueRMS = 0.f;
 
@@ -236,11 +236,11 @@ public:
       valuePeak = (std::max(20.f * std::log(valuePeak / 1.f), -80.f) + 80.f) / 80.f; // dB scale, clamped between [-80, 0]
       valueRMS  = (std::max(20.f * std::log(valueRMS  / 1.f), -80.f) + 80.f) / 80.f; // dB scale, clamped between [-80, 0]
 
-      const uint valuePeak_px = valuePeak * halfHeight_px;
-      const uint valueRMS_px = valueRMS * halfHeight_px;
+      const int valuePeak_px = int(valuePeak * halfHeight_px);
+      const int valueRMS_px = int(valueRMS * halfHeight_px);
 
-      for (uint y = zeroLine_px - valuePeak_px, yE = zeroLine_px + 1 + valuePeak_px; y < yE; ++y) pixels[x + width * y] = 0xFF000080;
-      for (uint y = zeroLine_px - valueRMS_px , yE = zeroLine_px + 1 + valueRMS_px ; y < yE; ++y) pixels[x + width * y] = 0xFF4040FF;
+      for (int y = zeroLine_px - valuePeak_px, yE = zeroLine_px + 1 + valuePeak_px; y < yE; ++y) pixels[x + width * y] = 0xFF000080;
+      for (int y = zeroLine_px - valueRMS_px , yE = zeroLine_px + 1 + valueRMS_px ; y < yE; ++y) pixels[x + width * y] = 0xFF4040FF;
     }
   }
 };
@@ -440,7 +440,7 @@ static int app_init()
   {
     unsigned iRaw = 1;
 
-    const unsigned textureWaveformSlot = baseUI.addTexture(&textureWaveforms);
+    const std::size_t textureWaveformSlot = baseUI.addTexture(&textureWaveforms);
 
     // compute WAV-form
     SDL_Surface *textureWaveformLoading = SDL_CreateRGBSurface(0, 128, 32 * textureWaveformMaxCount, 32, 0, 0, 0, 0);
@@ -565,7 +565,7 @@ static int app_init()
       widGlobalMute->wcb_modified_finished = [iRaw, &m](tre::ui::widget *w)
       {
         tre::ui::widgetBoxCheck *wGMute = static_cast<tre::ui::widgetBoxCheck*>(w);
-        for (uint it = 0; it < m.m_tracks.size(); ++it)
+        for (std::size_t it = 0; it < m.m_tracks.size(); ++it)
         {
           tre::ui::widgetBoxCheck *wLMute = windowMain->get_widgetBoxCheck(iRaw + 1 + it, 4);
           tre::ui::widgetBar      *wLVol = windowMain->get_widgetBar(iRaw + 1 + it, 5);

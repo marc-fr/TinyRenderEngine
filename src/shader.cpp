@@ -283,7 +283,7 @@ void shader::setUniformMatrix(const glm::mat4 &MPVM, const glm::mat4 &MModel, co
 
 // ----------------------------------------------------------------------------
 
-void shader::setShadowSunSamplerCount(uint count)
+void shader::setShadowSunSamplerCount(unsigned count)
 {
   TRE_ASSERT(m_drawProgram == 0); // cannot be changed dynamically after compilation.
   TRE_ASSERT(count <= SHADOW_SUN_MAX);
@@ -550,7 +550,7 @@ void shader::compute_name(e_category cat, int flags, const char * pname)
 
 // ----------------------------------------------------------------------------
 
-void shader::s_UBOhandle::create(uint sizeofdata)
+void shader::s_UBOhandle::create(unsigned sizeofdata)
 {
   if (m_handle!=0) { TRE_ASSERT(m_buffersize==sizeofdata);  return; }
   m_buffersize = sizeofdata;

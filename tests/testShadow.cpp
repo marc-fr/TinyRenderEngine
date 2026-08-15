@@ -12,7 +12,7 @@
 #endif
 
 #include <math.h>
-#include <time.h>   // time
+#include <random>
 #include <string>
 
 #include <glm/gtc/matrix_transform.hpp> // glm::translate, glm::rotate, glm::scale
@@ -51,7 +51,7 @@ struct s_shadowDebug
     _isLoaded = true;
   }
 
-  void draw(const glm::mat3 &mProj2D)
+  void draw(const glm::mat3 &mProj2D) const
   {
     if (!_isLoaded) return;
 
@@ -80,9 +80,10 @@ struct s_shadowDebug
 tre::modelStaticIndexed3D meshPlane;
 tre::modelInstancedMesh   meshes;
 
-static float rand01() { return float(std::rand() & 0xFFFF) / float(0xFFFF);  }
-
 static constexpr float kBound = 100.f;
+
+static std::uniform_real_distribution kRand01(0.f, 1.f);
+static std::mt19937                   kRNG;
 
 struct s_meshInstance
 {
@@ -94,11 +95,11 @@ struct s_meshInstance
 
   void initialize()
   {
-    pos = (glm::vec3(rand01() * 2.f - 1.f, rand01(), rand01() * 2.f - 1.f)) * 0.9f * kBound;
-    vel = (glm::vec3(rand01(), rand01(), rand01()) * 2.f - 1.f) * 0.5f;
-    rotAxis = glm::normalize(glm::vec3(rand01() * 2.f - 1.f, 1.f, rand01() * 2.f - 1.f));
+    pos = (glm::vec3(kRand01(kRNG) * 2.f - 1.f, kRand01(kRNG), kRand01(kRNG) * 2.f - 1.f)) * 0.9f * kBound;
+    vel = (glm::vec3(kRand01(kRNG), kRand01(kRNG), kRand01(kRNG)) * 2.f - 1.f) * 0.5f;
+    rotAxis = glm::normalize(glm::vec3(kRand01(kRNG) * 2.f - 1.f, 1.f, kRand01(kRNG) * 2.f - 1.f));
     rot = 0.f;
-    rotVel = rand01() * 0.4f;
+    rotVel = kRand01(kRNG) * 0.4f;
   }
   bool inBounds() const
   {
@@ -155,7 +156,8 @@ int app_init()
 
   // - random generator
 
-  srand(time(nullptr)); // TODO: have proper c++11 rand generators
+  std::random_device rd;
+  kRNG.seed(rd());
 
   // load meshes
 
@@ -182,7 +184,7 @@ int app_init()
                                    "F5: show/hide render-target",
                                  };
 
-    for (uint it = 0; it < 3; ++it)
+    for (int it = 0; it < 3; ++it)
     {
       tre::textgenerator::s_textInfo tInfo;
       tInfo.setupBasic(&worldHUDFont, txts[it], glm::vec2(0.f, -0.08f - 0.08f * it));
@@ -285,7 +287,7 @@ void app_update()
 
     // sun
     {
-      const float sunTheta = 0.4 + 0.3f * std::sin(myTimings.scenetime * (6.28f * 0.02f));
+      const float sunTheta = 0.4f + 0.3f * std::sin(myTimings.scenetime * (6.28f * 0.02f));
       sunLight_Data.direction = -glm::vec3( 0.f, std::cos(sunTheta), std::sin(sunTheta) );
     }
 

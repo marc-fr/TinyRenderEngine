@@ -22,7 +22,7 @@ static float _hueFromColor(const glm::vec4 color)
 {
   float vmax = color.r;
   float vmin = color.r;
-  uint imax = 0;
+  int imax = 0;
   if (color.g > vmax) { vmax = color.g; imax = 1; }
   if (color.b > vmax) { vmax = color.b; imax = 2; }
   if (color.g < vmin) vmin = color.g;
@@ -120,7 +120,7 @@ profiler::scope::~scope()
     if (rc.m_color.w == 0.f)
     {
       const float hueOffset = (m_parent != nullptr) ? _hueFromColor(m_parent->m_color) : 0.f;
-      uint hash = 5381;
+      unsigned hash = 5381;
       for (char c : rc.m_path) hash = ((hash << 5) + hash) + c; // DJB Hash Function
       //for (char c : rc.m_path) hash = c + (hash << 6) + (hash << 16) - hash; // SDBM Hash Function
       const float hue = hueOffset + float(hash & 0xF) / float(0xF * rc.depth());
@@ -183,8 +183,8 @@ void profiler::endframe()
       for (const s_record & cRec : m_collectedRecords)
       {
         // find it in the mean value ...
-        int recordMeanIndex = -1;
-        for (uint iC = 0; iC < m_meanvalueRecords.size(); ++iC)
+        std::size_t recordMeanIndex = -1;
+        for (std::size_t iC = 0; iC < m_meanvalueRecords.size(); ++iC)
         {
           if (m_meanvalueRecords[iC].hasSamePath(cRec))
           {
@@ -433,8 +433,8 @@ void profiler::compute_data()
   static const glm::vec4 colorGridPrimary = glm::vec4(0.0f, 0.7f, 0.0f, 1.0f);
   static const glm::vec4 colorGridSecond  = glm::vec4(0.0f, 0.7f, 0.0f, 0.6f);
 
-  const uint nThread = 1;
-  const uint nTime = 20;
+  const unsigned nThread = 1;
+  const unsigned nTime = 20;
 
   const float xEnd = 1000.f;
   const float yEnd = m_yStart + nThread * m_dYthread;
@@ -482,14 +482,14 @@ void profiler::compute_data()
 
   // create grid
   {
-    for (uint j = 0; j <= nThread; ++j)
+    for (unsigned j = 0; j <= nThread; ++j)
       m_model.fillDataLine(m_partLine, offsetLine + j * 2, m_xTitle, m_yStart + j * m_dYthread, xEnd, m_yStart + j * m_dYthread, colorGridPrimary);
     offsetLine += (nThread + 1) * 2;
 
     m_model.fillDataLine(m_partLine, offsetLine, m_xTitle, m_yStart, m_xTitle, yEnd, colorGridPrimary);
     offsetLine += 2;
 
-    for (uint i = 0; i <= nTime; ++i)
+    for (unsigned i = 0; i <= nTime; ++i)
       m_model.fillDataLine(m_partLine, offsetLine + i * 2, m_xStart + i * m_dX, m_yStart, m_xStart + i * m_dX, yEnd, (i % 2 == 0) ? colorGridPrimary : colorGridSecond);
     offsetLine += (nTime + 1) * 2;
   }
@@ -510,7 +510,7 @@ void profiler::compute_data()
       const double x0 = m_xStart + rec.m_start * m_dX / m_dTime;
       const double x1 = x0 + rec.m_duration * m_dX / m_dTime;
       TRE_ASSERT(rec.depth() >= 2); // root + first-zone
-      const uint level = rec.depth() - 2;
+      const unsigned level = rec.depth() - 2;
 
       const glm::vec4 AABB(x0, m_yStart + level * dYlevel, x1, m_yStart + (level+1) * dYlevel);
       glm::vec4 color = rec.m_color;
@@ -527,7 +527,7 @@ void profiler::compute_data()
   }
 
   // create text
-  for(uint iT = 0; iT < nThread; ++iT)
+  for(unsigned iT = 0; iT < nThread; ++iT)
   {
     textgenerator::s_textInfo txtInfo;
     txtInfo.setupBasic(m_font, m_context.m_name.c_str(), glm::vec2(m_xTitle + 0.01f, m_yStart + iT * m_dYthread + m_dYthread));
@@ -535,7 +535,7 @@ void profiler::compute_data()
     textgenerator::generate(txtInfo, &m_model, m_partText, offsetText, nullptr);
     offsetText += textgenerator::geometry_VertexCount(txtInfo.m_text);
   }
-  for (uint iT = 0; iT < nTime; iT += 2)
+  for (unsigned iT = 0; iT < nTime; iT += 2)
   {
     const double x = m_xStart + iT * m_dX;
     const double t = iT * m_dTime;
@@ -564,9 +564,9 @@ void profiler::compute_data()
     const float y10ms = y0 + 0.010f * dY;
 
     TRE_ASSERT(m_recordsOverFrames.size() == 0x100);
-    for (uint iF = 0; iF < m_recordsOverFrames.size(); ++iF)
+    for (std::size_t iF = 0; iF < m_recordsOverFrames.size(); ++iF)
     {
-      const uint tIndex = (1 + iF + m_frameIndex) & 0x0FF;
+      const unsigned tIndex = (1 + iF + m_frameIndex) & 0x0FF;
       const float xFT = x0 + float(iF) * dX;
       float accT = 0.f;
       for (const auto &rec: m_recordsOverFrames[tIndex].m_records)

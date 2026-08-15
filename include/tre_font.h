@@ -30,7 +30,7 @@ public:
 
   struct s_fontMap
   {
-    uint                        m_fsize = 0;   ///< size of the font (in pixels)
+    unsigned                    m_fsize = 0;   ///< size of the font (in pixels)
     float                       m_hline = 0.f; ///< height of a line (in UV-space)
     std::array<s_charInfo, 256> m_charMap;     ///< char info (in UV-space). [0-127] encodes the ASCII characters. [128-255] encodes the Latin-1 extension characters.
 
@@ -49,8 +49,8 @@ public:
   };
 
   static s_fontCache loadFromBMPandFNT(const std::string &filebasename); ///< Create a font-texture and a font-map from a BMP-texture and a FNT-file.
-  static s_fontCache loadFromTTF(const std::string &filename, const uint fontSizePixel); ///< Create a font-texture and a font-amp from a True-Type-font and a font-size.
-  static s_fontCache loadProceduralLed(const uint ptSize, const uint ptMargin); ///< Create a font-texture and a font-amp from a prodedural LED-font.
+  static s_fontCache loadFromTTF(const std::string &filename, const unsigned fontSizePixel); ///< Create a font-texture and a font-amp from a True-Type-font and a font-size.
+  static s_fontCache loadProceduralLed(const unsigned ptSize, const unsigned ptMargin); ///< Create a font-texture and a font-amp from a prodedural LED-font.
 
   bool load(const std::vector<s_fontCache> &fonts, const bool freeSurfaces); ///< Load (into GPU) a font with its size-variants
 
@@ -69,7 +69,7 @@ private:
   /// @{
 public:
   const texture &get_texture() const { return m_texture; }
-  const s_fontMap &get_bestFontMap(uint fontSizePixel) const;
+  const s_fontMap &get_bestFontMap(unsigned fontSizePixel) const;
 protected:
   texture m_texture; ///< Texture for the font. (The font owns the texture.)
   std::vector<s_fontMap> m_fontMaps;

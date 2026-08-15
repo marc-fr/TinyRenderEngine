@@ -399,13 +399,13 @@ bool s_contact3D::point_box(s_contact3D & cntBox,
                             const s_boundbox & bbox)
 {
   const glm::vec3 vAP = point - bbox.m_min;
-  float vAPmin = vAP.x; uint vAPminInd = 0;
+  float vAPmin = vAP.x; unsigned vAPminInd = 0;
   if (vAP.y < vAPmin) { vAPmin = vAP.y; vAPminInd = 1; }
   if (vAP.z < vAPmin) { vAPmin = vAP.z; vAPminInd = 2; }
   if (vAPmin < 0.f) return false;
 
   const glm::vec3 vPB = bbox.m_max - point;
-  float vPBmin = vPB.x; uint vPBminInd = 0;
+  float vPBmin = vPB.x; unsigned vPBminInd = 0;
   if (vPB.y < vPBmin) { vPBmin = vPB.y; vPBminInd = 1; }
   if (vPB.z < vPBmin) { vPBmin = vPB.z; vPBminInd = 2; }
   if (vPBmin < 0.f) return false;
@@ -788,7 +788,7 @@ bool s_contact3D::raytrace_box(s_contact3D & hitInfo,
   const glm::vec3 vOA = box.m_min - origin;
   const glm::vec3 vOB = box.m_max - origin;
 
-  for (uint iAxis = 0; iAxis < 3; ++iAxis)
+  for (unsigned iAxis = 0; iAxis < 3; ++iAxis)
   {
     const float     dotNormalDir = direction[iAxis]; // glm::dot(planeNormal, direction);
     if (std::abs(dotNormalDir) < 1.e-3f) continue;
@@ -800,7 +800,7 @@ bool s_contact3D::raytrace_box(s_contact3D & hitInfo,
 
     // TODO: make it work when inside.
 
-    uint condTrue = 0;
+    unsigned condTrue = 0;
 
     if (iAxis != 0 && 0.f <= vCP.x && vCP.x <= extend.x)
       ++condTrue;

@@ -84,16 +84,16 @@ bool soundData::s_RawSDL::write(std::ostream &stream) const
   const int bufferSize = (SDL_AUDIO_BITSIZE(m_format) / 8) * (m_stereo ? 2 : 1) * m_nSamples;
 
   // header
-  uint header[8];
+  uint32_t header[8];
   header[0] = SOUND_BIN_VERSION;
   header[1] = m_nSamples;
   header[2] = m_stereo ? 2 : 1;
   header[3] = 0; // RawSDL
   header[4] = 0;
-  header[5] = uint(m_freq);
-  header[6] = uint(m_format);
+  header[5] = uint32_t(m_freq);
+  header[6] = uint32_t(m_format);
   header[7] = bufferSize;
-  static_assert(sizeof(SDL_AudioFormat) <= sizeof(uint), "SDL_AudioFormat is too big");
+  static_assert(sizeof(SDL_AudioFormat) <= sizeof(uint32_t), "SDL_AudioFormat is too big");
   stream.write(reinterpret_cast<const char*>(&header), sizeof(header));
 
   // data
@@ -107,7 +107,7 @@ bool soundData::s_RawSDL::write(std::ostream &stream) const
 bool soundData::s_RawSDL::read(std::istream &stream)
 {
   // header
-  uint header[8];
+  uint32_t header[8];
   stream.read(reinterpret_cast<char*>(&header), sizeof(header));
   TRE_ASSERT(header[0] == SOUND_BIN_VERSION);
   if (header[3] != 0)
@@ -139,7 +139,7 @@ bool soundData::s_RawSDL::convertTo(int freq, SDL_AudioFormat format)
   if (freq == m_freq && format == m_format)
     return true;
 
-  const uint nchans = (m_stereo ? 2 : 1);
+  const unsigned nchans = (m_stereo ? 2 : 1);
 
   SDL_AudioCVT wavConvertor;
   const int wanConvertorStatus = SDL_BuildAudioCVT(&wavConvertor,
@@ -327,7 +327,7 @@ bool soundData::s_Opus::loadFromOPUS(const std::string &filename)
     if ((oggPage.ogg_headerType & 0x4) != 0)
     {
       TRE_ASSERT(oggPage.ogg_granPos <= std::numeric_limits<uint>::max());
-      m_nSamples = uint(oggPage.ogg_granPos - opusH_preSkip);
+      m_nSamples = unsigned(oggPage.ogg_granPos - opusH_preSkip);
       break; // last page
     }
   }
@@ -365,7 +365,7 @@ bool soundData::s_Opus::loadFromRaw(soundData::s_RawSDL &rawData, unsigned bitra
   m_nSamples = rawData.m_nSamples;
   m_stereo = rawData.m_stereo;
 
-  const uint nchans = rawData.m_stereo ? 2 : 1;
+  const unsigned nchans = rawData.m_stereo ? 2 : 1;
 
   // encoding setup
   OpusEncoder *audioEncoder = nullptr;
@@ -396,8 +396,8 @@ bool soundData::s_Opus::loadFromRaw(soundData::s_RawSDL &rawData, unsigned bitra
 
   const int16_t * __restrict audioBufferSrc = reinterpret_cast<const int16_t*>(rawData.m_rawData.data());
 
-  uint encodedSamples = 0;
-  uint totalDataBytes = 0;
+  unsigned encodedSamples = 0;
+  unsigned totalDataBytes = 0;
   while (encodedSamples < rawData.m_nSamples)
   {
     const int bufferWriteSize = opus_encode(audioEncoder, audioBufferSrc, blockSampleCount, bufferEncode.data(), bufferEncodeByteSize);
@@ -432,7 +432,7 @@ bool soundData::s_Opus::loadFromRaw(soundData::s_RawSDL &rawData, unsigned bitra
 bool soundData::s_Opus::write(std::ostream &stream) const
 {
   // header
-  uint header[8];
+  uint32_t header[8];
   header[0] = 0x003;
   header[1] = m_nSamples;
   header[2] = m_stereo ? 2 : 1;
@@ -440,16 +440,16 @@ bool soundData::s_Opus::write(std::ostream &stream) const
   header[4] = 0;
   header[5] = m_freq; //freq
   header[6] = AUDIO_S16; // format
-  header[7] = uint(m_blokcs.size());
+  header[7] = uint32_t(m_blokcs.size());
   stream.write(reinterpret_cast<const char*>(&header), sizeof(header));
 
   // data
   for (const s_block &b : m_blokcs)
   {
     stream.write(reinterpret_cast<const char*>(&b.m_sampleStart), sizeof(int));
-    uint dsize = uint(b.m_data.size());
+    const uint32_t dsize = uint32_t(b.m_data.size());
     TRE_ASSERT(dsize != 0);
-    stream.write(reinterpret_cast<const char*>(&dsize), sizeof(uint));
+    stream.write(reinterpret_cast<const char*>(&dsize), sizeof(uint32_t));
     stream.write(reinterpret_cast<const char*>(b.m_data.data()), dsize);
   }
 
@@ -461,7 +461,7 @@ bool soundData::s_Opus::write(std::ostream &stream) const
 bool soundData::s_Opus::read(std::istream &stream)
 {
   // header
-  uint header[8];
+  uint32_t header[8];
   stream.read(reinterpret_cast<char*>(&header), sizeof(header));
   TRE_ASSERT(header[0] == SOUND_BIN_VERSION);
   if (header[3] != 1)
@@ -484,8 +484,8 @@ bool soundData::s_Opus::read(std::istream &stream)
   for (s_block &b : m_blokcs)
   {
     stream.read(reinterpret_cast<char*>(&b.m_sampleStart), sizeof(int));
-    unsigned dsize = 0;
-    stream.read(reinterpret_cast<char*>(&dsize), sizeof(unsigned));
+    uint32_t dsize = 0;
+    stream.read(reinterpret_cast<char*>(&dsize), sizeof(uint32_t));
     TRE_ASSERT(dsize != 0);
     b.m_data.resize(dsize);
     stream.read(reinterpret_cast<char*>(b.m_data.data()), dsize);
@@ -567,7 +567,7 @@ bool soundSampler::s_sampler_Opus::decodeSlot(const soundData::s_Opus &data, uns
 
 // audio-Context methods ======================================================
 
-bool audioContext::startSystem(const char *deviceName, uint bufferMS, SDL_AudioSpec *requiredAudioSpec)
+bool audioContext::startSystem(const char *deviceName, unsigned bufferMS, SDL_AudioSpec *requiredAudioSpec)
 {
   TRE_ASSERT(m_deviceID == 0 && m_audioSpec == nullptr);
 
@@ -590,7 +590,7 @@ bool audioContext::startSystem(const char *deviceName, uint bufferMS, SDL_AudioS
   audioSettingsWanted.callback = audio_callback;
   audioSettingsWanted.userdata = & m_audioCallbackContext;
 
-  uint samples = (audioSettingsWanted.freq * bufferMS) / 1000;
+  unsigned samples = (audioSettingsWanted.freq * bufferMS) / 1000;
   // -> power of 2
   {
     int count = 0;
@@ -615,7 +615,7 @@ bool audioContext::startSystem(const char *deviceName, uint bufferMS, SDL_AudioS
   TRE_LOG("Audio device " << (deviceName == nullptr ? "(default)" : deviceName) << " is opened.\n(" <<
           "freq = " << m_audioSpec->freq / 1000.f << " kHz, " <<
           "hardware-buffer = " << m_audioSpec->samples * 1000 / m_audioSpec->freq << " ms, " <<
-          "channels = " << uint(m_audioSpec->channels) << ", "
+          "channels = " << m_audioSpec->channels << ", "
           "bytesPerSample = " << SDL_AUDIO_BITSIZE(m_audioSpec->format) / 8 << " )");
 
   if (m_audioSpec->channels != 2 || m_audioSpec->format != AUDIO_S16LSB)
@@ -727,16 +727,17 @@ void audioContext::getDevicesName(std::vector<std::string> &devices)
 {
   devices.clear();
 
-  const uint nDevices = uint(SDL_GetNumAudioDevices(0 /*capture*/));
-  devices.resize(nDevices);
+  const int nDevices = SDL_GetNumAudioDevices(0 /*capture*/);
+  if (nDevices <= 0) return;
 
-  for (uint i = 0; i < nDevices; ++i)
+  devices.resize(nDevices);
+  for (int i = 0; i < nDevices; ++i)
     devices[i] = SDL_GetAudioDeviceName(int(i), 0 /*capture*/);
 }
 
 // ----------------------------------------------------------------------------
 
-static void _copystream_F32LR_I16LR(const float * __restrict instream, int16_t * __restrict outstream, uint nsamples)
+static void _copystream_F32LR_I16LR(const float * __restrict instream, int16_t * __restrict outstream, unsigned nsamples)
 {
   const int16_t *outstop = outstream + 2 * nsamples;
   while (outstream < outstop)
@@ -755,7 +756,7 @@ void audioContext::s_audioCallbackContext::run(uint8_t * stream, int len)
 
   TRE_ASSERT(ac_channels == 2);
 
-  const uint sampleCount = uint(len) / sizeof(int16_t) / ac_channels;
+  const unsigned sampleCount = unsigned(len) / sizeof(int16_t) / ac_channels;
 
   TRE_ASSERT(sampleCount * ac_channels <= ac_bufferF32.size());
 

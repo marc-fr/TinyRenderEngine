@@ -440,7 +440,7 @@ bool s_contact2D::ydown_poly(s_contact2D &cntDown,
     float dummy;
     poly_barycenter(pts, cntDown.pt, dummy);
     cntDown.penet = limy - pts[0].y;
-    for (uint iQ = 1; iQ < Npts; ++iQ)
+    for (std::size_t iQ = 1; iQ < Npts; ++iQ)
     {
       // penetration
       const float penetCurr = limy - pts[iQ].y;
@@ -609,7 +609,7 @@ bool s_contact2D::box_circle(const glm::vec4 &AABB, const glm::vec2 &center, con
   {
     float penet = (ptB.x - ptA.x) + (ptB.y - ptA.y); // any max value
     const glm::vec2 p[4] = { ptA, ptB, {ptA.x, ptB.y}, {ptB.x, ptA.y} };
-    for (uint i = 0; i < 4; ++i)
+    for (std::size_t i = 0; i < 4; ++i)
     {
       const glm::vec2 v = center - p[i];
       const float dist = glm::length(v);
@@ -685,7 +685,7 @@ bool s_contact2D::box_circle(s_contact2D &cntBox,
   {
     cntBox.penet = (ptB.x - ptA.x) + (ptB.y - ptA.y); // any max value
     const glm::vec2 p[4] = { ptA, ptB, {ptA.x, ptB.y}, {ptB.x, ptA.y} };
-    for (uint i = 0; i < 4; ++i)
+    for (std::size_t i = 0; i < 4; ++i)
     {
       const glm::vec2 v = center - p[i];
       const float dist = glm::length(v);

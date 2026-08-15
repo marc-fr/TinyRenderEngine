@@ -1192,7 +1192,7 @@ void widgetLineChoice::acceptEvent(s_eventIntern &event)
     if (wisHoveredLeft && (wselectedIndex != 0 || wcyclic))
     {
       event.accepted = true;
-      set_selectedIndex((wselectedIndex == 0) ? uint(wvalues.size()) - 1 : wselectedIndex - 1);
+      set_selectedIndex((wselectedIndex == 0) ? unsigned(wvalues.size()) - 1 : wselectedIndex - 1);
       if (wcb_clicked_left != nullptr) wcb_clicked_left(this);
       if (wcb_modified_finished != nullptr) wcb_modified_finished(this);
       else if (wcb_modified_ongoing != nullptr) wcb_modified_ongoing(this);

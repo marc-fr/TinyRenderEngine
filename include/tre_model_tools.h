@@ -31,7 +31,7 @@ void computeConvexeEnvelop2D_XY(const s_modelDataLayout &layout, const s_partInf
 
 /// @brief triangulate from a 2D envelop. Interior is defined as the "left"-side of the envelop's edges.
 /// @param listTriangles
-void triangulate(const std::vector<glm::vec2> &envelop, std::vector<uint> &listTriangles);
+void triangulate(const std::vector<glm::vec2> &envelop, std::vector<unsigned> &listTriangles);
 
 //=============================================================================
 // 3D ...
@@ -66,7 +66,7 @@ std::size_t decimateCurvature(modelIndexed &model, const std::size_t ipartIn, co
 std::size_t decimateVoxel(modelIndexed &model, const std::size_t ipartIn, const float gridResolution, const bool keepSharpEdges);
 
 /// @brief tetrahedralize from a 3D surface. New vertices may be created, in a new separate part.
-bool tetrahedralize(modelIndexed &model, const std::size_t ipartIn, std::size_t maxTetraCount, bool allowNewVertex, std::vector<uint> &listTetrahedrons);
+bool tetrahedralize(modelIndexed &model, const std::size_t ipartIn, std::size_t maxTetraCount, bool allowNewVertex, std::vector<unsigned> &listTetrahedrons);
 
 //=============================================================================
 

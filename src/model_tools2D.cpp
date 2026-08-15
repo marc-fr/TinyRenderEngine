@@ -135,8 +135,8 @@ void computeConvexeEnvelop2D_XY(const s_modelDataLayout &layout, const s_partInf
   }
 
   // sort
-  std::vector<uint> permut(count);
-  for (uint i = 0; i < count; ++i)
+  std::vector<unsigned> permut(count);
+  for (unsigned i = 0; i < count; ++i)
     permut[i] = i;
 
   sortQuick_permutation<float>(alpha, permut);
@@ -148,7 +148,7 @@ void computeConvexeEnvelop2D_XY(const s_modelDataLayout &layout, const s_partInf
   outEnvelop.push_back(points[permut[0]]);
 
   glm::vec2 vMN = outEnvelop[1] - outEnvelop[0];
-  for (uint i = 1; i < count; ++i)
+  for (unsigned i = 1; i < count; ++i)
   {
     const glm::vec2 P = points[permut[i]];
     const glm::vec2 vNP = P - outEnvelop.back();
@@ -486,8 +486,8 @@ struct s_edge
 struct s_triangulateExporter
 {
   std::ofstream rawOBJ;
-  uint          offsetVert = 1;
-  uint          iter = 0;
+  unsigned          offsetVert = 1;
+  unsigned          iter = 0;
 
   s_triangulateExporter(const std::string &filename) { rawOBJ.open(filename.c_str(), std::ofstream::out); if (rawOBJ.is_open()) rawOBJ << "# WAVEFRONT data - export skin" << std::endl; }
   ~s_triangulateExporter() { rawOBJ.close(); }
@@ -571,7 +571,7 @@ struct s_triangulateExporter
 
 // ----------------------------------------------------------------------------
 
-void triangulate(const std::vector<glm::vec2> &envelop, std::vector<uint> &listTriangles)
+void triangulate(const std::vector<glm::vec2> &envelop, std::vector<unsigned> &listTriangles)
 {
   listTriangles.clear();
 
@@ -709,15 +709,15 @@ void triangulate(const std::vector<glm::vec2> &envelop, std::vector<uint> &listT
   {
     s_triangle &t = listTri[iT];
     TRE_ASSERT(t.valid());
-    const uint iA = uint(t.ptA - envelop.data());
-    const uint iB = uint(t.ptB - envelop.data());
-    const uint iC = uint(t.ptC - envelop.data());
+    const unsigned iA = unsigned(t.ptA - envelop.data());
+    const unsigned iB = unsigned(t.ptB - envelop.data());
+    const unsigned iC = unsigned(t.ptC - envelop.data());
 
 #define testEdge(i1, i2) \
     if (i1 < Npts && i2 < Npts) \
     { \
-      const uint iMin = (i1 < i2) ? i1 : i2; \
-      const uint iMax = (i1 < i2) ? i2 : i1; \
+      const unsigned iMin = (i1 < i2) ? i1 : i2; \
+      const unsigned iMax = (i1 < i2) ? i2 : i1; \
       if (iMin + 1 == iMax) \
         envelopEdgeFound[iMin] = true; \
       else if (iMin == 0 && iMax == Npts - 1) \
@@ -799,7 +799,7 @@ void triangulate(const std::vector<glm::vec2> &envelop, std::vector<uint> &listT
         triNew = listTriToProcess.back();
         listTriToProcess.pop_back();
       }
-      s_triangle *triInvalid = reinterpret_cast<s_triangle*>(long(nEdges * (nEdges + 1) / 2 + iEdge));
+      s_triangle *triInvalid = reinterpret_cast<s_triangle*>(nEdges * (nEdges + 1) / 2 + iEdge);
       s_edge &e1 = listEdge[iEdge];
       s_edge &e2 = listEdge[iEdgeP1];
 
@@ -840,9 +840,9 @@ void triangulate(const std::vector<glm::vec2> &envelop, std::vector<uint> &listT
   {
     s_triangle &t = listTri[iT];
     TRE_ASSERT(t.valid());
-    const uint iA = uint(t.ptA - envelop.data());
-    const uint iB = uint(t.ptB - envelop.data());
-    const uint iC = uint(t.ptC - envelop.data());
+    const unsigned iA = unsigned(t.ptA - envelop.data());
+    const unsigned iB = unsigned(t.ptB - envelop.data());
+    const unsigned iC = unsigned(t.ptC - envelop.data());
 
 #define testEdge(iL, iR) \
     if (iL < Npts && iR < Npts) \
@@ -896,13 +896,13 @@ void triangulate(const std::vector<glm::vec2> &envelop, std::vector<uint> &listT
     s_triangle &t = listTri[iT];
     if (t.valid())
     {
-      TRE_ASSERT(uint(t.ptA - envelop.data()) < listTriSize);
-      TRE_ASSERT(uint(t.ptB - envelop.data()) < listTriSize);
-      TRE_ASSERT(uint(t.ptC - envelop.data()) < listTriSize);
+      TRE_ASSERT(unsigned(t.ptA - envelop.data()) < listTriSize);
+      TRE_ASSERT(unsigned(t.ptB - envelop.data()) < listTriSize);
+      TRE_ASSERT(unsigned(t.ptC - envelop.data()) < listTriSize);
 
-      listTriangles.push_back(uint(t.ptA - envelop.data()));
-      listTriangles.push_back(uint(t.ptB - envelop.data()));
-      listTriangles.push_back(uint(t.ptC - envelop.data()));
+      listTriangles.push_back(unsigned(t.ptA - envelop.data()));
+      listTriangles.push_back(unsigned(t.ptB - envelop.data()));
+      listTriangles.push_back(unsigned(t.ptC - envelop.data()));
     }
   }
   listTriangles.shrink_to_fit();

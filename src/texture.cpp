@@ -11,7 +11,7 @@ static const unsigned k_Config = (SDL_BYTEORDER == SDL_LIL_ENDIAN ? 0x04 : 0x08)
 //-----------------------------------------------------------------------------
 
 ///< Helper function to get the internal OpenGL-format
-static GLenum getTexInternalFormat(uint nbComponants, bool isCompressed, bool gammaCorrect)
+static GLenum getTexInternalFormat(int nbComponants, bool isCompressed, bool gammaCorrect)
 {
   TRE_ASSERT(nbComponants > 0 && nbComponants <= 4);
 #ifdef TRE_OPENGL_ES
@@ -346,7 +346,7 @@ bool texture::loadCube(const std::array<SDL_Surface *, 6> &cubeFaces, int modema
     if (useCompress())
     {
 #if 1 // always use the CPU-compressor
-      const uint  bufferByteSize = _rawCompress(surfLocal, internalformat); // inplace compression
+      const unsigned bufferByteSize = _rawCompress(surfLocal, internalformat); // inplace compression
       if (bufferByteSize == 0)
       {
         TRE_LOG("texture::load - failed to compress the picture (CPU compressor)");
@@ -379,7 +379,7 @@ bool texture::loadCube(const std::array<SDL_Surface *, 6> &cubeFaces, int modema
 
 //-----------------------------------------------------------------------------
 
-bool texture::load3D(const uint8_t *data, int w, int h, int d, uint components, int modemask)
+bool texture::load3D(const uint8_t *data, int w, int h, int d, int components, int modemask)
 {
   m_type = TI_3D;
   m_mask = modemask;
@@ -527,7 +527,7 @@ bool texture::update(SDL_Surface *surface, const bool freeSurface, const bool un
   {
     if (!freeSurface) surfLocal.copyToOwnBuffer();
     const int npixels = surfLocal.w * surfLocal.h;
-    uint * pixels = reinterpret_cast<uint*>(surfLocal.pixels);
+    uint32_t * pixels = reinterpret_cast<uint32_t*>(surfLocal.pixels);
     for (int ip=0;ip<npixels;++ip) pixels[ip] |= 0x00FFFFFF;
   }
 
@@ -546,7 +546,7 @@ bool texture::update(SDL_Surface *surface, const bool freeSurface, const bool un
   {
 #if 1 // always use the CPU-compressor
     if (!freeSurface) surfLocal.copyToOwnBuffer();
-    const uint  bufferByteSize = _rawCompress(surfLocal, internalformat); // in-place
+    const unsigned bufferByteSize = _rawCompress(surfLocal, internalformat); // in-place
     if (bufferByteSize == 0)
     {
       TRE_LOG("texture::update - failed to compress the picture (CPU compressor)");
@@ -617,7 +617,7 @@ bool texture::updateArray(SDL_Surface* surface, int layerIndex, const bool freeS
   {
     if (!freeSurface) surfLocal.copyToOwnBuffer();
     const int npixels = surfLocal.w * surfLocal.h;
-    uint * pixels = reinterpret_cast<uint*>(surfLocal.pixels);
+    uint32_t * pixels = reinterpret_cast<uint32_t*>(surfLocal.pixels);
     for (int ip=0;ip<npixels;++ip) pixels[ip] |= 0x00FFFFFF;
   }
 
@@ -636,7 +636,7 @@ bool texture::updateArray(SDL_Surface* surface, int layerIndex, const bool freeS
   {
 #if 1 // always use the CPU-compressor
     if (!freeSurface) surfLocal.copyToOwnBuffer();
-    const uint  bufferByteSize = _rawCompress(surfLocal, internalformat); // in-place
+    const unsigned bufferByteSize = _rawCompress(surfLocal, internalformat); // in-place
     if (bufferByteSize == 0)
     {
       TRE_LOG("texture::updateArray - failed to compress the picture (CPU compressor)");
@@ -662,7 +662,7 @@ bool texture::updateArray(SDL_Surface* surface, int layerIndex, const bool freeS
 
 //-----------------------------------------------------------------------------
 
-bool texture::update3D(const uint8_t* data, int w, int h, int d, uint components, const bool unbind /* = true */) const
+bool texture::update3D(const uint8_t* data, int w, int h, int d, int components, const bool unbind /* = true */) const
 {
   if (m_handle == 0) return false;
 
@@ -744,25 +744,25 @@ bool texture::loadColor(const uint32_t cARGB)
   SDL_Surface *tmpSurface = SDL_CreateRGBSurface(0, 4, 4, 32, 0, 0, 0, 0);
   if (tmpSurface == nullptr) return false;
 
-  uint *p0 = static_cast<uint*>(tmpSurface->pixels);
-  for (uint ip = 0; ip < 16; ++ip) p0[ip] = cARGB;
+  uint32_t *p0 = static_cast<uint32_t*>(tmpSurface->pixels);
+  for (int ip = 0; ip < 16; ++ip) p0[ip] = cARGB;
 
   return load(tmpSurface, 0, true);
 }
 
 //-----------------------------------------------------------------------------
 
-bool texture::loadCheckerboard(uint width, uint height)
+bool texture::loadCheckerboard(int width, int height)
 {
   SDL_Surface *tmpSurface = SDL_CreateRGBSurface(0, width, height, 32, 0, 0, 0, 0); // reminder: on little-endian, the default 32bits format is BGRA (that is 0xAARRGGBB)
   if (tmpSurface == nullptr) return false;
 
-  uint pWB[2] = { 0xFFFFFFFF, 0xFF000000 };
+  uint32_t pWB[2] = { 0xFFFFFFFF, 0xFF000000 };
 
-  uint *p0 = static_cast<uint*>(tmpSurface->pixels);
-  for (uint jrow = 0; jrow < height; ++jrow)
+  uint32_t *p0 = static_cast<uint32_t*>(tmpSurface->pixels);
+  for (int jrow = 0; jrow < height; ++jrow)
   {
-    for (uint icol = 0; icol < width; ++icol)
+    for (int icol = 0; icol < width; ++icol)
     {
       (*p0++) = pWB[(jrow + icol) & 0x01];
     }
@@ -777,7 +777,7 @@ bool texture::loadCheckerboard(uint width, uint height)
 
 bool texture::write(std::ostream &outbuffer, SDL_Surface *surface, int modemask, const bool freeSurface)
 {
-  uint components = (surface != nullptr) ? surface->format->BytesPerPixel : 4u /*whatever*/;
+  int components = (surface != nullptr) ? surface->format->BytesPerPixel : 4u /*whatever*/;
   if (modemask & MMASK_FORCE_NO_ALPHA) components = 3;
   if (modemask & MMASK_RG_ONLY) components = 2;
   if (modemask & MMASK_ALPHA_ONLY) components = 1;
@@ -828,7 +828,7 @@ bool texture::write(std::ostream &outbuffer, SDL_Surface *surface, int modemask,
     sourceformat = (sourceformat == GL_BGR) ? GL_RGB : GL_RGBA;
   }
 
-  uint pixelData_ByteSize = components * surface->w * surface->h;
+  unsigned pixelData_ByteSize = components * surface->w * surface->h;
 
   if ((modemask & MMASK_COMPRESS) != 0)
   {
@@ -896,7 +896,7 @@ bool texture::writeArray(std::ostream& outbuffer, const span<SDL_Surface*> &surf
 
   GLenum sourceformat = getTexFormatSource(surfaces[0]);
 
-  uint pixelData_ByteSize = components * w * h;
+  unsigned pixelData_ByteSize = components * w * h;
 
   if ((modemask & MMASK_COMPRESS) != 0)
   {
@@ -960,7 +960,7 @@ bool texture::writeCube(std::ostream &outbuffer, const std::array<SDL_Surface *,
   const bool isValid = ((cubeFaces[0] != nullptr) & (cubeFaces[1] != nullptr) & (cubeFaces[1] != nullptr) &
                         (cubeFaces[3] != nullptr) & (cubeFaces[4] != nullptr) & (cubeFaces[5] != nullptr));
 
-  uint components = isValid ? cubeFaces[0]->format->BytesPerPixel : 4u /*whatever*/;
+  int components = isValid ? cubeFaces[0]->format->BytesPerPixel : 4 /*whatever*/;
   TRE_ASSERT((modemask & MMASK_ALPHA_ONLY) == 0); // alpha-only modifier not supported
   TRE_ASSERT((modemask & MMASK_FORCE_NO_ALPHA) == 0); // no-alpha modifier not supported
   TRE_ASSERT((modemask & MMASK_RG_ONLY) == 0); // 2-chanels modifier not supported
@@ -987,7 +987,7 @@ bool texture::writeCube(std::ostream &outbuffer, const std::array<SDL_Surface *,
     return false;
   }
 
-  uint pixelData_ByteSize = components * cubeFaces[0]->w * cubeFaces[0]->h;
+  unsigned pixelData_ByteSize = components * cubeFaces[0]->w * cubeFaces[0]->h;
   // TODO: the compression gives the same size given the texture's dimension and components
 
   if ((modemask & MMASK_COMPRESS) != 0)
@@ -995,11 +995,11 @@ bool texture::writeCube(std::ostream &outbuffer, const std::array<SDL_Surface *,
     TRE_ASSERT(freeSurface == true); // local-surface not implemented.
     const GLenum internalformat = getTexInternalFormat(components, true, (modemask & MMASK_SRBG_SPACE) != 0);
     pixelData_ByteSize = _rawCompress(cubeFaces[0], internalformat);
-    const uint pxbt1   = _rawCompress(cubeFaces[1], internalformat); TRE_ASSERT(pixelData_ByteSize == pxbt1); (void)pxbt1;
-    const uint pxbt2   = _rawCompress(cubeFaces[2], internalformat); TRE_ASSERT(pixelData_ByteSize == pxbt2); (void)pxbt2;
-    const uint pxbt3   = _rawCompress(cubeFaces[3], internalformat); TRE_ASSERT(pixelData_ByteSize == pxbt3); (void)pxbt3;
-    const uint pxbt4   = _rawCompress(cubeFaces[4], internalformat); TRE_ASSERT(pixelData_ByteSize == pxbt4); (void)pxbt4;
-    const uint pxbt5   = _rawCompress(cubeFaces[5], internalformat); TRE_ASSERT(pixelData_ByteSize == pxbt5); (void)pxbt5;
+    const unsigned pxbt1   = _rawCompress(cubeFaces[1], internalformat); TRE_ASSERT(pixelData_ByteSize == pxbt1); (void)pxbt1;
+    const unsigned pxbt2   = _rawCompress(cubeFaces[2], internalformat); TRE_ASSERT(pixelData_ByteSize == pxbt2); (void)pxbt2;
+    const unsigned pxbt3   = _rawCompress(cubeFaces[3], internalformat); TRE_ASSERT(pixelData_ByteSize == pxbt3); (void)pxbt3;
+    const unsigned pxbt4   = _rawCompress(cubeFaces[4], internalformat); TRE_ASSERT(pixelData_ByteSize == pxbt4); (void)pxbt4;
+    const unsigned pxbt5   = _rawCompress(cubeFaces[5], internalformat); TRE_ASSERT(pixelData_ByteSize == pxbt5); (void)pxbt5;
   }
 
   outbuffer.write(reinterpret_cast<const char*>(&pixelData_ByteSize), sizeof(pixelData_ByteSize));
@@ -1020,7 +1020,7 @@ bool texture::writeCube(std::ostream &outbuffer, const std::array<SDL_Surface *,
 
 //-----------------------------------------------------------------------------
 
-bool texture::write3D(std::ostream &outbuffer, const uint8_t *data, int w, int h, int d, uint components, int modemask)
+bool texture::write3D(std::ostream &outbuffer, const uint8_t *data, int w, int h, int d, int components, int modemask)
 {
   const bool isValid = (data != nullptr) && (components >= 1) && (components <= 4);
   if (!isValid) { h = d = 0; }
@@ -1043,7 +1043,7 @@ bool texture::write3D(std::ostream &outbuffer, const uint8_t *data, int w, int h
 
   if (!isValid) return false;
 
-  uint pixelData_ByteSize = components * w * h * d; // 1 byte per component
+  unsigned pixelData_ByteSize = components * w * h * d; // 1 byte per component
 
   outbuffer.write(reinterpret_cast<const char*>(&pixelData_ByteSize), sizeof(pixelData_ByteSize));
 
@@ -1129,8 +1129,8 @@ bool texture::read(std::istream &inbuffer)
 #endif
 
   std::vector<char> readBuffer;
-  uint dataSize = 0;
-  inbuffer.read(reinterpret_cast<char*>(&dataSize), sizeof(uint));
+  unsigned dataSize = 0;
+  inbuffer.read(reinterpret_cast<char*>(&dataSize), sizeof(unsigned));
   TRE_ASSERT(int(dataSize) > 0);
 
   glGenTextures(1,&m_handle);
@@ -1165,7 +1165,7 @@ bool texture::read(std::istream &inbuffer)
   else if (m_type == TI_CUBEMAP)
   {
     glBindTexture(GL_TEXTURE_CUBE_MAP,m_handle);
-    for (uint iface = 0; iface < 6; ++iface)
+    for (int iface = 0; iface < 6; ++iface)
     {
       readBuffer.resize(dataSize);
       TRE_ASSERT(readBuffer.size() == dataSize);
@@ -1257,10 +1257,10 @@ void texture::_rawConvert_BRG_to_RGB(const s_SurfaceTemp &surf)
 {
   if (surf.pxByteSize == 3)
   {
-    for (uint j = 0; j < surf.h; ++j)
+    for (unsigned j = 0; j < surf.h; ++j)
     {
       uint8_t* pixelsRow = surf.pixels + surf.pitch * j;
-      for (uint i = 0; i < surf.w; ++i)
+      for (unsigned i = 0; i < surf.w; ++i)
       {
         std::swap(pixelsRow[0], pixelsRow[2]);
         pixelsRow += 3;
@@ -1270,9 +1270,9 @@ void texture::_rawConvert_BRG_to_RGB(const s_SurfaceTemp &surf)
   else if (surf.pxByteSize == 4)
   {
     TRE_ASSERT(surf.pitch == surf.pxByteSize * surf.w);
-    const uint npixels = surf.w * surf.h;
-    uint * pixels = reinterpret_cast<uint*>(surf.pixels);
-    for (uint ip=0;ip<npixels;++ip) pixels[ip] = (pixels[ip] & 0xFF00FF00) | ((pixels[ip] & 0x00FF0000) >> 16) | ((pixels[ip] & 0x000000FF) << 16);
+    const unsigned npixels = surf.w * surf.h;
+    uint32_t * pixels = reinterpret_cast<uint32_t*>(surf.pixels);
+    for (unsigned ip=0;ip<npixels;++ip) pixels[ip] = (pixels[ip] & 0xFF00FF00) | ((pixels[ip] & 0x00FF0000) >> 16) | ((pixels[ip] & 0x000000FF) << 16);
   }
   else
   {
@@ -1287,11 +1287,11 @@ void texture::_rawPack_A8(s_SurfaceTemp &surf)
   if (surf.pxByteSize == 4)
   {
     TRE_ASSERT(surf.pitch == surf.pxByteSize * surf.w);
-    const uint npixels = surf.w * surf.h;
-    uint * pixelsIn = reinterpret_cast<uint*>(surf.pixels);
+    const unsigned npixels = surf.w * surf.h;
+    uint32_t * pixelsIn = reinterpret_cast<uint32_t*>(surf.pixels);
     uint8_t * pixelsOut = surf.pixels;
 
-    for (uint ip=0;ip<npixels;++ip) pixelsOut[ip] = (pixelsIn[ip] >> 24) & 0xFF;
+    for (unsigned ip=0;ip<npixels;++ip) pixelsOut[ip] = (pixelsIn[ip] >> 24) & 0xFF;
 
     surf.pxByteSize = 1;
     surf.pitch = surf.w;
@@ -1300,10 +1300,10 @@ void texture::_rawPack_A8(s_SurfaceTemp &surf)
   {
     uint8_t * pixelsIn = surf.pixels;
     uint8_t * pixelsOut = surf.pixels;
-    for (uint j = 0; j < surf.h; ++j)
+    for (unsigned j = 0; j < surf.h; ++j)
     {
       uint8_t* pixelsInRow = pixelsIn + surf.pitch * j;
-      for (uint i = 0; i < surf.w; ++i)
+      for (unsigned i = 0; i < surf.w; ++i)
       {
         pixelsOut[0] = pixelsInRow[0] & 0xFF;
         pixelsInRow += surf.pxByteSize;
@@ -1328,11 +1328,11 @@ void texture::_rawPack_RG8(s_SurfaceTemp &surf)
   {
     TRE_ASSERT(SDL_BYTEORDER == SDL_LIL_ENDIAN); // 0xAARRGGBB
     TRE_ASSERT(surf.pitch == surf.pxByteSize * surf.w);
-    const uint npixels = surf.w * surf.h;
-    uint * pixelsIn = reinterpret_cast<uint*>(surf.pixels);
+    const unsigned npixels = surf.w * surf.h;
+    uint32_t * pixelsIn = reinterpret_cast<uint32_t*>(surf.pixels);
     uint8_t * pixelsOut = surf.pixels;
 
-    for (uint ip=0;ip<npixels;++ip)
+    for (unsigned ip=0;ip<npixels;++ip)
     {
       pixelsOut[ip*2+0] = (pixelsIn[ip] >> 16) & 0xFF;
       pixelsOut[ip*2+1] = (pixelsIn[ip] >>  8) & 0xFF;
@@ -1345,10 +1345,10 @@ void texture::_rawPack_RG8(s_SurfaceTemp &surf)
   {
     uint8_t * pixelsIn = surf.pixels;
     uint8_t * pixelsOut = surf.pixels;
-    for (uint j = 0; j < surf.h; ++j)
+    for (unsigned j = 0; j < surf.h; ++j)
     {
       uint8_t* pixelsInRow = pixelsIn + surf.pitch * j;
-      for (uint i = 0; i < surf.w; ++i)
+      for (unsigned i = 0; i < surf.w; ++i)
       {
         pixelsOut[0] = pixelsInRow[0] & 0xFF;
         pixelsOut[1] = pixelsInRow[1] & 0xFF;
@@ -1373,11 +1373,11 @@ void texture::_rawPack_RemoveAlpha8(s_SurfaceTemp &surf)
   TRE_ASSERT(surf.pxByteSize == 4);
   TRE_ASSERT(surf.pitch == surf.pxByteSize * surf.w);
 
-  const uint npixels = surf.w * surf.h;
+  const unsigned npixels = surf.w * surf.h;
   const uint8_t * pixelsIn = surf.pixels;
   uint8_t * pixelsOut = surf.pixels;
 
-  for (uint ip=0;ip<npixels;++ip)
+  for (unsigned ip=0;ip<npixels;++ip)
   {
     pixelsOut[0] = pixelsIn[0] & 0xFF;
     pixelsOut[1] = pixelsIn[1] & 0xFF;

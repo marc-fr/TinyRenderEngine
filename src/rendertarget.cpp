@@ -329,7 +329,7 @@ void renderTarget::resolve(renderTarget &targetFBO) const
 
 // ============================================================================
 
-void renderTarget_ShadowMap::computeUBO_forMap(shader::s_UBOdata_sunLight & uboLight, uint shadowIndex, float biasFactor /* = 1.f */)
+void renderTarget_ShadowMap::computeUBO_forMap(shader::s_UBOdata_sunLight & uboLight, unsigned shadowIndex, float biasFactor /* = 1.f */)
 {
   TRE_ASSERT(m_w>=m_h); // just a matter of implementation
   TRE_ASSERT(glm::length(uboLight.direction)>0.001f);
@@ -428,7 +428,7 @@ bool renderTarget_CubeMap::load(const int texSize)
   glTexParameteri(GL_TEXTURE_CUBE_MAP,GL_TEXTURE_MIN_FILTER,GL_LINEAR);
   glTexParameteri(GL_TEXTURE_CUBE_MAP,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
 
-  for (uint iface=0; iface<6; ++iface)
+  for (unsigned iface=0; iface<6; ++iface)
     glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + iface, 0, GL_DEPTH_COMPONENT32F, m_w, m_h, 0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
 
   glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
@@ -519,7 +519,7 @@ bool renderTarget_GBuffer::resize(const int pwidth, const int pheigth)
   glGenTextures(GBUFFER_NUM,m_colorhandles);
   GLenum  drawBuffersList[GBUFFER_NUM];
 
-  for (uint iT = 0; iT < GBUFFER_NUM; ++iT)
+  for (unsigned iT = 0; iT < GBUFFER_NUM; ++iT)
   {
     createColorAttachment(m_w, m_h, m_isHDR || (iT != 0), false, true, GL_COLOR_ATTACHMENT0 + iT, m_colorhandles[iT], dummy);
 
@@ -668,7 +668,7 @@ bool postFX_Blur::load(const int pwidth, const int pheigth)
   TRE_ASSERT(std::pow(2,m_renderDownsample.size()) < pheigth);
   // Load downsampling FBOs
   glm::ivec2 dim = glm::ivec2(pwidth, pheigth);
-  for (uint i = 0; i < m_Npass; ++i)
+  for (unsigned i = 0; i < m_Npass; ++i)
   {
     status &= m_renderDownsample[i].load(dim.x, dim.y);
     dim /= 2;
@@ -700,7 +700,7 @@ bool postFX_Blur::resize(const int pwidth, const int pheigth)
   TRE_ASSERT(std::pow(2,m_renderDownsample.size()) < pwidth);
   TRE_ASSERT(std::pow(2,m_renderDownsample.size()) < pheigth);
   glm::ivec2 dim = glm::ivec2(pwidth, pheigth);
-  for (uint i = 0; i < m_Npass; ++i)
+  for (unsigned i = 0; i < m_Npass; ++i)
   {
     if (!m_renderDownsample[i].resize(dim.x, dim.y)) return false;
     dim /= 2;
@@ -752,7 +752,7 @@ void postFX_Blur::processBlur(GLuint inputTextureHandle, const bool withFinalCom
     glUniform1i(m_shaderDownPass.getUniformLocation(tre::shader::TexDiffuse),1);
     glUniform4f(m_shaderDownPass.getUniformLocation(tre::shader::uniColor), 0.f, 0.f, 0.f, 0.f);
 
-    for (uint ipass=1;ipass < m_Npass;++ipass)
+    for (unsigned ipass=1;ipass < m_Npass;++ipass)
     {
       m_renderDownsample[ipass].bindForWritting();
       glBindTexture(GL_TEXTURE_2D,m_renderDownsample[ipass-1].colorHandle());
@@ -769,7 +769,7 @@ void postFX_Blur::processBlur(GLuint inputTextureHandle, const bool withFinalCom
     glUniform1i(m_shaderUpPass.getUniformLocation(tre::shader::TexDiffuse),1);
     glUniform1i(m_shaderUpPass.getUniformLocation(tre::shader::TexDiffuseB),0);
 
-    for (uint ipass = m_Npass; ipass-- != 1;)
+    for (unsigned ipass = m_Npass; ipass-- != 1;)
     {
       m_renderDownsample[ipass - 1].bindForWritting();
       glBindTexture(GL_TEXTURE_2D,m_renderDownsample[ipass].colorHandle());

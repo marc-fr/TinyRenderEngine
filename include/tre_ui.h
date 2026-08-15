@@ -96,10 +96,10 @@ struct s_eventIntern
   glm::vec3 mousePos;     ///< mouse position (in the window's frame)
   glm::vec3 mousePosPrev; ///< same as mousePos, but on last mouse button-down event
 
-  uint mouseButtonIsPressed = 0; ///< a button is pressed. Use SDL_BUTTON_*MASK for masking.
-  uint mouseButtonPrev = 0;
+  unsigned mouseButtonIsPressed = 0; ///< a button is pressed. Use SDL_BUTTON_*MASK for masking.
+  unsigned mouseButtonPrev = 0;
 
-  uint keyDown = 0; ///< a key is begin pressed. Use SDLK_** for value.
+  unsigned keyDown = 0; ///< a key is begin pressed. Use SDLK_** for value.
   const char *textInput = nullptr; ///< when using SDL_TextInput mode
 
   bool accepted = false;
@@ -210,8 +210,8 @@ protected:
   window *m_parentWindow = nullptr;
   struct s_objAddress
   {
-    uint part = 0u;
-    uint offset = 0u;
+    unsigned part = 0u;
+    unsigned offset = 0u;
   };
   mutable s_objAddress m_adrPict, m_adrText; ///< Address plage for each specific object.
   /// @}
@@ -311,7 +311,7 @@ class widgetPicture : public widget
 {
   widget_DECLARECONSTRUCTORS(widgetPicture)
   widget_DECLARECOMMUNMETHODS()
-  widget_DECLAREATTRIBUTE(widgetPicture,uint,texId,= uint(-1), Address)
+  widget_DECLAREATTRIBUTE(widgetPicture,std::size_t,texId,= -1, Address)
   widget_DECLAREATTRIBUTE(widgetPicture,glm::vec4,texUV,= glm::vec4(0.f,0.f,1.f,1.f), Layout)
   widget_DECLAREATTRIBUTE(widgetPicture,bool,snapPixels, = false, Data) ///< snap pixels to entire zoom factor
 
@@ -395,7 +395,7 @@ class widgetLineChoice : public widget
   widget_DECLARECONSTRUCTORS(widgetLineChoice)
   widget_DECLARECOMMUNMETHODS()
   widget_DECLAREATTRIBUTE(widgetLineChoice,std::vector<std::string>,values,, Address)
-  widget_DECLAREATTRIBUTE(widgetLineChoice,uint,selectedIndex,= 0, Data)
+  widget_DECLAREATTRIBUTE(widgetLineChoice,unsigned,selectedIndex,= 0, Data)
   widget_DECLAREATTRIBUTE(widgetLineChoice,bool,cyclic,= false, Data)
 
 public:
@@ -478,7 +478,7 @@ struct s_layoutGrid
   {
     widget     *m_widget = nullptr;
     glm::uvec2 m_span = glm::uvec2(1); ///< span (x:col, y:row)
-    uint       m_alignMask = ALIGN_MASK_HORIZONTAL_LEFT | ALIGN_MASK_VERTICAL_CENTERED;
+    unsigned       m_alignMask = ALIGN_MASK_HORIZONTAL_LEFT | ALIGN_MASK_VERTICAL_CENTERED;
   };
 
   glm::uvec2          m_dimension = glm::uvec2(0); ///< Dimension (x:columns, y:rows)
@@ -492,8 +492,8 @@ struct s_layoutGrid
 
   s_size m_totalHeight, m_totalWidth; ///< Total size (given by the user)
 
-  void set_dimension(uint rows, uint cols);
-  uint index(uint iRow, uint iCol) const { TRE_ASSERT(iRow < m_dimension.y); TRE_ASSERT(iCol < m_dimension.x); return iCol + iRow * m_dimension.x; }
+  void set_dimension(unsigned rows, unsigned cols);
+  unsigned index(unsigned iRow, unsigned iCol) const { TRE_ASSERT(iRow < m_dimension.y); TRE_ASSERT(iCol < m_dimension.x); return iCol + iRow * m_dimension.x; }
   glm::vec2 computeWidgetZones(const widget::s_drawData &dd, const glm::vec2 &offset = glm::vec2(0.f)); ///< Computes the zone assigned to each widget. Returns the global size.
   void clear();
 };
@@ -531,7 +531,7 @@ public:
   window_PROPERTY(s_size, fontHeight, s_size(20, SIZE_PIXEL), m_isUpdateNeededLayout)
   window_PROPERTY(glm::vec4, colormask, glm::vec4(1.f), m_isUpdateNeededData)
   window_PROPERTY(s_colorTheme, colortheme, s_colorTheme(), m_isUpdateNeededData)
-  window_PROPERTY(uint, alignMask, ALIGN_MASK_LEFT_TOP, m_isUpdateNeededData)
+  window_PROPERTY(unsigned, alignMask, ALIGN_MASK_LEFT_TOP, m_isUpdateNeededData)
 
   window_PROPERTY(glm::mat4, mat4, glm::mat4(1.f), m_isUpdateNeededLayout) // used for 2D-ui
   window_PROPERTY(glm::mat3, mat3, glm::mat3(1.f), m_isUpdateNeededLayout) // used for 3D-ui
@@ -543,14 +543,14 @@ public:
   window* set_topbarName(const std::string &name); ///< rename the top-bar title (only after "set_topbar" call)
   window* set_transparency(const float alpha) { m_isUpdateNeededData |= (wcolormask.w != alpha); wcolormask.w = alpha; return this; } ///< set the global transparency
   void set_fontSize(s_size fontSize); ///< set the font-size, andt the line-height (with padding)
-  void set_layoutGrid(uint row, uint col) { m_isUpdateNeededAddress = true; wlayout.set_dimension(row, col); } ///< set the layout.
-  void set_colWidth(uint col, const s_size width); ///< set the width of a column, that overwrites the automatic size. A negative value will unset the value.
-  void set_rowHeight(uint row, const s_size height); /// set the height of a row, that overwrites the automatic size. A negative value will unset the value.
+  void set_layoutGrid(unsigned row, unsigned col) { m_isUpdateNeededAddress = true; wlayout.set_dimension(row, col); } ///< set the layout.
+  void set_colWidth(unsigned col, const s_size width); ///< set the width of a column, that overwrites the automatic size. A negative value will unset the value.
+  void set_rowHeight(unsigned row, const s_size height); /// set the height of a row, that overwrites the automatic size. A negative value will unset the value.
   void set_cellMargin(const s_size margin) { m_isUpdateNeededLayout |= (wlayout.m_cellMargin != margin); wlayout.m_cellMargin = margin; }
-  void set_colAlignment(uint col, uint alignMask); ///< set the alignment of the widgets in the column
-  void set_rowAlignment(uint row, uint alignMask); ///< set the alignment of the widgets in the row
-  void set_colSpacement(uint col, const s_size width, const bool atLeft = true); ///< set a space in-between two columns
-  void set_rowSpacement(uint row, const s_size height, const bool atTop = true); ///< set a space in-between two rows
+  void set_colAlignment(unsigned col, unsigned alignMask); ///< set the alignment of the widgets in the column
+  void set_rowAlignment(unsigned row, unsigned alignMask); ///< set the alignment of the widgets in the row
+  void set_colSpacement(unsigned col, const s_size width, const bool atLeft = true); ///< set a space in-between two columns
+  void set_rowSpacement(unsigned row, const s_size height, const bool atTop = true); ///< set a space in-between two rows
 
   glm::vec2 resolve_pixelSize() const; ///< returns the size of a pixel, in the local-space of the window.
   glm::vec2 resolve_pixelOffset() const; ///< returns a local-space position that is in the center of a pixel. The offset might not be minimal, nor positive.
@@ -588,8 +588,8 @@ private:
 
   struct s_objAddress
   {
-    uint part = 0u;
-    uint offset = 0u;
+    std::size_t part = 0;
+    std::size_t offset = 0;
   };
   s_objAddress m_adSolid, m_adrLine, m_adrPict, m_adrText; ///< Address plage for all objects in the window
   /// @}
@@ -602,14 +602,14 @@ private:
   /// @name interface with widgets
   /// @{
 public:
-  widget* get_widget(uint row, uint col) { return wlayout.m_cells[wlayout.index(row, col)].m_widget; }
-  const widget* get_widget(uint row, uint col) const { return wlayout.m_cells[wlayout.index(row, col)].m_widget; }
-  void set_widget(widget * w, uint row, uint col, const uint span_row = 1, const uint span_col = 1); ///< the window class takes the ownership of the widget. Cannot be called after loadIntoGPU call.
+  widget* get_widget(unsigned row, unsigned col) { return wlayout.m_cells[wlayout.index(row, col)].m_widget; }
+  const widget* get_widget(unsigned row, unsigned col) const { return wlayout.m_cells[wlayout.index(row, col)].m_widget; }
+  void set_widget(widget * w, unsigned row, unsigned col, const unsigned span_row = 1, const unsigned span_col = 1); ///< the window class takes the ownership of the widget. Cannot be called after loadIntoGPU call.
 
 #define window_DECLAREWIDGETHELPER(wname) \
-  wname* get_##wname(uint row, uint col) { return static_cast<wname*>(get_widget(row, col)); } \
-  const wname* get_##wname(uint row, uint col) const { return static_cast<const wname*>(get_widget(row, col)); } \
-  wname* create_##wname(uint row, uint col, const uint span_row = 1, const uint span_col = 1) \
+  wname* get_##wname(unsigned row, unsigned col) { return static_cast<wname*>(get_widget(row, col)); } \
+  const wname* get_##wname(unsigned row, unsigned col) const { return static_cast<const wname*>(get_widget(row, col)); } \
+  wname* create_##wname(unsigned row, unsigned col, const unsigned span_row = 1, const unsigned span_col = 1) \
   { \
     wname * neww = new wname(); \
     set_widget(neww, row, col, span_row, span_col); \
@@ -678,7 +678,7 @@ public:
 public:
   void set_defaultFont(const font * pfont) { m_defaultFont = pfont; } ///< The baseUI does not take ownership of the font.
   const font * get_defaultFont() const { return m_defaultFont; }
-  virtual uint get_dimension() const = 0;
+  virtual unsigned get_dimension() const = 0;
   void animate(float dt);
   void clear(); ///< Clear all RAM data (without clearing VRAM)
 protected:
@@ -759,7 +759,7 @@ public:
   baseUI2D() : baseUI(), m_PV(1.f), m_viewport(1.f), m_PVinv(1.f) {}
   virtual ~baseUI2D() override {}
 
-  virtual uint get_dimension() const override { return 2; }
+  virtual unsigned get_dimension() const override { return 2; }
 
   virtual void draw() const override;
 
@@ -791,7 +791,7 @@ public:
   baseUI3D() : baseUI(), m_PV(1.f), m_viewport(1.f), m_cameraPosition(0.f), m_PVinv(1.f) {}
   virtual ~baseUI3D() override {}
 
-  virtual uint get_dimension() const override { return 3; }
+  virtual unsigned get_dimension() const override { return 3; }
 
   virtual void draw() const override;
 

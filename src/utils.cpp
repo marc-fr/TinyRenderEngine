@@ -314,12 +314,12 @@ void tetrahedronQuality(const glm::vec3 &vA, const glm::vec3 &vB, const glm::vec
 
 // ============================================================================
 
-void sortAndUniqueCounting(std::vector<uint> &array)
+void sortAndUniqueCounting(std::vector<unsigned> &array)
 {
   if (array.empty()) return;
-  uint vmin = array[0];
-  uint vmax = array[0];
-  for (uint v : array)
+  unsigned vmin = array[0];
+  unsigned vmax = array[0];
+  for (unsigned v : array)
   {
     vmin = std::min(vmin, v);
     vmax = std::max(vmax, v);
@@ -334,10 +334,10 @@ void sortAndUniqueCounting(std::vector<uint> &array)
 
   std::vector<bool> key(vmax - vmin + 1, false);
 
-  for (uint v : array) key[v - vmin] = true;
+  for (unsigned v : array) key[v - vmin] = true;
 
-  uint ikey = vmin;
-  uint outValue = 0;
+  unsigned ikey = vmin;
+  unsigned outValue = 0;
   for (bool b : key)
   {
     if (b)
@@ -353,13 +353,13 @@ void sortAndUniqueCounting(std::vector<uint> &array)
 
 // ----------------------------------------------------------------------------
 
-void sortAndUniqueBull(std::vector<uint> &array)
+void sortAndUniqueBull(std::vector<unsigned> &array)
 {
   if (array.empty()) return;
 
-  for (uint ip = 0; ip < array.size(); ++ip)
+  for (unsigned ip = 0; ip < array.size(); ++ip)
   {
-    for (uint ik = ip + 1; ik < array.size(); ++ik)
+    for (unsigned ik = ip + 1; ik < array.size(); ++ik)
     {
       if (array[ip] == array[ik]) // remove duplicate
       {

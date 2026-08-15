@@ -269,11 +269,11 @@ void baseUI::createData()
 
   for (ui::window * curwin : windowsList)
   {
-    curwin->m_adSolid.part = uint(m_model.createPart(0u)); // solid
-    curwin->m_adrLine.part = uint(m_model.createPart(0u)); // line
-    curwin->m_adrPict.part = uint(m_model.createPart(0u)); // one for each texture
-    for (std::size_t i = 1; i < m_textures.size(); ++i) m_model.createPart(0u); // one for each texture (note: assume that the parts are created in order)
-    curwin->m_adrText.part = uint(m_model.createPart(0u)); // text
+    curwin->m_adSolid.part = m_model.createPart(0); // solid
+    curwin->m_adrLine.part = m_model.createPart(0); // line
+    curwin->m_adrPict.part = m_model.createPart(0); // one for each texture
+    for (std::size_t i = 1; i < m_textures.size(); ++i) m_model.createPart(0); // one for each texture (note: assume that the parts are created in order)
+    curwin->m_adrText.part = m_model.createPart(0u); // text
   }
 
   TRE_ASSERT(m_model.partCount() == (3 + m_textures.size()) * windowsList.size())
@@ -332,7 +332,7 @@ void baseUI2D::draw() const
         {
           if (!isTextureBound[tslot])
           {
-            glActiveTexture(GL_TEXTURE1 + tslot);
+            glActiveTexture(GL_TEXTURE1 + GLuint(tslot));
             glBindTexture(GL_TEXTURE_2D, m_textures[tslot].m_handle);
             isTextureBound[tslot] = true;
           }

@@ -197,7 +197,7 @@ void shaderGenerator::createShaderFunctions_Shadow(std::string &outstring)
                  "{\n"
                  "  float islighted_sun = 1.f;\n";
 
-    for (uint iS = 0; iS < m_shadowSun_count; ++iS)
+    for (unsigned iS = 0; iS < m_shadowSun_count; ++iS)
     {
       const std::string str_iS = std::to_string(iS);
       outstring += "  if (" + str_iS + " < usunlight.nShadow)\n"

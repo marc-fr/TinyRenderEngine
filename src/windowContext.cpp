@@ -372,7 +372,7 @@ void windowContext::s_timer::initialize()
 
 // ----------------------------------------------------------------------------
 
-void windowContext::s_timer::newFrame(const uint waitForFPS /* = 0 means no wait */, const bool isSimPaused)
+void windowContext::s_timer::newFrame(const int waitForFPS /* = 0 means no wait */, const bool isSimPaused)
 {
   const Uint32 newtime = SDL_GetTicks();
   const Uint32 dtms = newtime - oldtime;

@@ -70,7 +70,7 @@ public:
   ~renderTarget_ShadowMap() {}
 
   void setSceneBox(const s_boundbox &newbox) { m_sceneBox = newbox; }
-  void computeUBO_forMap(shader::s_UBOdata_sunLight &uboLight, uint shadowIndex, float biasFactor = 1.f); ///< Get the light direction from the UBO, compute the Proj-view matrix, fill data in the UBO.
+  void computeUBO_forMap(shader::s_UBOdata_sunLight &uboLight, unsigned shadowIndex, float biasFactor = 1.f); ///< Get the light direction from the UBO, compute the Proj-view matrix, fill data in the UBO.
 
   const glm::mat4 &mProj() const { return m_mProj; }
   const glm::mat4 &mView() const { return m_mView; }
@@ -169,7 +169,7 @@ protected:
 class postFX_Blur
 {
 public:
-  postFX_Blur(const uint NbrPass, const bool outHDR = false) :
+  postFX_Blur(const unsigned NbrPass, const bool outHDR = false) :
       m_renderDownsample(NbrPass, {renderTarget::RT_COLOR | renderTarget::RT_COLOR_SAMPLABLE | (outHDR ? renderTarget::RT_COLOR_HDR : 0)}),
       m_brightAlpha(1.e-3f), m_brightOffset(outHDR ? 0.f : 0.6f), m_combineStrength(0.2f),
       m_Npass(NbrPass), m_isOutHDR(outHDR)
@@ -199,7 +199,7 @@ protected:
   float                     m_brightAlpha;
   float                     m_brightOffset;
   float                     m_combineStrength;
-  const uint                m_Npass;
+  const unsigned            m_Npass;
   const bool                m_isOutHDR;
 };
 

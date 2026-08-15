@@ -12,9 +12,9 @@ namespace tre {
 
 bool s_partInfo::read(std::istream &inbuffer)
 {
-  uint header[4]; // {namesize, sizeof(uint), m_size, m_offset}
+  uint32_t header[4]; // {namesize, sizeof(uint32_t), m_size, m_offset}
   inbuffer.read(reinterpret_cast<char*>(&header[0]), sizeof(header));
-  TRE_ASSERT(header[1] == sizeof(uint));
+  TRE_ASSERT(header[1] == sizeof(uint32_t));
   m_size = header[2];
   m_offset = header[3];
   if (header[0] > 0)
@@ -30,11 +30,11 @@ bool s_partInfo::read(std::istream &inbuffer)
 
 bool s_partInfo::write(std::ostream &outbuffer) const
 {
-  uint header[4]; // {namesize, sizeof(uint), m_size, m_offset}
-  header[0] = uint(m_name.size());
-  header[1] = sizeof(uint);
-  header[2] = uint(m_size); TRE_ASSERT(m_size <= std::numeric_limits<uint>::max());
-  header[3] = uint(m_offset); TRE_ASSERT(m_offset <= std::numeric_limits<uint>::max());
+  uint32_t header[4]; // {namesize, sizeof(uint32_t), m_size, m_offset}
+  header[0] = uint32_t(m_name.size());
+  header[1] = sizeof(uint32_t);
+  header[2] = uint32_t(m_size); TRE_ASSERT(m_size <= std::numeric_limits<uint32_t>::max());
+  header[3] = uint32_t(m_offset); TRE_ASSERT(m_offset <= std::numeric_limits<uint32_t>::max());
   outbuffer.write(reinterpret_cast<const char*>(&header[0]), sizeof(header));
   if (!m_name.empty()) outbuffer.write(m_name.c_str(), sizeof(char) * m_name.size());
   m_bbox.write(outbuffer);
@@ -1274,7 +1274,7 @@ void modelIndexed::fillDataBoxWireframe(std::size_t ipart, std::size_t offsetI, 
   }
 }
 
-void modelIndexed::fillDataCone(std::size_t ipart, std::size_t offsetI, std::size_t offsetV, const glm::mat4 &transform, float radius, float heigth, uint subdiv, const glm::vec4 & color)
+void modelIndexed::fillDataCone(std::size_t ipart, std::size_t offsetI, std::size_t offsetV, const glm::mat4 &transform, float radius, float heigth, int subdiv, const glm::vec4 & color)
 {
   TRE_ASSERT(offsetI + fillDataCone_ISize(subdiv) <= partInfo(ipart).m_size);
   offsetI += partInfo(ipart).m_offset;
@@ -1341,7 +1341,7 @@ void modelIndexed::fillDataCone(std::size_t ipart, std::size_t offsetI, std::siz
   }
 }
 
-void modelIndexed::fillDataDisk(std::size_t ipart, std::size_t offsetI, std::size_t offsetV, const glm::mat4 &transform, float radiusOut, float radiusIn, uint subdiv, const glm::vec4 & color)
+void modelIndexed::fillDataDisk(std::size_t ipart, std::size_t offsetI, std::size_t offsetV, const glm::mat4 &transform, float radiusOut, float radiusIn, int subdiv, const glm::vec4 & color)
 {
   TRE_ASSERT(radiusIn <= radiusOut);
 
@@ -1441,7 +1441,7 @@ void modelIndexed::fillDataDisk(std::size_t ipart, std::size_t offsetI, std::siz
   }
 }
 
-void modelIndexed::fillDataTorus(std::size_t ipart, std::size_t offsetI, std::size_t offsetV, const glm::mat4 &transform, float radiusMain, float radiusIn, uint subdiv_main, uint subdiv_in, const glm::vec4 & color)
+void modelIndexed::fillDataTorus(std::size_t ipart, std::size_t offsetI, std::size_t offsetV, const glm::mat4 &transform, float radiusMain, float radiusIn, int subdiv_main, int subdiv_in, const glm::vec4 & color)
 {
   TRE_ASSERT(offsetI + fillDataTorus_ISize(subdiv_main, subdiv_in) <= partInfo(ipart).m_size);
   offsetI += partInfo(ipart).m_offset;
@@ -1651,7 +1651,7 @@ void modelIndexed::fillDataSquareWireframe(std::size_t ipart, std::size_t offset
   }
 }
 
-void modelIndexed::fillDataTube(std::size_t ipart, std::size_t offsetI, std::size_t offsetV, const glm::mat4 &transform, float radius, float heigth, bool closed, uint subdiv_r, uint subdiv_h, const glm::vec4 & color)
+void modelIndexed::fillDataTube(std::size_t ipart, std::size_t offsetI, std::size_t offsetV, const glm::mat4 &transform, float radius, float heigth, bool closed, int subdiv_r, int subdiv_h, const glm::vec4 & color)
 {
   TRE_ASSERT(subdiv_r > 0);
   TRE_ASSERT(subdiv_h > 0);
@@ -1735,7 +1735,7 @@ void modelIndexed::fillDataTube(std::size_t ipart, std::size_t offsetI, std::siz
   }
 }
 
-void modelIndexed::fillDataUvtrisphere(std::size_t ipart, std::size_t offsetI, std::size_t offsetV, const glm::mat4 &transform, float radius, uint subdiv_u, uint subdiv_v, const glm::vec4 & color)
+void modelIndexed::fillDataUvtrisphere(std::size_t ipart, std::size_t offsetI, std::size_t offsetV, const glm::mat4 &transform, float radius, int subdiv_u, int subdiv_v, const glm::vec4 & color)
 {
   subdiv_u = (subdiv_u & ~0x1);
   TRE_ASSERT(subdiv_u > 0);
@@ -1886,7 +1886,7 @@ void modelIndexed::resizeIndex(std::size_t count)
 
 bool modelIndexed::read_IndexBuffer(std::istream & inbuffer)
 {
-  uint header[2]; // {indexcount, buffersize}
+  uint32_t header[2]; // {indexcount, buffersize}
   inbuffer.read(reinterpret_cast<char*>(&header[0]), sizeof(header));
   resizeIndex(header[0]);
   TRE_ASSERT(m_IBuffer.size() == header[1]);
@@ -1896,7 +1896,7 @@ bool modelIndexed::read_IndexBuffer(std::istream & inbuffer)
 
 bool modelIndexed::write_IndexBuffer(std::ostream & outbuffer) const
 {
-  uint header[2]; // {indexcount, buffersize}
+  uint32_t header[2]; // {indexcount, buffersize}
   header[0] = m_layout.m_indexCount; TRE_ASSERT(m_layout.m_indexCount <= std::numeric_limits<uint>::max());
   header[1] = m_IBuffer.size();
   outbuffer.write(reinterpret_cast<const char*>(&header[0]), sizeof(header));
@@ -2148,7 +2148,7 @@ bool modelRaw2D::read(std::istream &inbuffer)
 {
   if (!readBase(inbuffer)) return false;
 
-  uint header[2]; // { vertexCount, bufferSize }
+  uint32_t header[2]; // { vertexCount, bufferSize }
   inbuffer.read(reinterpret_cast<char*>(&header[0]), sizeof(header));
   resizeVertex(header[0]);
   TRE_ASSERT(header[1] == m_VBuffer.size());
@@ -2163,9 +2163,9 @@ bool modelRaw2D::write(std::ostream &outbuffer) const
 
   result &= writeBase(outbuffer);
 
-  uint header[2]; // { vertexCount, bufferSize }
-  header[0] = m_layout.m_vertexCount; TRE_ASSERT(m_layout.m_vertexCount <= std::numeric_limits<uint>::max());
-  header[1] = m_VBuffer.size();
+  uint32_t header[2]; // { vertexCount, bufferSize }
+  header[0] = uint32_t(m_layout.m_vertexCount); TRE_ASSERT(m_layout.m_vertexCount <= std::numeric_limits<uint32_t>::max());
+  header[1] = uint32_t(m_VBuffer.size());
   outbuffer.write(reinterpret_cast<const char*>(&header[0]), sizeof(header));
   outbuffer.write(reinterpret_cast<const char*>(m_VBuffer.data()), m_VBuffer.size() * sizeof(GLfloat));
 
@@ -2411,7 +2411,7 @@ bool modelStaticIndexed3D::read(std::istream & inbuffer)
   read_IndexBuffer(inbuffer);
 
   // read vertex buffer
-  uint header[2]; // { vertexCount, bufferSize }
+  uint32_t header[2]; // { vertexCount, bufferSize }
   inbuffer.read(reinterpret_cast<char*>(&header[0]), sizeof(header));
   resizeVertex(header[0]);
   TRE_ASSERT(header[1] == m_VBuffer.size());
@@ -2431,9 +2431,9 @@ bool modelStaticIndexed3D::write(std::ostream & outbuffer) const
   write_IndexBuffer(outbuffer);
 
   // write vertex buffer
-  uint header[2]; // { vertexCount, bufferSize }
-  header[0] = m_layout.m_vertexCount; TRE_ASSERT(m_layout.m_vertexCount <= std::numeric_limits<uint>::max());
-  header[1] = m_VBuffer.size();
+  uint32_t header[2]; // { vertexCount, bufferSize }
+  header[0] = uint32_t(m_layout.m_vertexCount); TRE_ASSERT(m_layout.m_vertexCount <= std::numeric_limits<uint32_t>::max());
+  header[1] = uint32_t(m_VBuffer.size());
   outbuffer.write(reinterpret_cast<const char*>(&header[0]), sizeof(header));
   outbuffer.write(reinterpret_cast<const char*>(m_VBuffer.data()), m_VBuffer.size() * sizeof(GLfloat));
 

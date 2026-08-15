@@ -63,7 +63,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/gl
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 if (WIN32)
-  set(CMAKE_PREFIX_PATH "C:/Users/Marc/Desktop/Programmes/3rdParties")
+  set(CMAKE_PREFIX_PATH "G:/Programmes/3rdParties")
   find_package(GLEW   REQUIRED )
   target_include_directories(${PROJECT_NAME} PUBLIC ${GLEW_INCLUDE_DIR})
 endif()

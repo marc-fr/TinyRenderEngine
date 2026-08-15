@@ -153,44 +153,44 @@ void window::set_fontSize(s_size fontSize)
   set_lineHeight(fontSize);
 }
 
-void window::set_colWidth(uint col, const s_size relWidth)
+void window::set_colWidth(unsigned col, const s_size relWidth)
 {
   TRE_ASSERT(col < wlayout.m_dimension.x);
   m_isUpdateNeededLayout |= (wlayout.m_colsWidth_User[col] == relWidth);
   wlayout.m_colsWidth_User[col] = relWidth;
 }
 
-void window::set_rowHeight(uint row, const s_size relHeight)
+void window::set_rowHeight(unsigned row, const s_size relHeight)
 {
   TRE_ASSERT(row < wlayout.m_dimension.y);
   m_isUpdateNeededLayout |= (wlayout.m_rowsHeight_User[row] == relHeight);
   wlayout.m_rowsHeight_User[row] = relHeight;
 }
 
-void window::set_colAlignment(uint col, uint alignMask)
+void window::set_colAlignment(unsigned col, unsigned alignMask)
 {
   TRE_ASSERT(col < wlayout.m_dimension.x);
   m_isUpdateNeededLayout = true;
-  for (uint row = 0; row < wlayout.m_dimension.y; ++row)
+  for (unsigned row = 0; row < wlayout.m_dimension.y; ++row)
     wlayout.m_cells[wlayout.index(row, col)].m_alignMask = alignMask;
 }
 
-void window::set_rowAlignment(uint row, uint alignMask)
+void window::set_rowAlignment(unsigned row, unsigned alignMask)
 {
   TRE_ASSERT(row < wlayout.m_dimension.y);
   m_isUpdateNeededLayout = true;
-  for (uint col = 0; col < wlayout.m_dimension.x; ++col)
+  for (unsigned col = 0; col < wlayout.m_dimension.x; ++col)
     wlayout.m_cells[wlayout.index(row, col)].m_alignMask = alignMask;
 }
 
-void window::set_colSpacement(uint col, const s_size width, const bool atLeft)
+void window::set_colSpacement(unsigned col, const s_size width, const bool atLeft)
 {
   TRE_ASSERT(col < wlayout.m_dimension.x);
   m_isUpdateNeededLayout = true;
   wlayout.m_colsInbetweenSpace[col + (atLeft ? 0u : 1u)] = width;
 }
 
-void window::set_rowSpacement(uint row, const s_size height, const bool atTop)
+void window::set_rowSpacement(unsigned row, const s_size height, const bool atTop)
 {
   TRE_ASSERT(row < wlayout.m_dimension.y);
   m_isUpdateNeededLayout = true;
@@ -235,7 +235,7 @@ glm::vec2 window::resolve_pixelOffset() const
 
 // interface with widgets -----------------------------------------------------
 
-void window::set_widget(widget * w, uint row, uint col, const uint span_row, const uint span_col)
+void window::set_widget(widget * w, unsigned row, unsigned col, const unsigned span_row, const unsigned span_col)
 {
   s_layoutGrid::s_cell &cell = wlayout.m_cells[wlayout.index(row, col)];
 
@@ -299,7 +299,7 @@ void window::compute_adressPlage()
   {
     widget::s_drawElementCount ad;
     ad.m_vcountSolid = 6; // the window's box
-    std::array<uint, baseUI::s_textureSlotsCount> offsetVertexPerSlot;
+    std::array<unsigned, baseUI::s_textureSlotsCount> offsetVertexPerSlot;
     offsetVertexPerSlot.fill(0u);
     for(const auto &cell : wlayout.m_cells)
     {

@@ -4,6 +4,8 @@ namespace tre {
 
 static_assert(SDL_BYTEORDER == SDL_LIL_ENDIAN  , "Only implemented with little-endian system.");
 
+typedef unsigned uint;
+
 // ============================================================================
 
 static inline float _errorRGB8(const glm::ivec3 &d_rgb) // perceptual error [0,1]

@@ -46,7 +46,7 @@ static tre::ui::window  *worldWin;
 // Scene variables
 
 static unsigned textureId = 0;
-static unsigned textureId_prev = -1u;
+static unsigned textureId_prev = -1;
 static const unsigned texturesCount = unsigned(texturesPathDefault.size());
 
 static unsigned shaderMode = 0;

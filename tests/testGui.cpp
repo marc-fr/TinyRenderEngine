@@ -26,8 +26,8 @@ struct s_sceneOption
   int   m_ui_sizePixel = 16;   // main window's font-size (in pixels)
   int   m_ui_cellMargin = 1;   // main window's cells margin
   int   m_ui_col0Spacing = 0;  // main window's spacing between column 0 and 1
-  uint  m_ui_colorTheme = 0;   // (all) windows' color theme
-  uint  m_ui_language = 0;     // (all) windows' language
+  int   m_ui_colorTheme = 0;   // (all) windows' color theme
+  int   m_ui_language = 0;     // (all) windows' language
 };
 
 // =============================================================================

@@ -12,8 +12,7 @@
 #endif
 
 #include <math.h>
-#include <stdlib.h> // rand,srand
-#include <time.h>   // time
+#include <random>
 #include <string>
 
 #ifndef TESTIMPORTPATH
@@ -58,6 +57,10 @@ static tre::font          font;
 static tre::modelRaw2D    meshFps;
 #endif
 
+static std::uniform_real_distribution kRand1(-1.f, 1.f);
+static std::uniform_real_distribution kRand01(0.f, 1.f);
+static std::mt19937                   kRNG;
+
 template <std::size_t _size>
 struct s_particleBatch
 {
@@ -78,16 +81,15 @@ public:
 
   void update(float dt)
   {
-    static const float invRandMax = 1.f / float(RAND_MAX);
     for (std::size_t i = 0; i < _size; ++i)
     {
       if ((m_life[i] += dt) > m_lifeEnd[i])
       {
-        m_pos[i] = glm::vec4(std::rand() * 2.f * invRandMax - 1.f, -1.f, std::rand() * 2.f * invRandMax - 1.f, std::rand() * 6.28f * invRandMax);
-        const float colorCursor = std::rand() * invRandMax;
+        m_pos[i] = glm::vec4(kRand1(kRNG), -1.f, kRand1(kRNG), kRand01(kRNG) * 6.28f);
+        const float colorCursor = kRand01(kRNG);
         m_color[i] = glm::vec4(colorCursor, 2.f * colorCursor * (1.f - colorCursor), 1.f - colorCursor, 1.f);
         m_life[i] = 0.f;
-        m_lifeEnd[i] = 1.f + std::rand() * 4.f * invRandMax;
+        m_lifeEnd[i] = 1.f + 4.f * kRand01(kRNG);
       }
     }
   }
@@ -130,7 +132,9 @@ static int app_init()
     return -3;
 
   // - random generator
-  srand(time(nullptr));
+  
+  std::random_device rd;
+  kRNG.seed(rd());
 
   // - load mesh
 

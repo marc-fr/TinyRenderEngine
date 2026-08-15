@@ -29,7 +29,7 @@ struct s_partProcessingContext
 
   // Results
   std::vector<glm::vec2> m_envelop2D;
-  std::vector<uint>      m_tetrahedrons;
+  std::vector<unsigned> m_tetrahedrons;
   glm::vec3              m_center;
   float                  m_volume;
 
@@ -96,14 +96,14 @@ struct s_partProcessingContext
       for (std::size_t ip = 0; ip < m_envelop2D.size(); ++ip)
       {
         *posIt++ = glm::vec3(m_envelop2D[ip], 0.f); // pos
-        *dataI++ = uint(vOffset + ip);
-        *dataI++ = uint(vOffset + (ip == m_envelop2D.size() - 1 ? 0 : ip + 1));
+        *dataI++ = unsigned(vOffset + ip);
+        *dataI++ = unsigned(vOffset + (ip == m_envelop2D.size() - 1 ? 0 : ip + 1));
       }
     }
 
     // create center-cross + the bbox mesh
     {
-      const std::array<uint, 6> indices = { 0, 1, 2, 3, 4, 5};
+      const std::array<unsigned, 6> indices = { 0, 1, 2, 3, 4, 5};
       const float vertices[] = { m_center.x - 0.1f, m_center.y, m_center.z,
                                  m_center.x + 0.1f, m_center.y, m_center.z,
                                  m_center.x, m_center.y - 0.1f, m_center.z,
@@ -276,6 +276,7 @@ static int app_init(int argc, char **argv)
   // - Arguments
 
   char meshFile[256] = TESTIMPORTPATH "resources/objects.obj";
+  //char meshFile[256] = TESTIMPORTPATH "resources/Scotty.glb";
 
   if (argc >= 2)
   {

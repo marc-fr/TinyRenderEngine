@@ -114,10 +114,10 @@ public:
 
     float scenetime = 0.f;
 
-    uint ndata = 0;
+    unsigned ndata = 0;
 
     void initialize();
-    void newFrame(const uint waitForFPS /* = 0 means no wait */, const bool isSimPaused);
+    void newFrame(const int waitForFPS /* = 0 means no wait */, const bool isSimPaused);
     void endFrame_beforeGPUPresent(); // optionnal (needed to distinguish the work-time and the frame-time)
   };
 

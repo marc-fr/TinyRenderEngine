@@ -13,7 +13,7 @@ namespace tre {
 
 void font::s_fontMap::read(std::istream &inbuffer)
 {
-  inbuffer.read(reinterpret_cast<char*>(&m_fsize), sizeof(uint));
+  inbuffer.read(reinterpret_cast<char*>(&m_fsize), sizeof(unsigned));
   inbuffer.read(reinterpret_cast<char*>(&m_hline), sizeof(float));
   inbuffer.read(reinterpret_cast<char*>(&m_charMap[0]), sizeof(s_charInfo) * m_charMap.size());
 }
@@ -22,7 +22,7 @@ void font::s_fontMap::read(std::istream &inbuffer)
 
 void font::s_fontMap::write(std::ostream &outbuffer) const
 {
-  outbuffer.write(reinterpret_cast<const char*>(&m_fsize) , sizeof(uint));
+  outbuffer.write(reinterpret_cast<const char*>(&m_fsize) , sizeof(unsigned));
   outbuffer.write(reinterpret_cast<const char*>(&m_hline) , sizeof(float));
   outbuffer.write(reinterpret_cast<const char*>(&m_charMap[0]) , sizeof(s_charInfo) * m_charMap.size());
 }
@@ -47,7 +47,7 @@ font::s_fontCache font::loadFromBMPandFNT(const std::string &filebasename)
 
 // ----------------------------------------------------------------------------
 
-font::s_fontCache font::loadFromTTF(const std::string &filename, const uint fontSizePixel)
+font::s_fontCache font::loadFromTTF(const std::string &filename, const unsigned fontSizePixel)
 {
   s_fontCache ret;
   ret.m_surface = nullptr;
@@ -86,7 +86,7 @@ font::s_fontCache font::loadFromTTF(const std::string &filename, const uint font
     return ret;
   }
 
-  const uint texSize = (2 + (fontSizePixel * 9) / 16) * 16; // ad-hoc formula
+  const unsigned texSize = (2 + (fontSizePixel * 9) / 16) * 16; // ad-hoc formula
   ret.m_surface = SDL_CreateRGBSurface(0, texSize, texSize, 32, 0, 0, 0, 0);
   if (ret.m_surface == nullptr)
   {
@@ -101,13 +101,13 @@ font::s_fontCache font::loadFromTTF(const std::string &filename, const uint font
 
   const float faceDescent = float(face->descender) / float(face->height);
 
-  uint *outPixels = reinterpret_cast<uint*>(ret.m_surface->pixels);
+  unsigned *outPixels = reinterpret_cast<unsigned*>(ret.m_surface->pixels);
 
   {
     glm::uvec2 posGlyph = glm::uvec2(1);
     glm::uvec2 posMax = glm::uvec2(0);
 
-    uint unicode = 32;
+    unsigned unicode = 32;
 
     while (unicode < 256)
     {
@@ -129,13 +129,13 @@ font::s_fontCache font::loadFromTTF(const std::string &filename, const uint font
           break;
         }
         // convert freetype mono-bitmap into SDL_RGBA8 sub-texture
-        for (uint iy = 0, iyStop = sizeGlyph.y; iy < iyStop; ++iy)
+        for (unsigned iy = 0, iyStop = sizeGlyph.y; iy < iyStop; ++iy)
         {
-          for (uint ix = 0, ixStop = glyph->bitmap.width; ix < ixStop; ++ix)
+          for (unsigned ix = 0, ixStop = glyph->bitmap.width; ix < ixStop; ++ix)
           {
             const unsigned char coverage = glyph->bitmap.buffer[iy * glyph->bitmap.pitch + ix];
             // only need alpha, because the texture is loaded with texture::MMASK_ALPHA_ONLY. rgb values are set for debuging purpose
-            const uint          rgba = 0x01010101 * coverage;
+            const unsigned          rgba = 0x01010101 * coverage;
              outPixels[(posGlyph.y + iy) * texSize + posGlyph.x + ix] = rgba;
           }
         }
@@ -206,7 +206,7 @@ struct s_rawGliph
 // X...X -> 0x11
 // X...X -> 0x11
 
-static const uint _kLED_size = 76;
+static const unsigned _kLED_size = 76;
 
 static const s_rawGliph _kLED_gliph[_kLED_size] = { { {0x0E, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11, 'A'}, 0, 0 },
                                                     { {0x1E, 0x11, 0x11, 0x1E, 0x11, 0x11, 0x1E, 'B'}, 0, 0 },
@@ -286,16 +286,16 @@ static const s_rawGliph _kLED_gliph[_kLED_size] = { { {0x0E, 0x11, 0x11, 0x1F, 0
                                                     { {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, ' '}, 0, 1 },
                                                   };
 
-font::s_fontCache font::loadProceduralLed(const uint ptSize, const uint ptMargin)
+font::s_fontCache font::loadProceduralLed(const unsigned ptSize, const unsigned ptMargin)
 {
   TRE_ASSERT(ptSize != 0);
-  const uint ptSpan = ptSize + ptMargin;
-  const uint gliphW = 5 * ptSize + 4 * ptMargin;
-  const uint gliphH = 7 * ptSize + 6 * ptMargin;
-  const uint spanW = gliphW + 2 * ptSize;
-  const uint spanH = gliphH + 2 * ptSize;
-  const uint W = spanW * 8;
-  const uint H = spanH * 12;
+  const unsigned ptSpan = ptSize + ptMargin;
+  const unsigned gliphW = 5 * ptSize + 4 * ptMargin;
+  const unsigned gliphH = 7 * ptSize + 6 * ptMargin;
+  const unsigned spanW = gliphW + 2 * ptSize;
+  const unsigned spanH = gliphH + 2 * ptSize;
+  const unsigned W = spanW * 8;
+  const unsigned H = spanH * 12;
 
   s_fontCache ret;
 
@@ -315,13 +315,13 @@ font::s_fontCache font::loadProceduralLed(const uint ptSize, const uint ptMargin
   int32_t *surfPixel = static_cast<int32_t*>(ret.m_surface->pixels);
   memset(surfPixel, 0, W * H * 4 /*32bits*/);
 
-  for (uint ic = 0; ic < _kLED_size; ++ic)
+  for (unsigned ic = 0; ic < _kLED_size; ++ic)
   {
     s_charInfo &charInfo = ret.m_map.m_charMap[_kLED_gliph[ic].m_keyCode[7]];
     const char *charCode = &_kLED_gliph[ic].m_keyCode[0];
 
-    const uint px = spanW * (ic % 8);
-    const uint py = spanH * (ic / 8);
+    const unsigned px = spanW * (ic % 8);
+    const unsigned py = spanH * (ic / 8);
 
     charInfo.cax = float(px);
     charInfo.cay = float(py);
@@ -332,15 +332,15 @@ font::s_fontCache font::loadProceduralLed(const uint ptSize, const uint ptMargin
     charInfo.yoffs = -float(_kLED_gliph[ic].m_yOffset) * ptSize;
     charInfo.flag = 1;
 
-    for (uint iy = 0; iy < 7; ++iy)
+    for (unsigned iy = 0; iy < 7; ++iy)
     {
-      for (uint ix = 0; ix < 5; ++ix)
+      for (unsigned ix = 0; ix < 5; ++ix)
       {
         const char    pxCode = charCode[iy] & (0x10 >> ix);
         const int32_t pxValue = (pxCode != 0) ? -1 /*0xFFFFFFFF*/ : 0 /*0x00000000*/;
         memset(surfPixel + W * (py + ptSpan * iy) + (px + ptSpan * ix), pxValue, ptSize * 4 /*32bits*/);
       }
-      for (uint iy2 = 1; iy2 < ptSize; ++iy2)
+      for (unsigned iy2 = 1; iy2 < ptSize; ++iy2)
         memcpy(surfPixel + W * (py + ptSpan * iy + iy2) + px,  surfPixel + W * (py + ptSpan * iy) + px, gliphW * 4 /*32bits*/);
     }
   }
@@ -432,9 +432,9 @@ bool font::write(std::ostream &outbuffer, const std::vector<s_fontCache> &fonts,
   TRE_ASSERT(!fonts.empty());
 
   // header
-  uint header[4];
+  unsigned header[4];
   header[0] = FONT_BIN_VERSION;
-  header[1] = uint(fonts.size());
+  header[1] = unsigned(fonts.size());
   header[2] = 0; // unused
   header[3] = 0; // unused
 
@@ -501,7 +501,7 @@ bool font::write(std::ostream &outbuffer, const std::vector<s_fontCache> &fonts,
 
 bool font::read(std::istream &inbuffer)
 {
-  uint header[4];
+  unsigned header[4];
   inbuffer.read(reinterpret_cast<char*>(&header), sizeof(header));
 
   if (header[0] != FONT_BIN_VERSION)
@@ -510,7 +510,7 @@ bool font::read(std::istream &inbuffer)
     return false;
   }
 
-  const uint mapSize = header[1];
+  const unsigned mapSize = header[1];
 
   if (mapSize == 0) return false;
 
@@ -565,8 +565,8 @@ font::s_fontMap font::_readFNT(const std::string &fileFNT)
   }
   std::getline(myFile,line); //header page
   std::getline(myFile,line); //header chars
-  uint nchar; sscanf(line.data(),"chars count=%d",&nchar);
-  for (uint ichar = 0; ichar < nchar && std::getline(myFile,line) ;++ichar)
+  unsigned nchar; sscanf(line.data(),"chars count=%d",&nchar);
+  for (unsigned ichar = 0; ichar < nchar && std::getline(myFile,line) ;++ichar)
   {
     int id,x,y,wp,hp,xoffs,yoffs,xadvance;
     sscanf(line.data(),"char id=%d x=%d y=%d width=%d height=%d xoffset=%d yoffset=%d xadvance=%d",
@@ -597,10 +597,10 @@ void font::_packTextures(const std::vector<s_fontCache> &caches, SDL_Surface *&p
 
   // sort still needed ?
   /*
-  std::vector<uint> fontsizesPixelOrdered = fontsizesPixel;
+  std::vector<unsigned> fontsizesPixelOrdered = fontsizesPixel;
   sortAndUniqueBull(fontsizesPixelOrdered);
   // reverse
-  for (uint i = 0, iStop = fontsizesPixelOrdered.size(); i < iStop / 2; ++i)
+  for (unsigned i = 0, iStop = fontsizesPixelOrdered.size(); i < iStop / 2; ++i)
     std::swap(fontsizesPixelOrdered[i], fontsizesPixelOrdered[iStop - 1 - i]);
   */
 
@@ -623,7 +623,7 @@ void font::_packTextures(const std::vector<s_fontCache> &caches, SDL_Surface *&p
 
     coords[it] = glm::ivec4(posBlock, sizetexture);
 
-    const uint extendedWidth = (sizetexture.x & ~0x000F) + 0x0010;
+    const unsigned extendedWidth = (sizetexture.x & ~0x000F) + 0x0010;
     const glm::ivec2 sizeBlock = glm::ivec2(extendedWidth, sizetexture.y);
 
     if (coordMax.x < posBlock.x + sizetexture.x) coordMax.x = posBlock.x + sizeBlock.x;
@@ -647,7 +647,7 @@ void font::_packTextures(const std::vector<s_fontCache> &caches, SDL_Surface *&p
 
 // ----------------------------------------------------------------------------
 
-const font::s_fontMap &font::get_bestFontMap(uint fontSizePixel) const
+const font::s_fontMap &font::get_bestFontMap(unsigned fontSizePixel) const
 {
   TRE_ASSERT(!m_fontMaps.empty());
 

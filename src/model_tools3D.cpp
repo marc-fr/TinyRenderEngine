@@ -15,14 +15,14 @@ namespace tre {
 
 // == Helpers =================================================================
 
-static void _computeConnectivity_vert2tri(const s_modelDataLayout &data, std::size_t offset, std::size_t count, std::vector<std::vector<uint> > &vertexToTriangles)
+static void _computeConnectivity_vert2tri(const s_modelDataLayout &data, std::size_t offset, std::size_t count, std::vector<std::vector<unsigned> > &vertexToTriangles)
 {
   TRE_ASSERT(data.m_indexCount > 0);
   vertexToTriangles.clear();
   vertexToTriangles.resize(data.m_vertexCount);
   const std::size_t istop = offset + count;
   std::size_t       i = offset;
-  uint              iT = 0;
+  unsigned          iT = 0;
   for (; i < istop; i+=3, iT++)
   {
     vertexToTriangles[data.m_index[i + 0]].push_back(iT);
@@ -37,9 +37,9 @@ struct s_starCollapser
 {
   struct s_pt
   {
-    float x,y,z; uint ind;
+    float x,y,z; unsigned ind;
     s_pt() : x(0.f), y(0.f), z(0.f), ind(0) {}
-    s_pt(const glm::vec3 &p, uint i) : x(p.x), y(p.y), z(p.z), ind(i) {}
+    s_pt(const glm::vec3 &p, unsigned i) : x(p.x), y(p.y), z(p.z), ind(i) {}
     glm::vec3 operator-(const s_pt &other) const { return glm::vec3(other.x - x, other.y - y, other.z - z); }
   };
   s_pt              center;
@@ -47,7 +47,7 @@ struct s_starCollapser
   std::vector<s_pt> edges;
   std::vector<s_pt> belt;
 
-  void init(const s_modelDataLayout &layout, const uint indCenter, const std::size_t triangleCount)
+  void init(const s_modelDataLayout &layout, const int indCenter, const std::size_t triangleCount)
   {
     center = s_pt(layout.m_positions.get<glm::vec3>(indCenter), indCenter);
     ntri = triangleCount;
@@ -56,7 +56,7 @@ struct s_starCollapser
     belt.clear();
   }
 
-  bool addTri(const s_modelDataLayout &layout, uint ai, uint bi, uint ci)
+  bool addTri(const s_modelDataLayout &layout, unsigned ai, unsigned bi, unsigned ci)
   {
     ai = layout.m_index[ai];
     bi = layout.m_index[bi];
@@ -90,8 +90,8 @@ struct s_starCollapser
     {
       for (std::size_t ic = 0; ic < edges.size() / 2; ++ic)
       {
-        const uint indB1 = edges[ic * 2 + 0].ind;
-        const uint indB2 = edges[ic * 2 + 1].ind;
+        const unsigned indB1 = edges[ic * 2 + 0].ind;
+        const unsigned indB2 = edges[ic * 2 + 1].ind;
         if (indB1 == belt.back().ind)
         {
           belt.push_back(edges[ic * 2 + 1]);
@@ -147,7 +147,7 @@ struct s_starCollapser
     return ret;
   }
 
-  bool collapse(std::vector<uint> &outIndex)
+  bool collapse(std::vector<unsigned> &outIndex)
   {
     TRE_ASSERT(belt.size() == ntri && edges.empty());
     outIndex.clear();
@@ -190,7 +190,7 @@ struct s_starCollapser
     }
 #endif
     // -> end
-    for (uint &ind : outIndex) ind = belt[ind].ind;
+    for (unsigned &ind : outIndex) ind = belt[ind].ind;
     return true;
     // naive (and invalid !)
     for (std::size_t ib = 0; ib < belt.size() - 2; ++ib)
@@ -325,9 +325,9 @@ void computeSkin3D(const s_modelDataLayout &layout, const s_partInfo &part, std:
   {
     for (std::size_t iT = 0; iT < part.m_size; iT += 3)
     {
-      const uint ind0 = layout.m_index[part.m_offset + iT + 0];
-      const uint ind1 = layout.m_index[part.m_offset + iT + 1];
-      const uint ind2 = layout.m_index[part.m_offset + iT + 2];
+      const unsigned ind0 = layout.m_index[part.m_offset + iT + 0];
+      const unsigned ind1 = layout.m_index[part.m_offset + iT + 1];
+      const unsigned ind2 = layout.m_index[part.m_offset + iT + 2];
       const glm::vec3 pt0 = layout.m_positions.get<glm::vec3>(ind0);
       const glm::vec3 pt1 = layout.m_positions.get<glm::vec3>(ind1);
       const glm::vec3 pt2 = layout.m_positions.get<glm::vec3>(ind2);
@@ -348,9 +348,9 @@ void computeSkin3D(const s_modelDataLayout &layout, const s_partInfo &part, std:
   {
     for (std::size_t iT = 0; iT < part.m_size; iT += 3)
     {
-      const uint ind0 = layout.m_index[part.m_offset + iT + 0];
-      const uint ind1 = layout.m_index[part.m_offset + iT + 1];
-      const uint ind2 = layout.m_index[part.m_offset + iT + 2];
+      const unsigned ind0 = layout.m_index[part.m_offset + iT + 0];
+      const unsigned ind1 = layout.m_index[part.m_offset + iT + 1];
+      const unsigned ind2 = layout.m_index[part.m_offset + iT + 2];
       const glm::vec3 pt0 = layout.m_positions.get<glm::vec3>(ind0);
       const glm::vec3 pt1 = layout.m_positions.get<glm::vec3>(ind1);
       const glm::vec3 pt2 = layout.m_positions.get<glm::vec3>(ind2);
@@ -431,13 +431,13 @@ void computeOutNormal(const s_modelDataLayout &layout, const s_partInfo &part, c
   else
   {
     TRE_ASSERT(offset + count <= layout.m_indexCount);
-    std::vector<std::vector<uint> > connectivity;
+    std::vector<std::vector<unsigned> > connectivity;
     _computeConnectivity_vert2tri(layout, offset, count, connectivity);
     for (std::size_t iV = 0; iV < layout.m_vertexCount; ++iV)
     {
       if (connectivity[iV].empty()) continue;
       glm::vec3 normal = glm::vec3(0.f);
-      for (const uint tri : connectivity[iV]) normal += normalPerTri[tri]; // for each vertex, the normal is the weigthed normal of all neighbor triangles
+      for (const unsigned tri : connectivity[iV]) normal += normalPerTri[tri]; // for each vertex, the normal is the weigthed normal of all neighbor triangles
       layout.m_normals.get<glm::vec3>(iV) = glm::normalize(normal);
     }
   }
@@ -539,16 +539,16 @@ void computeTangentFromUV(const s_modelDataLayout &layout, const s_partInfo &par
 struct s_decimateExporter
 {
   std::ofstream rawOBJ;
-  uint          offsetVert = 1;
+  unsigned      offsetVert = 1;
 
   s_decimateExporter(const std::string &filename) { rawOBJ.open(filename.c_str(), std::ofstream::out); if (rawOBJ.is_open()) rawOBJ << "# WAVEFRONT data - export skin" << std::endl; }
   ~s_decimateExporter() { rawOBJ.close(); }
 
-  uint writeVertex(const s_modelDataLayout &layout, const uint vind, std::vector<glm::uvec2> &remapInd)
+  unsigned writeVertex(const s_modelDataLayout &layout, const unsigned vind, std::vector<glm::uvec2> &remapInd)
   {
-    uint       vIndE = uint(-1);
+    unsigned       vIndE = unsigned(-1);
     for (const auto &r : remapInd) { if (r.x == vind) { vIndE = r.y; break; } }
-    if (vIndE == uint(-1))
+    if (vIndE == unsigned(-1))
     {
       rawOBJ << "v " << layout.m_positions.get<glm::vec3>(vind) << std::endl;
       vIndE = offsetVert++;
@@ -557,7 +557,7 @@ struct s_decimateExporter
     return vIndE;
   }
 
-  void report_processedStar(const std::size_t iter, const uint ivert, const std::size_t indexOffset, const std::vector<uint> &inTriangles, const std::vector<uint> &outIndices, const s_modelDataLayout &layout)
+  void report_processedStar(const std::size_t iter, const unsigned ivert, const std::size_t indexOffset, const std::vector<unsigned> &inTriangles, const std::vector<unsigned> &outIndices, const s_modelDataLayout &layout)
   {
     if (!rawOBJ.is_open()) return;
     std::vector<glm::uvec2> remapInd; // {.x: index in the mesh, .y: index in the export}
@@ -566,7 +566,7 @@ struct s_decimateExporter
     remapInd.clear();
     for (std::size_t i = 0; i < inTriangles.size(); ++i)
     {
-      uint triIndE[3];
+      unsigned triIndE[3];
       triIndE[0] = writeVertex(layout, layout.m_index[indexOffset + inTriangles[i] * 3 + 0], remapInd);
       triIndE[1] = writeVertex(layout, layout.m_index[indexOffset + inTriangles[i] * 3 + 1], remapInd);
       triIndE[2] = writeVertex(layout, layout.m_index[indexOffset + inTriangles[i] * 3 + 2], remapInd);
@@ -577,7 +577,7 @@ struct s_decimateExporter
     remapInd.clear();
     for (std::size_t i = 0; i < outIndices.size(); i += 3)
     {
-      uint triIndE[3];
+      unsigned triIndE[3];
       triIndE[0] = writeVertex(layout, outIndices[i + 0], remapInd);
       triIndE[1] = writeVertex(layout, outIndices[i + 1], remapInd);
       triIndE[2] = writeVertex(layout, outIndices[i + 2], remapInd);
@@ -585,7 +585,7 @@ struct s_decimateExporter
     }
   }
 
-  void report_invalidStar(const std::size_t iter, const uint ivert, const std::size_t indexOffset, const std::vector<uint> &inTriangles, const s_modelDataLayout &layout, const char *msg)
+  void report_invalidStar(const std::size_t iter, const unsigned ivert, const std::size_t indexOffset, const std::vector<unsigned> &inTriangles, const s_modelDataLayout &layout, const char *msg)
   {
     if (!rawOBJ.is_open()) return;
     std::vector<glm::uvec2> remapInd; // {.x: index in the mesh, .y: index in the export}
@@ -594,7 +594,7 @@ struct s_decimateExporter
     remapInd.clear();
     for (std::size_t i = 0; i < inTriangles.size(); ++i)
     {
-      uint triIndE[3];
+      unsigned triIndE[3];
       triIndE[0] = writeVertex(layout, layout.m_index[indexOffset + inTriangles[i] * 3 + 0], remapInd);
       triIndE[1] = writeVertex(layout, layout.m_index[indexOffset + inTriangles[i] * 3 + 1], remapInd);
       triIndE[2] = writeVertex(layout, layout.m_index[indexOffset + inTriangles[i] * 3 + 2], remapInd);
@@ -609,8 +609,8 @@ struct s_decimateExporter
 {
   s_decimateExporter(const char *) {};
 
-  void report_processedStar(const std::size_t, const uint, const std::size_t, const std::vector<uint>&, const std::vector<uint>&, const s_modelDataLayout&) {}
-  void report_invalidStar(const std::size_t, const uint, const std::size_t, const std::vector<uint>&, const s_modelDataLayout&, const char*) {}
+  void report_processedStar(const std::size_t, const unsigned, const std::size_t, const std::vector<unsigned>&, const std::vector<unsigned>&, const s_modelDataLayout&) {}
+  void report_invalidStar(const std::size_t, const unsigned, const std::size_t, const std::vector<unsigned>&, const s_modelDataLayout&, const char*) {}
 };
 
 #endif // MESH_DEBUG
@@ -653,9 +653,9 @@ std::size_t decimateCurvature(modelIndexed &model, const std::size_t ipartIn, co
   std::size_t Niter = 0;
   std::size_t Ntri = countIn / 3;
 
-  std::vector<std::vector<uint> > vertexToTri;
+  std::vector<std::vector<unsigned> > vertexToTri;
   std::vector<bool>               triangleProcessed;
-  std::vector<uint>               triangleToRemove;
+  std::vector<unsigned>               triangleToRemove;
 
   while(++Niter < 1024)
   {
@@ -671,7 +671,7 @@ std::size_t decimateCurvature(modelIndexed &model, const std::size_t ipartIn, co
     // 2.3 loop over vertices
     for (unsigned ivert = 0, vcount = unsigned(layout.m_vertexCount); ivert < vcount; ++ivert)
     {
-      const std::vector<uint> &triangles = vertexToTri[ivert];
+      const std::vector<unsigned> &triangles = vertexToTri[ivert];
 
       // -> ignore stars with less than 3 triangles
       if (triangles.size() < 3) continue;
@@ -679,7 +679,7 @@ std::size_t decimateCurvature(modelIndexed &model, const std::size_t ipartIn, co
       // -> ignore stars with processed triangle(s) because the connectivity has not been updated yet.
       {
         bool hasProcessedTri = false;
-        for (uint tri : triangles) hasProcessedTri |= triangleProcessed[tri];
+        for (unsigned tri : triangles) hasProcessedTri |= triangleProcessed[tri];
         if (hasProcessedTri) continue;
       }
 
@@ -687,7 +687,7 @@ std::size_t decimateCurvature(modelIndexed &model, const std::size_t ipartIn, co
       {
         bool starValid = true;
         star.init(layout, ivert, triangles.size());
-        for (uint tri : triangles) starValid &= star.addTri(layout, indexOffset + tri * 3 + 0, indexOffset + tri * 3 + 1, indexOffset + tri * 3 + 2);
+        for (unsigned tri : triangles) starValid &= star.addTri(layout, indexOffset + tri * 3 + 0, indexOffset + tri * 3 + 1, indexOffset + tri * 3 + 2);
         if (!starValid) continue;
       }
       if (!star.computeClosedBelt())
@@ -701,7 +701,7 @@ std::size_t decimateCurvature(modelIndexed &model, const std::size_t ipartIn, co
         continue;
       }
 
-      std::vector<uint> indicesNew;
+      std::vector<unsigned> indicesNew;
       if (!star.collapse(indicesNew))
       {
         exporter.report_invalidStar(Niter, ivert, indexOffset, triangles, layout, "collapse");
@@ -714,23 +714,23 @@ std::size_t decimateCurvature(modelIndexed &model, const std::size_t ipartIn, co
       // set new indices in the mesh's index-buffer
       for (std::size_t it = 0; it < triangles.size() - 2; ++it)
       {
-        const uint Itri = triangles[it];
+        const unsigned Itri = triangles[it];
         layout.m_index[indexOffset + Itri * 3 + 0] = indicesNew[3 * it + 0];
         layout.m_index[indexOffset + Itri * 3 + 1] = indicesNew[3 * it + 1];
         layout.m_index[indexOffset + Itri * 3 + 2] = indicesNew[3 * it + 2];
       }
       triangleToRemove.push_back(triangles[triangles.size() - 2]);
       triangleToRemove.push_back(triangles[triangles.size() - 1]);
-      for (uint tri : triangles) triangleProcessed[tri] = true;
+      for (unsigned tri : triangles) triangleProcessed[tri] = true;
     }
 
     // 3. Clear triangles
     TRE_LOG("decimate Curvature: New step with Ntriangles = " << Ntri << ", Triangles removed = " << triangleToRemove.size());
     if (triangleToRemove.empty()) break;
-    sortQuick<uint>(triangleToRemove);
+    sortQuick<unsigned>(triangleToRemove);
     for (std::size_t k = 0; k < triangleToRemove.size(); ++k)
     {
-      const uint Itri = triangleToRemove[triangleToRemove.size() - k - 1];
+      const unsigned Itri = triangleToRemove[triangleToRemove.size() - k - 1];
       // copy the last into the triangle "Itri"
       Ntri--;
       layout.m_index[indexOffset + Itri * 3 + 0] = layout.m_index[indexOffset + Ntri * 3 + 0];
@@ -774,10 +774,10 @@ std::size_t decimateVoxel(modelIndexed &model, const std::size_t ipartIn, const 
 
   // pre-step: fill the 3d-grid
 
-  std::vector<uint> gridVind(gridDim.x * gridDim.y * gridDim.z, 0);
+  std::vector<unsigned> gridVind(gridDim.x * gridDim.y * gridDim.z, 0);
   for (std::size_t i = offsetIn, stop = offsetIn + countIn; i < stop; ++i)
   {
-    const uint ind = layout.m_index[i];
+    const unsigned ind = layout.m_index[i];
     const glm::vec3  pos = layout.m_positions.get<glm::vec3>(ind);
     const glm::ivec3 posI =  glm::ivec3((pos - gridMin) / gridResolution);
     const int        g = (posI.z * gridDim.y + posI.y) * gridDim.x + posI.x;
@@ -792,11 +792,11 @@ std::size_t decimateVoxel(modelIndexed &model, const std::size_t ipartIn, const 
   std::size_t verticesNew = 0;
   if (keepSharpEdges)
   {
-    for (const uint gvind : gridVind) verticesNew += gvind;
+    for (const unsigned gvind : gridVind) verticesNew += gvind;
   }
   else
   {
-    for (const uint gvind : gridVind) verticesNew += (gvind >= 2) ? 1 : 0;
+    for (const unsigned gvind : gridVind) verticesNew += (gvind >= 2) ? 1 : 0;
   }
 
   // allocate mesh data
@@ -823,16 +823,16 @@ std::size_t decimateVoxel(modelIndexed &model, const std::size_t ipartIn, const 
       int       c = 0;
       for (std::size_t iT = 0; iT < Ntri; ++iT)
       {
-        const uint indA = layout.m_index[offsetOut + iT * 3 + 0];
-        const uint indB = layout.m_index[offsetOut + iT * 3 + 1];
-        const uint indC = layout.m_index[offsetOut + iT * 3 + 2];
+        const unsigned indA = layout.m_index[offsetOut + iT * 3 + 0];
+        const unsigned indB = layout.m_index[offsetOut + iT * 3 + 1];
+        const unsigned indC = layout.m_index[offsetOut + iT * 3 + 2];
         const glm::ivec3 posA = glm::ivec3((layout.m_positions.get<glm::vec3>(indA) - gridMin) / gridResolution);
         const glm::ivec3 posB = glm::ivec3((layout.m_positions.get<glm::vec3>(indB) - gridMin) / gridResolution);
         const glm::ivec3 posC = glm::ivec3((layout.m_positions.get<glm::vec3>(indC) - gridMin) / gridResolution);
         const int gA = (posA.z * gridDim.y + posA.y) * gridDim.x + posA.x;
         const int gB = (posB.z * gridDim.y + posB.y) * gridDim.x + posB.x;
         const int gC = (posC.z * gridDim.y + posC.y) * gridDim.x + posC.x;
-        const uint flag = (gA == ik) * 0x1 + (gB == ik) * 0x2 + (gC == ik) * 0x4;
+        const unsigned flag = (gA == ik) * 0x1 + (gB == ik) * 0x2 + (gC == ik) * 0x4;
         if (gA == ik) { vpos += layout.m_positions.get<glm::vec3>(indA); c += 1; }
         if (gB == ik) { vpos += layout.m_positions.get<glm::vec3>(indB); c += 1; }
         if (gC == ik) { vpos += layout.m_positions.get<glm::vec3>(indC); c += 1; }
@@ -852,15 +852,15 @@ std::size_t decimateVoxel(modelIndexed &model, const std::size_t ipartIn, const 
           for (std::size_t j = 0; j < triCollected.size();)
           {
             const glm::uvec2 tri = triCollected[j];
-            const uint indA = layout.m_index[offsetOut + tri.x * 3 + 0];
-            const uint indB = layout.m_index[offsetOut + tri.x * 3 + 1];
-            const uint indC = layout.m_index[offsetOut + tri.x * 3 + 2];
+            const unsigned indA = layout.m_index[offsetOut + tri.x * 3 + 0];
+            const unsigned indB = layout.m_index[offsetOut + tri.x * 3 + 1];
+            const unsigned indC = layout.m_index[offsetOut + tri.x * 3 + 2];
             bool hasSharedPoint = false;
             for (const auto &triB : triToProcess)
             {
-              const uint otherA = layout.m_index[offsetOut + triB.x * 3 + 0];
-              const uint otherB = layout.m_index[offsetOut + triB.x * 3 + 1];
-              const uint otherC = layout.m_index[offsetOut + triB.x * 3 + 2];
+              const unsigned otherA = layout.m_index[offsetOut + triB.x * 3 + 0];
+              const unsigned otherB = layout.m_index[offsetOut + triB.x * 3 + 1];
+              const unsigned otherC = layout.m_index[offsetOut + triB.x * 3 + 2];
               const int cmm = (indA == otherA) | (indA == otherB) | (indA == otherC) |
                               (indB == otherA) | (indB == otherB) | (indB == otherC) |
                               (indC == otherA) | (indC == otherB) | (indC == otherC);
@@ -888,26 +888,26 @@ std::size_t decimateVoxel(modelIndexed &model, const std::size_t ipartIn, const 
         bool duplicated = false;
         for (const auto &tri : triToProcess)
         {
-          uint &indA = layout.m_index[offsetOut + tri.x * 3 + 0];
-          uint &indB = layout.m_index[offsetOut + tri.x * 3 + 1];
-          uint &indC = layout.m_index[offsetOut + tri.x * 3 + 2];
+          unsigned &indA = layout.m_index[offsetOut + tri.x * 3 + 0];
+          unsigned &indB = layout.m_index[offsetOut + tri.x * 3 + 1];
+          unsigned &indC = layout.m_index[offsetOut + tri.x * 3 + 2];
           if ((tri.y & 0x1) != 0)
           {
             if (!duplicated) layout.copyVertex(indA, 1, vertexAddOffset);
             duplicated = true;
-            indA = uint(vertexAddOffset);
+            indA = unsigned(vertexAddOffset);
           }
           if ((tri.y & 0x2) != 0)
           {
             if (!duplicated) layout.copyVertex(indB, 1, vertexAddOffset);
             duplicated = true;
-            indB = uint(vertexAddOffset);
+            indB = unsigned(vertexAddOffset);
           }
           if ((tri.y & 0x4) != 0)
           {
             if (!duplicated) layout.copyVertex(indC, 1, vertexAddOffset);
             duplicated = true;
-            indC = uint(vertexAddOffset);
+            indC = unsigned(vertexAddOffset);
           }
         }
         TRE_ASSERT(duplicated);
@@ -921,7 +921,7 @@ std::size_t decimateVoxel(modelIndexed &model, const std::size_t ipartIn, const 
       bool duplicated = false;
       for (std::size_t i = offsetOut, stop = offsetOut + countIn; i < stop; ++i)
       {
-        uint &ind = layout.m_index[i];
+        unsigned &ind = layout.m_index[i];
         const glm::vec3  pos = layout.m_positions.get<glm::vec3>(ind);
         const glm::ivec3 posI =  glm::ivec3((pos - gridMin) / gridResolution);
         const int        g = (posI.z * gridDim.y + posI.y) * gridDim.x + posI.x;
@@ -941,9 +941,9 @@ std::size_t decimateVoxel(modelIndexed &model, const std::size_t ipartIn, const 
 
   for (std::size_t iT = 0; iT < Ntri; )
   {
-    uint &indA = layout.m_index[offsetOut + iT * 3 + 0];
-    uint &indB = layout.m_index[offsetOut + iT * 3 + 1];
-    uint &indC = layout.m_index[offsetOut + iT * 3 + 2];
+    unsigned &indA = layout.m_index[offsetOut + iT * 3 + 0];
+    unsigned &indB = layout.m_index[offsetOut + iT * 3 + 1];
+    unsigned &indC = layout.m_index[offsetOut + iT * 3 + 2];
     if (indA == indB || indA == indC || indB == indC)
     {
       --Ntri;
@@ -972,7 +972,7 @@ struct s_tetrahedron
 {
   const glm::vec3 *ptA, *ptB, *ptC, *ptD;
   s_tetrahedron *adjBCD, *adjACD, *adjABD, *adjABC;
-  uint metadata;
+  unsigned metadata;
   float volume;
 
   enum
@@ -1206,7 +1206,7 @@ struct s_surface
       for (std::size_t j = 0; j < i; ++j)
       {
         s_surface &sj = listSurf[j];
-        const uint key = (si.pt1 == sj.pt1) * 0x001 | (si.pt1 == sj.pt2) * 0x010 | (si.pt1 == sj.pt3) * 0x100 |
+        const unsigned key = (si.pt1 == sj.pt1) * 0x001 | (si.pt1 == sj.pt2) * 0x010 | (si.pt1 == sj.pt3) * 0x100 |
                          (si.pt2 == sj.pt1) * 0x002 | (si.pt2 == sj.pt2) * 0x020 | (si.pt2 == sj.pt3) * 0x200 |
                          (si.pt3 == sj.pt1) * 0x004 | (si.pt3 == sj.pt2) * 0x040 | (si.pt3 == sj.pt3) * 0x400;
         if ((key & 0x111) != 0 && (key & 0x222) != 0) { TRE_ASSERT(si.surf12 == nullptr); si.surf12 = &sj; }
@@ -1379,7 +1379,7 @@ struct s_tetraReporter
     offsetVert += 4;
   }
 
-  void report_Step1_Fail(const std::vector<s_tetrahedron *> &tetraToProcess, const s_surface *s, const glm::vec3 &ptToAdd, uint ptOnSurfCount)
+  void report_Step1_Fail(const std::vector<s_tetrahedron *> &tetraToProcess, const s_surface *s, const glm::vec3 &ptToAdd, unsigned ptOnSurfCount)
   {
     for (std::size_t i = 0; i < tetraToProcess.size(); ++i)
     {
@@ -1486,7 +1486,7 @@ struct s_tetraReporter
 {
   s_tetraReporter(const char *) {}
 
-  void report_Step1_Fail(const std::vector<s_tetrahedron*>&, const s_surface*, const glm::vec3&, uint) {}
+  void report_Step1_Fail(const std::vector<s_tetrahedron*>&, const s_surface*, const glm::vec3&, unsigned) {}
   void report_Step2(const std::vector<s_tetrahedron*>&, const glm::vec3&, const glm::vec3&, const char *) {}
   void report_Step2(const std::vector<s_tetrahedron*>&, const s_meshTriangle&, const char*) {}
   void report_Step3_Interior_Exterior(const tre::chunkVector<s_tetrahedron, 128>&, const char*, const bool withDetails = false) {}
@@ -1496,7 +1496,7 @@ struct s_tetraReporter
 
 // ----------------------------------------------------------------------------
 
-bool tetrahedralize(modelIndexed &model, const std::size_t ipartIn, std::size_t maxTetraCount, bool allowNewVertex, std::vector<uint> &listTetrahedrons)
+bool tetrahedralize(modelIndexed &model, const std::size_t ipartIn, std::size_t maxTetraCount, bool allowNewVertex, std::vector<unsigned> &listTetrahedrons)
 {
   listTetrahedrons.clear();
 
@@ -1543,9 +1543,9 @@ bool tetrahedralize(modelIndexed &model, const std::size_t ipartIn, std::size_t 
 
   // compute the list of points (index list)
 
-  std::vector<uint> indices;
+  std::vector<unsigned> indices;
   indices.resize(part.m_size);
-  memcpy(indices.data(), indicesData, sizeof(uint) * part.m_size);
+  memcpy(indices.data(), indicesData, sizeof(unsigned) * part.m_size);
   sortAndUniqueCounting(indices);
 
   if (indices.size() < 3) return false;
@@ -1555,12 +1555,12 @@ bool tetrahedralize(modelIndexed &model, const std::size_t ipartIn, std::size_t 
 
   // index remapper
 
-  uint              indexRemapperOffset = indices.front();
-  uint              indexRemapperSize = indices.back() + 1 - indices.front();
+  unsigned              indexRemapperOffset = indices.front();
+  unsigned              indexRemapperSize = indices.back() + 1 - indices.front();
   TRE_ASSERT(indices.front() < indices.back());
 
-  std::vector<uint> indexRemapper(indexRemapperSize);
-  for (uint i = 0; i < indexRemapper.size(); ++i) indexRemapper[i] = indexRemapperOffset + i;
+  std::vector<unsigned> indexRemapper(indexRemapperSize);
+  for (unsigned i = 0; i < indexRemapper.size(); ++i) indexRemapper[i] = indexRemapperOffset + i;
 
   // working data
 
@@ -1584,7 +1584,7 @@ bool tetrahedralize(modelIndexed &model, const std::size_t ipartIn, std::size_t 
   listTetra[3] = s_tetrahedron(&boxABB, &boxBBB, &boxAAB, &boxABA, &listTetra[4], nullptr, nullptr, nullptr);
   listTetra[4] = s_tetrahedron(&boxBAA, &boxBBB, &boxAAB, &boxABA, &listTetra[3], &listTetra[0], &listTetra[1], &listTetra[2]);
 
-#define _indP(_p) uint(reinterpret_cast<const float*>(_p) - inPos.m_data) / uint(inPos.m_stride)
+#define _indP(_p) unsigned(reinterpret_cast<const float*>(_p) - inPos.m_data) / unsigned(inPos.m_stride)
 
   // main-step 1: Delaunay triangulation (based on Bowyer-Watson algorithm) without surface-constrain
 
@@ -1661,14 +1661,14 @@ bool tetrahedralize(modelIndexed &model, const std::size_t ipartIn, std::size_t 
     const bool onSurfABD = std::abs(s_surface(tRoot.ptA, tRoot.ptB, tRoot.ptD, nullptr, *tRoot.ptC).volumeSignedWithPoint(*pt)) <= tetraMinVolume;
     const bool onSurfACD = std::abs(s_surface(tRoot.ptA, tRoot.ptC, tRoot.ptD, nullptr, *tRoot.ptB).volumeSignedWithPoint(*pt)) <= tetraMinVolume;
     const bool onSurfBCD = std::abs(s_surface(tRoot.ptB, tRoot.ptC, tRoot.ptD, nullptr, *tRoot.ptA).volumeSignedWithPoint(*pt)) <= tetraMinVolume;
-    const uint onSurfCount = onSurfABC + onSurfABD + onSurfACD + onSurfBCD;
+    const unsigned onSurfCount = onSurfABC + onSurfABD + onSurfACD + onSurfBCD;
     if (onSurfCount >= 3) // pt on vertex
     {
-      const uint ipt = _indP(pt);
-      const uint iptA = _indP(tRoot.ptA);
-      const uint iptB = _indP(tRoot.ptB);
-      const uint iptC = _indP(tRoot.ptC);
-      const uint iptD = _indP(tRoot.ptD);
+      const unsigned ipt = _indP(pt);
+      const unsigned iptA = _indP(tRoot.ptA);
+      const unsigned iptB = _indP(tRoot.ptB);
+      const unsigned iptC = _indP(tRoot.ptC);
+      const unsigned iptD = _indP(tRoot.ptD);
       if (onSurfABC && onSurfABD && onSurfACD && iptA < layout.m_vertexCount) indexRemapper[ipt - indexRemapperOffset] = iptA;
       if (onSurfABC && onSurfABD && onSurfBCD && iptB < layout.m_vertexCount) indexRemapper[ipt - indexRemapperOffset] = iptB;
       if (onSurfABC && onSurfACD && onSurfBCD && iptC < layout.m_vertexCount) indexRemapper[ipt - indexRemapperOffset] = iptC;
@@ -1793,7 +1793,7 @@ bool tetrahedralize(modelIndexed &model, const std::size_t ipartIn, std::size_t 
     }
     if (!isInsertionGeomValid)
     {
-      indexRemapper[_indP(pt) - indexRemapperOffset] = uint(-1);
+      indexRemapper[_indP(pt) - indexRemapperOffset] = unsigned(-1);
       ++indicesFailedCount;
       continue; // insertion failed with this point
     }
@@ -1823,9 +1823,9 @@ bool tetrahedralize(modelIndexed &model, const std::size_t ipartIn, std::size_t 
     for (std::size_t iS = 0; iS < nSurf; ++iS)
     {
       const s_surface &surf = listSurface[iS];
-      const uint surfInd_12 = uint(surf.surf12 - listSurface.data());
-      const uint surfInd_23 = uint(surf.surf23 - listSurface.data());
-      const uint surfInd_31 = uint(surf.surf13 - listSurface.data());
+      const unsigned surfInd_12 = unsigned(surf.surf12 - listSurface.data());
+      const unsigned surfInd_23 = unsigned(surf.surf23 - listSurface.data());
+      const unsigned surfInd_31 = unsigned(surf.surf13 - listSurface.data());
       *listTetraNew[iS] = s_tetrahedron(pt, surf.pt1, surf.pt2, surf.pt3, surf.tetraExterior, listTetraNew[surfInd_23], listTetraNew[surfInd_31], listTetraNew[surfInd_12]);
       if (surf.tetraExterior != nullptr) surf.tetraExterior->setNeigbourTetra(surf.pt1, surf.pt2, surf.pt3, listTetraNew[iS]);
     }
@@ -1866,8 +1866,8 @@ bool tetrahedralize(modelIndexed &model, const std::size_t ipartIn, std::size_t 
 
   if (!indices.empty())
   {
-    for (uint ind : indices) exporter.report_Step1_Fail({}, nullptr, inPos.get<glm::vec3>(ind), 99);
-    for (uint ind : indices) indexRemapper[ind - indexRemapperOffset] = uint(-1);
+    for (unsigned ind : indices) exporter.report_Step1_Fail({}, nullptr, inPos.get<glm::vec3>(ind), 99);
+    for (unsigned ind : indices) indexRemapper[ind - indexRemapperOffset] = unsigned(-1);
     indicesFailedCount += indices.size();
     indices.clear();
   }
@@ -1888,17 +1888,17 @@ bool tetrahedralize(modelIndexed &model, const std::size_t ipartIn, std::size_t 
   {
     s_meshTriangle &tri = inTriangles[jT++];
 
-    const uint indF_raw = _indP(tri.ptF);
-    const uint indG_raw = _indP(tri.ptG);
-    const uint indH_raw = _indP(tri.ptH);
+    const unsigned indF_raw = _indP(tri.ptF);
+    const unsigned indG_raw = _indP(tri.ptG);
+    const unsigned indH_raw = _indP(tri.ptH);
 
-    const uint indF = indexRemapper[indF_raw - indexRemapperOffset];
-    const uint indG = indexRemapper[indG_raw - indexRemapperOffset];
-    const uint indH = indexRemapper[indH_raw - indexRemapperOffset];
+    const unsigned indF = indexRemapper[indF_raw - indexRemapperOffset];
+    const unsigned indG = indexRemapper[indG_raw - indexRemapperOffset];
+    const unsigned indH = indexRemapper[indH_raw - indexRemapperOffset];
 
-    if (indF != uint(-1)) tri.ptF = &inPos.get<glm::vec3>(indF);
-    if (indG != uint(-1)) tri.ptG = &inPos.get<glm::vec3>(indG);
-    if (indH != uint(-1)) tri.ptH = &inPos.get<glm::vec3>(indH);
+    if (indF != unsigned(-1)) tri.ptF = &inPos.get<glm::vec3>(indF);
+    if (indG != unsigned(-1)) tri.ptG = &inPos.get<glm::vec3>(indG);
+    if (indH != unsigned(-1)) tri.ptH = &inPos.get<glm::vec3>(indH);
 
     if ((indF == indG) || (indF == indH) || (indG == indH))
     {
@@ -1909,15 +1909,15 @@ bool tetrahedralize(modelIndexed &model, const std::size_t ipartIn, std::size_t 
       continue; // the mesh's triangle became degenerated. Remove it.
     }
 
-    if ((indF | indG | indH) == uint(-1))
+    if ((indF | indG | indH) == unsigned(-1))
       continue; // the mesh's triangle cannot be reconstructed. Skip it.
 
-    uint keyBest = 0;
+    unsigned keyBest = 0;
     for (std::size_t iT = 0; iT < listTetra.size(); ++iT)
     {
       s_tetrahedron &t = listTetra[iT];
       TRE_ASSERT(t.valid());
-      const uint key = t.hasPoint(tri.ptF) + t.hasPoint(tri.ptG) + t.hasPoint(tri.ptH);
+      const unsigned key = t.hasPoint(tri.ptF) + t.hasPoint(tri.ptG) + t.hasPoint(tri.ptH);
       if (key > keyBest)
       {
         tri.tetraNearby = &t;
@@ -2102,10 +2102,10 @@ bool tetrahedralize(modelIndexed &model, const std::size_t ipartIn, std::size_t 
               else if (tbis == tadjACD) tadjACD = nullptr;
               else if (tbis == tadjBCD) tadjBCD = nullptr;
             }
-            const uint keyABC = (tadjABC != nullptr) ? tadjABC->hasPoint(tri.ptF) + tadjABC->hasPoint(tri.ptG) + tadjABC->hasPoint(tri.ptH) : 0;
-            const uint keyABD = (tadjABD != nullptr) ? tadjABD->hasPoint(tri.ptF) + tadjABD->hasPoint(tri.ptG) + tadjABD->hasPoint(tri.ptH) : 0;
-            const uint keyACD = (tadjACD != nullptr) ? tadjACD->hasPoint(tri.ptF) + tadjACD->hasPoint(tri.ptG) + tadjACD->hasPoint(tri.ptH) : 0;
-            const uint keyBCD = (tadjBCD != nullptr) ? tadjBCD->hasPoint(tri.ptF) + tadjBCD->hasPoint(tri.ptG) + tadjBCD->hasPoint(tri.ptH) : 0;
+            const unsigned keyABC = (tadjABC != nullptr) ? tadjABC->hasPoint(tri.ptF) + tadjABC->hasPoint(tri.ptG) + tadjABC->hasPoint(tri.ptH) : 0;
+            const unsigned keyABD = (tadjABD != nullptr) ? tadjABD->hasPoint(tri.ptF) + tadjABD->hasPoint(tri.ptG) + tadjABD->hasPoint(tri.ptH) : 0;
+            const unsigned keyACD = (tadjACD != nullptr) ? tadjACD->hasPoint(tri.ptF) + tadjACD->hasPoint(tri.ptG) + tadjACD->hasPoint(tri.ptH) : 0;
+            const unsigned keyBCD = (tadjBCD != nullptr) ? tadjBCD->hasPoint(tri.ptF) + tadjBCD->hasPoint(tri.ptG) + tadjBCD->hasPoint(tri.ptH) : 0;
             if (keyABC != 0) listTetraToProcess.push_back(tadjABC);
             if (keyABD != 0) listTetraToProcess.push_back(tadjABD);
             if (keyACD != 0) listTetraToProcess.push_back(tadjACD);
