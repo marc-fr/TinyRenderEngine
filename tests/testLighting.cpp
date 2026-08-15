@@ -65,7 +65,7 @@ tre::shader shaderRaytraced;
 
 tre::renderTarget            rtMain(tre::renderTarget::RT_COLOR | tre::renderTarget::RT_DEPTH | tre::renderTarget::RT_SAMPLABLE | tre::renderTarget::RT_COLOR_HDR);
 tre::renderTarget_ShadowMap  rtShadow;
-tre::postFX_AmbiantOcclusion rtSSAO;
+tre::postFX_AmbiantOcclusion rtAO;
 tre::postFX_ToneMapping      postEffectToneMapping;
 
 const      glm::vec4 roomDiffuse = glm::vec4(0.7f, 0.7f, 0.7f, 1.f);
@@ -83,7 +83,7 @@ const glm::vec3 lightColor = glm::vec3(0.9f,1.3f,0.9f);
 bool  renderMainLight = true;
 float renderAmbiantIntensity = 0.05f;
 bool  renderShadow = true;
-bool  renderSSAO = false;
+int   renderSSAO = 0; // 0:no, 1:ssao, 2:hbao
 
 bool showNormal = false;
 bool showRaytrace = false;
@@ -115,7 +115,6 @@ namespace rayTracer
   int                    bounceLimit = 1;
 
   bool isDurty = false;
-  float lastElapsedTime = 0.f; // [s]
 
   tre::texture textureForRender;
 
@@ -351,6 +350,8 @@ namespace rayTracer
     {
       processThreads[threadId] = std::thread( [threadId]()
       {
+        std::random_device rd;
+        rng.seed(rd()); // (thread local)
         int   localRevision = 0;
         float localAccumCount = 0.f;
         while (processState != STATE_STOP)
@@ -459,9 +460,9 @@ namespace rayTracer
       processStep = (processStep + 1) % 4;
       if (processStep == 0) accumCount += 1.f;
       const systemtick tickEnd = systemclock::now();
-      lastElapsedTime = std::chrono::duration<float, std::milli>(tickEnd - tickStart).count() * 1.e-3f;
+      const float lastElapsedTime = std::chrono::duration<float, std::milli>(tickEnd - tickStart).count() * 1.e-3f;
+      TRE_LOG("rayTrace half-res: " << int(lastElapsedTime * 1.e4f) * 1.e-1f << " ms"); // tmp here
     }
-    TRE_LOG("rayTrace half-res: " << int(lastElapsedTime * 1.e4f) * 1.e-1f << " ms"); // tmp here
 #endif
 
     // Upload the texture
@@ -762,16 +763,17 @@ int app_init(std::string meshPath)
 
   rtShadow.load(1024, 1024);
 
-  rtSSAO.load(myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
-  rtSSAO.set_radius(2.f);
-  rtSSAO.set_strength(0.5f);
+  rtAO.load(myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
+  rtAO.set_radius(0.1f * roomSize);
+  rtAO.set_strength(2.f);
 
   postEffectToneMapping.set_gamma(2.2f);
   postEffectToneMapping.load();
 
   // RNG
 
-  rng.seed();
+  std::random_device rd;
+  rng.seed(rd());
 
   // Ray-Tracer
 
@@ -881,9 +883,10 @@ int app_init(std::string meshPath)
     tre::ui::widget *wSD = worldWin->create_widgetBoxCheck(rowIdx, 1)->set_value(renderShadow)->set_iseditable(true)->set_isactive(true);
     wSD->wcb_modified_ongoing = [](tre::ui::widget *myself) { renderShadow = static_cast<tre::ui::widgetBoxCheck *>(myself)->get_value(); };
 
-    worldWin->create_widgetText(++rowIdx, 0)->set_text("SSAO");
-    tre::ui::widget *wAO = worldWin->create_widgetBoxCheck(rowIdx, 1)->set_value(renderSSAO)->set_iseditable(true)->set_isactive(true);
-    wAO->wcb_modified_ongoing = [](tre::ui::widget *myself) { renderSSAO = static_cast<tre::ui::widgetBoxCheck *>(myself)->get_value(); };
+    worldWin->create_widgetText(++rowIdx, 0)->set_text("AO");
+    static std::array<const char *, 3> listAOName = {"No", "SSAO", "HBAO" };
+    tre::ui::widget *wAO = worldWin->create_widgetLineChoice(rowIdx, 1)->set_values(listAOName)->set_selectedIndex(renderSSAO)->set_iseditable(true)->set_isactive(true);
+    wAO->wcb_modified_ongoing = [](tre::ui::widget *myself) { renderSSAO = static_cast<tre::ui::widgetLineChoice *>(myself)->get_selectedIndex(); };
   }
 
   {
@@ -1015,7 +1018,7 @@ void app_update()
     {
       worldUI.updateCameraInfo(myWindow.m_matProjection2D, myWindow.m_resolutioncurrent);
       rtMain.resize(myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
-      rtSSAO.resize(myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
+      rtAO.resize(myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
 
       glm::mat3 wmat(1.f);
       wmat[2][0] = -1.f / myWindow.m_matProjection2D[0][0] + 0.01f;
@@ -1107,7 +1110,7 @@ void app_update()
       if (sunLight.nShadow > 0 && curShader.getShadowSunSamplerCount() > 0) glUniform1i(curShader.getUniformLocation(tre::shader::TexShadowSun0),3);
 
       glActiveTexture(GL_TEXTURE4);
-      glBindTexture(GL_TEXTURE_2D, rtSSAO.get_aoTextureUnit());
+      glBindTexture(GL_TEXTURE_2D, rtAO.get_aoTextureUnit());
       if (curShader.layout().hasSMP_AO) glUniform1i(curShader.getUniformLocation(tre::shader::TexAO),4);
 
       if (showRoom)
@@ -1124,16 +1127,18 @@ void app_update()
       meshes.drawcall(modelPart, 1);
     }
 
-    // SSAO -----------------------
+    // AO -------------------------
     // (1 frame delay, but that's ok for this test)
 
-    if (renderSSAO && !showSamplingSphere)
+    if (renderSSAO != 0 && !showSamplingSphere)
     {
-      rtSSAO.process(rtMain, myWindow.m_matProjection3D);
+      rtAO.set_power(renderSSAO == 2 ? 1.f : 2.f);
+      rtAO.set_hboa(renderSSAO == 2);
+      rtAO.process(rtMain, myWindow.m_matProjection3D);
     }
     else
     {
-      rtSSAO.bypass();
+      rtAO.bypass();
     }
 
     // Post-Effects ---------------
@@ -1180,7 +1185,7 @@ void app_quit()
 
   rtMain.clear();
   rtShadow.clear();
-  rtSSAO.clear();
+  rtAO.clear();
   postEffectToneMapping.clear();
 
   rayTracer::textureForRender.clear();

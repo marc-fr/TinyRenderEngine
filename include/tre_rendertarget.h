@@ -227,13 +227,15 @@ public:
   void set_radius(const float r) { m_params.x = r; }
   void set_strength(const float st) { m_params.y = st; }
   void set_power(const float pw) { m_params.z = pw; }
+  void set_hboa(const bool hboa) { m_params.w = hboa ? 1.f : 0.f; } // ssao / hbao
 
 protected:
   renderTarget m_renderAOraw;
   renderTarget m_renderAOfinal;
   shader       m_shaderAO;
+  GLint        m_shaderAO_params = 0;
   shader       m_shaderBlur;
-  glm::vec3    m_params = glm::vec3(10.f, 1.f, 1.f); ///< packed parameters: (radius in world-space, strength, power)
+  glm::vec4    m_params = glm::vec4(10.f, 1.f, 1.f, 0.f); ///< packed parameters: (radius in world-space, strength, power, method)
   bool         m_isAOValueCleared = false;
 };
 
@@ -273,6 +275,8 @@ public:
 
 protected:
   shader     m_shaderToneMap;
+  GLint      m_shaderToneMap_tparams = 0;
+  GLint      m_shaderToneMap_vparams = 0;
   glm::vec4  m_params = glm::vec4(1.4f, 1.f, 0.f, 0.f); ///< packed parameters: (exposure, gamma, saturation-modifier, <unsued>)
   glm::vec4  m_vignettingParams = glm::vec4(0.5f, 0.2f, 0.8f, 0.5f); ///< packed parameters: (color-intensity, desaturation-intensity, roundness, smoothness)
   glm::vec3  m_vignetteColor = glm::vec3(0.f);

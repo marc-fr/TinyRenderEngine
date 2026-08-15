@@ -786,17 +786,14 @@ void postFX_Blur::processBlur(GLuint inputTextureHandle, const bool withFinalCom
 }
 
 // ============================================================================
+
 static const char * SourcePostProcess_FragMain_AO =
 "// uniColor = { near, far, invProj00, invProj11 }\n"
-"// SoftDistance = { radius, strength, power }\n"
 "// AtlasInvDim = {1/src-width, 1/src-height}\n"
+"uniform vec4 params;\n"
 "float noise2D(vec2 uv)\n"
 "{\n"
 "  return fract(sin(dot(uv,vec2(12.9898,78.233))) * 43758.5453123);\n"
-"}\n"
-"float noise3D(vec3 p)\n"
-"{\n"
-"  return fract(sin(dot(p ,vec3(12.9898,78.233,126.7235))) * 43758.5453);\n"
 "}\n"
 "float linearDepth(float inDepth)\n"
 "{\n"
@@ -815,38 +812,78 @@ static const char * SourcePostProcess_FragMain_AO =
 "  ret /= (-ret.z);\n"
 "  return ret;\n"
 "}\n"
-"const vec2  kSamplesDir[8] = vec2[]( vec2(0.,1.), vec2(0.7071,0.7071), vec2(1.,0.), vec2(-0.7071,0.7071), vec2(-1.,0.), vec2(-0.7071,-0.7071), vec2(0.,-1.), vec2(0.7071,-0.7071) );\n"
-"const float kSamplesScale[8] = float[]( 4., 13., 9., 5., 11., 3., 6., 9. );\n"
-"const float paramZBias = 1.e-3; // [1/m]\n"
+"const vec2  kSamples[8] = vec2[]( vec2(0.,1.), 5. * vec2(0.7071,0.7071), 2. * vec2(1.,0.), 3. * vec2(-0.7071,0.7071), 8. * vec2(-1.,0.), 6.f * vec2(-0.7071,-0.7071), 4. * vec2(0.,-1.), 10. * vec2(0.7071,-0.7071) );\n"
 "\n"
 "void main()\n"
 "{\n"
-"  float radius = SoftDistance.x;\n"
-"  float strength = SoftDistance.y;\n"
-"  float pw = SoftDistance.z;\n"
+"  // Get the pixel view-space position:\n"
 "  float zRaw = texture(TexDiffuse, pixelUV).r;\n"
+"  if (zRaw >= 1.) { color = vec4(1.,1.,1.,1.); return; }\n"
 "  float zC = linearDepth(zRaw);\n"
 "  vec3 posC = zC * getViewRay(pixelUV);\n"
-"  //color.xyz = vec3(posC.x, posC.y, -1.f / posC.z); return;\n"
-"  vec3 nC = normalize(cross(dFdx(posC),dFdy(posC)));\n"
-"  //color.xyz = 0.5 + 0.5 * nC; return;\n"
-"  if (zRaw >= 1.) { color = vec4(1.,1.,1.,1.); return; }\n"
-"  float accum = 0.;\n"
-"  int ioffset = int(noise2D(pixelUV) * 8.);\n"
-"  //int ioffset = int(noise3D(posC) * 8.);\n"
-"  for (int is = 0; is < 8; ++is)\n"
+"  //color = vec4(posC.x, posC.y, -1.f / posC.z, 1.); return; // debug\n"
+"  // Theta noising:\n"
+"  float theta = 6.28 * noise2D(pixelUV);\n"
+"  float cost = cos(theta), sint = sin(theta);\n"
+"  mat2  mrot = mat2(cost, sint, -sint, cost);\n"
+"  // Get the search radius:\n"
+"  float R = params.x;\n"
+"  float Rpx = clamp(R / (10. * AtlasInvDim.x * zC), 1., 10.);\n"
+"  float Rtrue = Rpx * (10. * AtlasInvDim.x * zC);\n"
+"  //color = vec4((Rpx - 1.) / 10., Rtrue / (R + Rtrue), -1.f / posC.z, 1.); return; // debug\n"
+"  float occlusion = 0.;\n"
+"  if (params.w == 0.f) // SSAO method based on Crytek\n"
 "  {\n"
-"    vec2 uvDelta = kSamplesScale[(is + ioffset) % 8] * kSamplesDir[is] * AtlasInvDim * clamp(radius / abs(zC), 1., 10.);\n"
-"    vec2 uv = pixelUV + uvDelta;\n"
-"    if (uv.x < 0.f || uv.x > 1.f) uv.x = pixelUV.x - uvDelta.x;\n"
-"    if (uv.y < 0.f || uv.y > 1.f) uv.y = pixelUV.y - uvDelta.y;\n"
-"    float depthRaw = texture(TexDiffuse, uv).r;\n"
-"    if (depthRaw >= 1.) continue;\n"
-"    vec3 pos = linearDepth(depthRaw) * getViewRay(uv);\n"
-"    vec3 dpos = pos - posC;\n"
-"    accum += max(0., dot(nC, dpos) + paramZBias * pos.z) / (0.01 + dot(dpos, dpos));"
+"    vec3 nor = normalize(cross(dFdx(posC), dFdy(posC)));\n"
+"    for (int is = 0; is < 8; ++is)\n"
+"    {\n"
+"      vec2 uvDelta = round( (mrot * kSamples[is]) * Rpx ) * AtlasInvDim;\n"
+"      vec2 uv = pixelUV + uvDelta;\n"
+"      if (uv.x < 0.f || uv.x > 1.f) { uvDelta.x = - uvDelta.x; uv.x = pixelUV.x + uvDelta.x; }\n"
+"      if (uv.y < 0.f || uv.y > 1.f) { uvDelta.y = - uvDelta.y; uv.y = pixelUV.y + uvDelta.y; }\n"
+"      float depthRaw = texture(TexDiffuse, uv).r;\n"
+"      if (depthRaw >= 1.) continue;\n"
+"      float z = linearDepth(depthRaw);\n"
+"      vec3 pos = z * getViewRay(uv);\n"
+"      vec3 dpos = pos - posC;\n"
+"      float fade = clamp(1.5 - 0.8 * dot(dpos, dpos) / (Rtrue * Rtrue), 0., 1.);\n"
+"      occlusion += 1./8. * max(dot(nor, dpos), 0.) / (0.001 + length(dpos)) * fade;\n"
+"    }\n"
 "  }\n"
-"  float ao = pow(max(1. - 2. * strength * accum / float(8), 0.), pw);\n"
+"  else // if (params.w == 1.f) // HBAO method based on nvidias directX implementation\n"
+"  {\n"
+"    vec3 dPdu = dFdx(posC), dPdv = dFdy(posC);\n"
+"    float Rtrue2 = Rtrue * Rtrue;\n"
+"    for (int idir = 0; idir < 4; ++idir)\n"
+"    {\n"
+"      float thetaS = theta + (6.28/4.) * float(idir);\n"
+"      vec2 uvIncr = vec2(cos(thetaS), sin(thetaS));\n"
+"      vec3 T = uvIncr.x * dPdu + uvIncr.y * dPdv;\n"
+"      float tanH = T.z / sqrt(dot(T.xy, T.xy)) + 0.1 /* tan bias */;\n"
+"      float sinH = tanH / sqrt(tanH * tanH + 1.0);\n"
+"      for (float ds = 2.; ds < 11.; ds += 3.)\n"
+"      {\n"
+"        vec2 uv = pixelUV + round( uvIncr * (ds * Rpx) ) * AtlasInvDim;\n"
+"        if (uv.x < 0.f || uv.x > 1.f) break;\n"
+"        if (uv.y < 0.f || uv.y > 1.f) break;\n"
+"        float depthRaw = texture(TexDiffuse, uv).r;\n"
+"        if (depthRaw >= 1.) continue;\n"
+"        float z = linearDepth(depthRaw);\n"
+"        vec3 pos = z * getViewRay(uv);\n"
+"        float tanS = -(posC.z - pos.z) / sqrt(dot(pos.xy - posC.xy, pos.xy - posC.xy));\n"
+"        float d2 = dot(pos - posC, pos - posC);\n"
+"        if (d2 < Rtrue2 && tanS > tanH)\n"
+"        {\n"
+"          float sinS = tanS / sqrt(tanS * tanS + 1.0);\n"
+"          occlusion += (1. - d2 / Rtrue2) * (sinS - sinH);\n"
+"          tanH = tanS;\n"
+"          sinH = sinS;\n"
+"        }\n"
+"      }\n"
+"    }\n"
+"    occlusion /= 4.;\n"
+"  }\n"
+"  float ao = pow(clamp(1. - occlusion * params.y /*strength*/, 0., 1.), params.z /*power*/);\n"
 "  color.xyz = vec3(ao, ao, ao);\n"
 "  color.w = 1.f;\n"
 "}\n";
@@ -866,9 +903,10 @@ bool postFX_AmbiantOcclusion::load(const int pwidth, const int pheigth)
     shaderLayout.hasSMP_Diffuse = true;
     shaderLayout.hasOUT_Color0 = true;
     shaderLayout.hasUNI_uniColor = true; // to pass projection-matrix data (4 floats)
-    shaderLayout.hasUNI_SoftDistance = true; // to pass parmaters (3 floats)
     shaderLayout.hasUNI_AtlasInvDim = true; // to pass texture dimension (2 floats)
     status &= m_shaderAO.loadCustomShader(shaderLayout, SourcePostProcess_FragMain_AO, "PostProcess_AO");
+
+    m_shaderAO_params = m_shaderAO.getUniformLocation("params");
   }
 
   {
@@ -919,7 +957,7 @@ void postFX_AmbiantOcclusion::process(GLuint depthTextureHandle, unsigned depthT
   glUseProgram(m_shaderAO.m_drawProgram);
   glUniform1i(m_shaderAO.getUniformLocation(tre::shader::TexDiffuse),0);
   glUniform4f(m_shaderAO.getUniformLocation(tre::shader::uniColor), near, far, invProj00, invProj11);
-  glUniform3fv(m_shaderAO.getUniformLocation(tre::shader::SoftDistance), 1, glm::value_ptr(m_params));
+  glUniform4fv(m_shaderAO_params, 1, glm::value_ptr(m_params));
   glUniform2f(m_shaderAO.getUniformLocation(tre::shader::AtlasInvDim), 1.f / float(depthTextureWidth), 1.f / float(depthTextureHeight));
   glBindTexture(GL_TEXTURE_2D, depthTextureHandle);
   modelQuad.drawcallAll(true);
@@ -957,13 +995,12 @@ static const char * SourcePostProcess_FragMain_ToneMapping =
 "\n"
 "uniform vec4 paramsToneMapping;\n"
 "uniform vec4 paramsVignetting;\n"
-"uniform vec3 vignetteColor;\n"
-"uniform float aspectRatio;\n"
 "void main(){\n"
 "  vec3 colorORIGIN = texture(TexDiffuse,pixelUV).rgb;\n"
 "  vec3 colorMAPPED = 1.f - exp(-colorORIGIN * paramsToneMapping.x); // tone-mapping\n"
 "  float greyIntensity = 0.2126 * colorMAPPED.r + 0.7152 * colorMAPPED.g + 0.0722 * colorMAPPED.b;\n"
 "  vec3 colorSAT = clamp( greyIntensity + (colorMAPPED - greyIntensity) * (1.f + paramsToneMapping.z), vec3(0.f), vec3(1.f));\n"
+"  float aspectRatio = AtlasInvDim.x / AtlasInvDim.y;\n"
 "  vec2 uvFactor = aspectRatio > 1.f ? vec2(1.f / aspectRatio, 1.f) : vec2(1.f, aspectRatio);\n"
 "  vec2 uvNormalized = 2.f * uvFactor * (pixelUV - 0.5f);\n"
 "  float normF = 2.f / max(paramsVignetting.z, 5.e-2f);\n"
@@ -971,7 +1008,7 @@ static const char * SourcePostProcess_FragMain_ToneMapping =
 "  float cursor = min(pow(alpha, 1.f / (1.e-3f + paramsVignetting.w)), 1.f);\n"
 "  float weightColor =  1.f - paramsVignetting.x * cursor;\n"
 "  float weightDesat = 1.f - paramsVignetting.y * cursor;\n"
-"  vec3 colorVIGN = weightColor * (weightDesat * colorSAT + (1.f - weightDesat) * greyIntensity) + (1.f - weightColor) * vignetteColor;\n"
+"  vec3 colorVIGN = weightColor * (weightDesat * colorSAT + (1.f - weightDesat) * greyIntensity) + (1.f - weightColor) * uniColor.xyz;\n"
 "  if (paramsToneMapping.y != 1.f) colorVIGN = pow(colorVIGN, 1.f/paramsToneMapping.yyy); // gamma-correction\n"
 "  color = vec4(colorVIGN, 1.f);\n"
 "}\n";
@@ -984,9 +1021,14 @@ bool postFX_ToneMapping::load()
   // Shaders
   shader::s_layout shaderLayout(shader::PRGM_2D);
   shaderLayout.hasBUF_UV = true;
+  shaderLayout.hasUNI_uniColor = true; // to pass vignetteColor
+  shaderLayout.hasUNI_AtlasInvDim = true; // to pass texture dimension (2 floats)
   shaderLayout.hasSMP_Diffuse = true;
   shaderLayout.hasOUT_Color0 = true;
   result &= m_shaderToneMap.loadCustomShader(shaderLayout,SourcePostProcess_FragMain_ToneMapping,"PostProcess_ToneMapping");
+  // Uniforms
+  m_shaderToneMap_tparams = m_shaderToneMap.getUniformLocation("paramsToneMapping");
+  m_shaderToneMap_vparams = m_shaderToneMap.getUniformLocation("paramsVignetting");
   // Model
   result &= loadQuadModel();
 
@@ -1017,10 +1059,10 @@ void postFX_ToneMapping::resolveToneMapping(GLuint inputTextureHandle, const int
 
   glUseProgram(m_shaderToneMap.m_drawProgram);
   glUniform1i(m_shaderToneMap.getUniformLocation(tre::shader::TexDiffuse),0);
-  glUniform4fv(m_shaderToneMap.getUniformLocation("paramsToneMapping"), 1, glm::value_ptr(m_params));
-  glUniform4fv(m_shaderToneMap.getUniformLocation("paramsVignetting"), 1, glm::value_ptr(m_vignettingParams));
-  glUniform3fv(m_shaderToneMap.getUniformLocation("vignetteColor"), 1, glm::value_ptr(m_vignetteColor));
-  glUniform1f(m_shaderToneMap.getUniformLocation("aspectRatio"), float(outheigth) / float(outwidth));
+  glUniform4fv(m_shaderToneMap_tparams, 1, glm::value_ptr(m_params));
+  glUniform4fv(m_shaderToneMap_vparams, 1, glm::value_ptr(m_vignettingParams));
+  glUniform3fv(m_shaderToneMap.getUniformLocation(tre::shader::uniColor), 1, glm::value_ptr(m_vignetteColor));
+  glUniform2f(m_shaderToneMap.getUniformLocation(tre::shader::AtlasInvDim), float(outheigth), float(outwidth));
 
   modelQuad.drawcallAll(true);
 }
@@ -1038,10 +1080,10 @@ void postFX_ToneMapping::resolveToneMapping(GLuint inputTextureHandle, renderTar
 
   glUseProgram(m_shaderToneMap.m_drawProgram);
   glUniform1i(m_shaderToneMap.getUniformLocation(tre::shader::TexDiffuse),0);
-  glUniform4fv(m_shaderToneMap.getUniformLocation("paramsToneMapping"), 1, glm::value_ptr(m_params));
-  glUniform4fv(m_shaderToneMap.getUniformLocation("paramsVignetting"), 1, glm::value_ptr(m_vignettingParams));
-  glUniform3fv(m_shaderToneMap.getUniformLocation("vignetteColor"), 1, glm::value_ptr(m_vignetteColor));
-  glUniform1f(m_shaderToneMap.getUniformLocation("aspectRatio"), float(targetFBO.h()) / float(targetFBO.w()));
+  glUniform4fv(m_shaderToneMap_tparams, 1, glm::value_ptr(m_params));
+  glUniform4fv(m_shaderToneMap_vparams, 1, glm::value_ptr(m_vignettingParams));
+  glUniform3fv(m_shaderToneMap.getUniformLocation(tre::shader::uniColor), 1, glm::value_ptr(m_vignetteColor));
+  glUniform2f(m_shaderToneMap.getUniformLocation(tre::shader::AtlasInvDim), float(targetFBO.h()), float(targetFBO.w()));
 
   modelQuad.drawcallAll(true);
 }
