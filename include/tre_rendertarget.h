@@ -267,7 +267,7 @@ public:
   float gamma() const { return m_params.y; }
   float saturation() const { return m_params.z; }
 
-  void set_vignetteColor(const glm::vec3 &color) { m_vignetteColor = color; }
+  void set_vignetteColor(const glm::vec3 &color) { m_vignetteColor = glm::vec4(color, 1.f); }
   void set_vignettingColorIntensity(const float intensity) { m_vignettingParams.x = intensity; }
   void set_vignettingDesaturationIntensity(const float intensity) { m_vignettingParams.y = intensity; }
   void set_vignettingRoundness(const float roundness) { m_vignettingParams.z = roundness; }
@@ -279,7 +279,7 @@ protected:
   GLint      m_shaderToneMap_vparams = 0;
   glm::vec4  m_params = glm::vec4(1.4f, 1.f, 0.f, 0.f); ///< packed parameters: (exposure, gamma, saturation-modifier, <unsued>)
   glm::vec4  m_vignettingParams = glm::vec4(0.5f, 0.2f, 0.8f, 0.5f); ///< packed parameters: (color-intensity, desaturation-intensity, roundness, smoothness)
-  glm::vec3  m_vignetteColor = glm::vec3(0.f);
+  glm::vec4  m_vignetteColor = glm::vec4(0.f);
 };
 
 // ============================================================================

@@ -1061,7 +1061,7 @@ void postFX_ToneMapping::resolveToneMapping(GLuint inputTextureHandle, const int
   glUniform1i(m_shaderToneMap.getUniformLocation(tre::shader::TexDiffuse),0);
   glUniform4fv(m_shaderToneMap_tparams, 1, glm::value_ptr(m_params));
   glUniform4fv(m_shaderToneMap_vparams, 1, glm::value_ptr(m_vignettingParams));
-  glUniform3fv(m_shaderToneMap.getUniformLocation(tre::shader::uniColor), 1, glm::value_ptr(m_vignetteColor));
+  glUniform4fv(m_shaderToneMap.getUniformLocation(tre::shader::uniColor), 1, glm::value_ptr(m_vignetteColor));
   glUniform2f(m_shaderToneMap.getUniformLocation(tre::shader::AtlasInvDim), float(outheigth), float(outwidth));
 
   modelQuad.drawcallAll(true);
@@ -1082,7 +1082,7 @@ void postFX_ToneMapping::resolveToneMapping(GLuint inputTextureHandle, renderTar
   glUniform1i(m_shaderToneMap.getUniformLocation(tre::shader::TexDiffuse),0);
   glUniform4fv(m_shaderToneMap_tparams, 1, glm::value_ptr(m_params));
   glUniform4fv(m_shaderToneMap_vparams, 1, glm::value_ptr(m_vignettingParams));
-  glUniform3fv(m_shaderToneMap.getUniformLocation(tre::shader::uniColor), 1, glm::value_ptr(m_vignetteColor));
+  glUniform4fv(m_shaderToneMap.getUniformLocation(tre::shader::uniColor), 1, glm::value_ptr(m_vignetteColor));
   glUniform2f(m_shaderToneMap.getUniformLocation(tre::shader::AtlasInvDim), float(targetFBO.h()), float(targetFBO.w()));
 
   modelQuad.drawcallAll(true);
