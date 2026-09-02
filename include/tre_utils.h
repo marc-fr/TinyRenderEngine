@@ -73,8 +73,8 @@ private:
 
 public:
     span(_T* ptr, std::size_t len) noexcept : m_ptr(ptr), m_size(len) {}
-    span(const std::vector<_T> &v, std::size_t begin, std::size_t len) noexcept : m_ptr(const_cast<_T*>(&v[begin])), m_size(len) {}
-    span(const std::vector<_T> &v, std::size_t begin = 0u) noexcept : m_ptr(const_cast<_T*>(&v[begin])), m_size(v.size() <= begin ? 0 : v.size() - begin) {}
+    span(const std::vector<_T> &v, std::size_t begin, std::size_t len) noexcept : m_ptr(const_cast<_T*>(v.data() + begin)), m_size(len) {}
+    span(const std::vector<_T> &v, std::size_t begin = 0u) noexcept : m_ptr(const_cast<_T*>(v.data() + begin)), m_size(v.size() <= begin ? 0 : v.size() - begin) {}
     span(const std::initializer_list<_T> &v) noexcept : m_ptr(const_cast<_T*>(v.begin())), m_size(v.size()) {}
     template<std::size_t _N> span(const std::array<_T, _N> &a) noexcept : m_ptr(const_cast<_T*>(&a[0])), m_size(a.size()) {}
 
@@ -670,9 +670,14 @@ glm::vec4 noise3GradAndValue(const glm::vec3 &x);
 void fft(glm::vec2 * __restrict data, const std::size_t n, const bool inverse);
 
 /**
-* @brief compute in-place the DFT of "data" (complex), describing a n x n values. The size must be a power of 2. "sideBuffer" must cover at least n elements.
+* @brief compute in-place the DFT of "data" (complex), describing a n x n values. The size must be a power of 2.
 */
-void fft2D(glm::vec2 * __restrict data, const std::size_t n, const bool inverse, glm::vec2 * __restrict sideBuffer);
+void fft2D(glm::vec2 * __restrict data, const std::size_t n, const bool inverse);
+
+/**
+* @brief apply the DFT normalization after "fftCount" DFT
+*/
+void fftNormalize(glm::vec2 * __restrict data, const std::size_t n, const std::size_t fftCount = 1);
 
 /// @}
 

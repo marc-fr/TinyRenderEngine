@@ -3,6 +3,10 @@
 #include "tre_model.h"
 #include "tre_shader.h"
 
+#if defined(__AVX__) || defined(__SSE4_1__)
+#include <smmintrin.h>
+#endif
+
 namespace tre {
 
 // ============================================================================
@@ -544,6 +548,7 @@ glm::vec4 noise3GradAndValue(const glm::vec3 &x)
 void fft(glm::vec2 * __restrict data, const std::size_t n, const bool inverse)
 {
   TRE_ASSERT((n & (n - 1)) == 0); // must be power of two
+  TRE_ASSERT(n >= 4);             // required for the general layout pass (optimization)
   // Bit-reversal
   for (std::size_t i = 0, j = 0; i < n; ++i)
   {
@@ -552,49 +557,142 @@ void fft(glm::vec2 * __restrict data, const std::size_t n, const bool inverse)
     for (; (j >= m) && (m >= 2); m >>= 1) j -= m;
     j += m;
   }
+  float * __restrict dataF = reinterpret_cast<float*>(data);
+  (void)dataF;
   // Cooley-Tukey
-  for (std::size_t mmax = 2; mmax <= n; mmax <<= 1)
   {
+    // Unfolded First loop: mmax = 2 (half = 1, m = 0, w = (1, 0))
+    for (std::size_t i = 0; i < n; i += 2)
+    {
+      const std::size_t j = i + 1;
+      const glm::vec2 tempr = data[j];
+      data[j] = data[i] - tempr;
+      data[i] = data[i] + tempr;
+    }
+  }
+  for (std::size_t mmax = 4; mmax <= n; mmax <<= 1)
+  {
+    const std::size_t half = mmax >> 1;
     const float theta = (inverse ? +1.f : -1.f) * (2.f * float(M_PI) / float(mmax));
-    const glm::vec2 wtemp = glm::vec2(std::sin(0.5f * theta), std::sin(theta));
-    const glm::vec2 wpr = -2.f * wtemp * wtemp;
-    const glm::vec2 wpi = glm::vec2(std::sin(theta), 0.f);
+    const float cos_theta = std::cos(theta);
+    const float sin_theta = std::sin(theta);
     glm::vec2 w = glm::vec2(1.f, 0.f);
-    for (std::size_t m = 0; m < mmax / 2; ++m)
+#if defined(__AVX__) || defined(__SSE4_1__)
+    for (std::size_t m = 0; m < half; m += 2)
+    {
+      const float angle0 = float(m) * theta;
+      const float angle1 = float(m + 1) * theta;
+      const __m128 w_real = _mm_set_ps(std::cos(angle1), std::cos(angle1), std::cos(angle0), std::cos(angle0));
+      const __m128 w_imag = _mm_set_ps(std::sin(angle1), std::sin(angle1), std::sin(angle0), std::sin(angle0));
+      for (std::size_t i = m; i < n; i += mmax)
+      {
+        const std::size_t i_ptr = i * 2;
+        const std::size_t j_ptr = (i + half) * 2;
+        const __m128 data_i = _mm_loadu_ps(&dataF[i_ptr]); // 2 contiguous glm::vec2
+        const __m128 data_j = _mm_loadu_ps(&dataF[j_ptr]);
+        const __m128 termA = _mm_mul_ps(w_real, data_j); // w_real * [ j0.y, j0.x, j1.y, j1.x ]
+        const __m128 shuffled_j = _mm_shuffle_ps(data_j, data_j, _MM_SHUFFLE(2, 3, 0, 1)); // [ j1.x, j1.y, j0.x, j0.y ]
+        const __m128 termB = _mm_mul_ps(w_imag, shuffled_j);
+        const __m128 tempr = _mm_addsub_ps(termA, termB);
+        const __m128 new_i = _mm_add_ps(data_i, tempr);
+        const __m128 new_j = _mm_sub_ps(data_i, tempr);
+        _mm_storeu_ps(&dataF[i_ptr], new_i);
+        _mm_storeu_ps(&dataF[j_ptr], new_j);
+      }
+    }
+#else
+    for (std::size_t m = 0; m < half; ++m)
     {
       for (std::size_t i = m; i < n; i += mmax)
       {
-        const std::size_t j = i + mmax / 2;
-        const glm::vec2   tempr = w * data[j];
-        data[j] = data[i] - tempr;
-        data[i] += tempr;
+        const std::size_t j = i + half;
+        // tempr = w * data[j]
+        const float tempr_real = w.x * data[j].x - w.y * data[j].y;
+        const float tempr_imag = w.x * data[j].y + w.y * data[j].x;
+        data[j].x = data[i].x - tempr_real;
+        data[j].y = data[i].y - tempr_imag;
+        data[i].x += tempr_real;
+        data[i].y += tempr_imag;
       }
-      const glm::vec2 wtmp = w;
-      w = w * wpr + glm::vec2(wtmp.y, -wtmp.x) * wpi + wtmp;
+      // w *= (cos_theta + i * sin_theta)
+      const float w_new_real = w.x * cos_theta - w.y * sin_theta;
+      const float w_new_imag = w.x * sin_theta + w.y * cos_theta;
+      w.x = w_new_real;
+      w.y = w_new_imag;
     }
-  }
-  // Normalize if inverse
-  if (inverse)
-  {
-    const float invn = 1.f / float(n);
-    for (std::size_t i = 0; i < n; ++i) data[i] *= invn;
+#endif
   }
 }
 
 // ----------------------------------------------------------------------------
 
-void fft2D(glm::vec2 * __restrict data, const std::size_t n, const bool inverse, glm::vec2 * __restrict sideBuffer)
+static inline void transposeBlock_4x4(glm::vec2 *data, std::size_t n) // optimized in-place transpose
+{
+#if 0 // ref
+  for (std::size_t iy = 0; iy < n; ++iy)
+  {
+    for (std::size_t ix = 0; ix < iy; ++ix)
+    {
+      std::swap(data[ix * n + iy], data[iy * n + ix]);
+    }
+  }
+  return;
+#endif
+  TRE_ASSERT(n % 2 == 0 && n >= 2);
+  double * __restrict dataD = reinterpret_cast<double*>(data);
+  (void)dataD;
+  constexpr std::size_t blockSize = 2;
+  for (std::size_t by = 0; by < n; by += blockSize)
+  {
+    for (std::size_t bx = 0; bx < by; bx += blockSize)
+    {
+      // Transpose whole block
+#if defined(__AVX__) || defined(__SSE4_1__)
+      const __m128d a0 = _mm_loadu_pd(&dataD[(by + 0) * n + bx]); // (vec2,vec2)
+      const __m128d a1 = _mm_loadu_pd(&dataD[(by + 1) * n + bx]);
+      const __m128d b0 = _mm_loadu_pd(&dataD[(bx + 0) * n + by]);
+      const __m128d b1 = _mm_loadu_pd(&dataD[(bx + 1) * n + by]);
+      const __m128d a_t0 = _mm_unpacklo_pd(a0, a1); // transpose block A
+      const __m128d a_t1 = _mm_unpackhi_pd(a0, a1);
+      const __m128d b_t0 = _mm_unpacklo_pd(b0, b1); // transpose block B
+      const __m128d b_t1 = _mm_unpackhi_pd(b0, b1);
+      _mm_storeu_pd(&dataD[(bx + 0) * n + by], a_t0);
+      _mm_storeu_pd(&dataD[(bx + 1) * n + by], a_t1);
+      _mm_storeu_pd(&dataD[(by + 0) * n + bx], b_t0);
+      _mm_storeu_pd(&dataD[(by + 1) * n + bx], b_t1);
+#else
+      std::swap(data[(by + 0) * n + (bx + 0)], data[(bx + 0) * n + (by + 0)]);
+      std::swap(data[(by + 1) * n + (bx + 0)], data[(bx + 0) * n + (by + 1)]);
+      std::swap(data[(by + 0) * n + (bx + 1)], data[(bx + 1) * n + (by + 0)]);
+      std::swap(data[(by + 1) * n + (bx + 1)], data[(bx + 1) * n + (by + 1)]);
+#endif
+    }
+    {
+      std::size_t bx = by;
+      // Transpose diagonal block 2x2 -> a single swap
+      std::swap(data[(by + 1) * n + (bx + 0)], data[(bx + 0) * n + (by + 1)]);
+    }
+  }
+}
+
+void fft2D(glm::vec2 * __restrict data, const std::size_t n, const bool inverse)
 {
   // FFT on lines
   for (std::size_t iy = 0; iy < n; ++iy) fft(&data[iy * n], n, inverse);
   // FFT on columns
-  for (std::size_t ix = 0; ix < n; ++ix)
-  {
-    for (std::size_t iy = 0; iy < n; ++iy) sideBuffer[iy] = data[iy * n + ix];
-    fft(sideBuffer, n, inverse);
-    for (std::size_t iy = 0; iy < n; ++iy) data[iy * n + ix] = sideBuffer[iy];
-  }
+  transposeBlock_4x4(data, n);
+  for (std::size_t iy = 0; iy < n; ++iy) fft(&data[iy * n], n, inverse);
+  transposeBlock_4x4(data, n);
 }
+
+// ----------------------------------------------------------------------------
+
+void fftNormalize(glm::vec2 *__restrict data, const std::size_t n, const std::size_t fftCount)
+{
+  const float invn = std::pow(1.f / float(n), 0.5f * float(fftCount));
+  for (std::size_t i = 0; i < n; ++i) data[i] *= invn;
+}
+
 
 // ============================================================================
 
