@@ -557,7 +557,7 @@ void fft(glm::vec2 * __restrict data, const std::size_t n, const bool inverse)
     for (; (j >= m) && (m >= 2); m >>= 1) j -= m;
     j += m;
   }
-  float * __restrict dataF = reinterpret_cast<float*>(data);
+  float * dataF = reinterpret_cast<float*>(data);
   (void)dataF;
   // Cooley-Tukey
   {
@@ -574,9 +574,6 @@ void fft(glm::vec2 * __restrict data, const std::size_t n, const bool inverse)
   {
     const std::size_t half = mmax >> 1;
     const float theta = (inverse ? +1.f : -1.f) * (2.f * float(M_PI) / float(mmax));
-    const float cos_theta = std::cos(theta);
-    const float sin_theta = std::sin(theta);
-    glm::vec2 w = glm::vec2(1.f, 0.f);
 #if defined(__AVX__) || defined(__SSE4_1__)
     for (std::size_t m = 0; m < half; m += 2)
     {
@@ -590,8 +587,8 @@ void fft(glm::vec2 * __restrict data, const std::size_t n, const bool inverse)
         const std::size_t j_ptr = (i + half) * 2;
         const __m128 data_i = _mm_loadu_ps(&dataF[i_ptr]); // 2 contiguous glm::vec2
         const __m128 data_j = _mm_loadu_ps(&dataF[j_ptr]);
-        const __m128 termA = _mm_mul_ps(w_real, data_j); // w_real * [ j0.y, j0.x, j1.y, j1.x ]
-        const __m128 shuffled_j = _mm_shuffle_ps(data_j, data_j, _MM_SHUFFLE(2, 3, 0, 1)); // [ j1.x, j1.y, j0.x, j0.y ]
+        const __m128 termA = _mm_mul_ps(w_real, data_j);
+        const __m128 shuffled_j = _mm_shuffle_ps(data_j, data_j, _MM_SHUFFLE(2, 3, 0, 1));
         const __m128 termB = _mm_mul_ps(w_imag, shuffled_j);
         const __m128 tempr = _mm_addsub_ps(termA, termB);
         const __m128 new_i = _mm_add_ps(data_i, tempr);
@@ -601,6 +598,9 @@ void fft(glm::vec2 * __restrict data, const std::size_t n, const bool inverse)
       }
     }
 #else
+    const float cos_theta = std::cos(theta);
+    const float sin_theta = std::sin(theta);
+    glm::vec2 w = glm::vec2(1.f, 0.f);
     for (std::size_t m = 0; m < half; ++m)
     {
       for (std::size_t i = m; i < n; i += mmax)
@@ -626,7 +626,7 @@ void fft(glm::vec2 * __restrict data, const std::size_t n, const bool inverse)
 
 // ----------------------------------------------------------------------------
 
-static inline void transposeBlock_4x4(glm::vec2 *data, std::size_t n) // optimized in-place transpose
+static inline void transposeBlock(glm::vec2 *data, std::size_t n) // optimized in-place transpose
 {
 #if 0 // ref
   for (std::size_t iy = 0; iy < n; ++iy)
@@ -639,7 +639,7 @@ static inline void transposeBlock_4x4(glm::vec2 *data, std::size_t n) // optimiz
   return;
 #endif
   TRE_ASSERT(n % 2 == 0 && n >= 2);
-  double * __restrict dataD = reinterpret_cast<double*>(data);
+  double * dataD = reinterpret_cast<double*>(data);
   (void)dataD;
   constexpr std::size_t blockSize = 2;
   for (std::size_t by = 0; by < n; by += blockSize)
@@ -680,19 +680,26 @@ void fft2D(glm::vec2 * __restrict data, const std::size_t n, const bool inverse)
   // FFT on lines
   for (std::size_t iy = 0; iy < n; ++iy) fft(&data[iy * n], n, inverse);
   // FFT on columns
-  transposeBlock_4x4(data, n);
+  transposeBlock(data, n);
   for (std::size_t iy = 0; iy < n; ++iy) fft(&data[iy * n], n, inverse);
-  transposeBlock_4x4(data, n);
+  transposeBlock(data, n);
 }
 
 // ----------------------------------------------------------------------------
 
-void fftNormalize(glm::vec2 *__restrict data, const std::size_t n, const std::size_t fftCount)
+void fft1DNormalize(glm::vec2 *__restrict data, const std::size_t n, const std::size_t fftCount)
 {
   const float invn = std::pow(1.f / float(n), 0.5f * float(fftCount));
   for (std::size_t i = 0; i < n; ++i) data[i] *= invn;
 }
 
+// ----------------------------------------------------------------------------
+
+void fft2DNormalize(glm::vec2 *__restrict data, const std::size_t n, const std::size_t fftCount)
+{
+  const float invn = std::pow(1.f / float(n), float(fftCount));
+  for (std::size_t i = 0; i < n * n; ++i) data[i] *= invn;
+}
 
 // ============================================================================
 

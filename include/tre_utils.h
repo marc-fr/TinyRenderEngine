@@ -675,9 +675,14 @@ void fft(glm::vec2 * __restrict data, const std::size_t n, const bool inverse);
 void fft2D(glm::vec2 * __restrict data, const std::size_t n, const bool inverse);
 
 /**
-* @brief apply the DFT normalization after "fftCount" DFT
+* @brief apply the DFT normalization after "fftCount" DFT (1D)
 */
-void fftNormalize(glm::vec2 * __restrict data, const std::size_t n, const std::size_t fftCount = 1);
+void fft1DNormalize(glm::vec2 * __restrict data, const std::size_t n, const std::size_t fftCount = 1);
+
+/**
+* @brief apply the DFT normalization after "fftCount" DFT (2D)
+*/
+void fft2DNormalize(glm::vec2 * __restrict data, const std::size_t n, const std::size_t fftCount = 1);
 
 /// @}
 
