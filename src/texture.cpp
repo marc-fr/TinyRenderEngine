@@ -30,6 +30,10 @@ static GLenum getTexInternalFormat(int nbComponants, bool isCompressed, bool gam
   return formats[nbComponants - 1 + (isCompressed ? 4 : 0) + (gammaCorrect ? 8 : 0)];
 }
 
+static constexpr GLenum kExternalformats[5] = { 0, GL_RED, GL_RG, GL_RGB, GL_RGBA };
+
+static constexpr GLenum kInternalformatsFloat16[5] = { 0, GL_R16F, GL_RG16F, GL_RGB16F, GL_RGBA16F };
+
 //-----------------------------------------------------------------------------
 
 ///< Helper function to get the upload OpenGL-format of SDL textures
@@ -238,10 +242,9 @@ bool texture::loadArray(const span<SDL_Surface*> &surfaces, int modemask, const 
   glGenTextures(1, &m_handle);
 
   {
-    static GLenum externalformats[5] = { 0, GL_RED, GL_RG, GL_RGB, GL_RGBA };
     const GLenum internalformat = getTexInternalFormat(m_components, useCompress(), useGammeCorreciton());
     glBindTexture(GL_TEXTURE_2D_ARRAY, m_handle);
-    glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, internalformat, m_w, m_h, m_d, 0, externalformats[m_components], GL_UNSIGNED_BYTE, nullptr); // just allocate
+    glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, internalformat, m_w, m_h, m_d, 0, kExternalformats[m_components], GL_UNSIGNED_BYTE, nullptr); // just allocate
   }
 
   bool success = true;
@@ -415,13 +418,13 @@ bool texture::load3D(const uint8_t *data, int w, int h, int d, int components, i
 
 //-----------------------------------------------------------------------------
 
-bool texture::loadFloat(const glm::vec4 * data, int w, int h, int modemask)
+bool texture::loadFloat(const float * data, int w, int h, int components, int modemask)
 {
   m_type = TI_2D;
   m_mask = modemask;
   m_w = w;
   m_h = h;
-  m_components = 4;
+  m_components = components;
 
   if (useCompress())
   {
@@ -431,13 +434,13 @@ bool texture::loadFloat(const glm::vec4 * data, int w, int h, int modemask)
 
   if (modemask & (MMASK_FORCE_NO_ALPHA | MMASK_RG_ONLY | MMASK_ALPHA_ONLY))
   {
-    TRE_LOG("Cannot apply modifiers on float-textures, because RGBA is forced. loadFloat failed.");
+    TRE_LOG("Cannot apply modifiers on float-textures. loadFloat failed.");
     return false;
   }
 
   glGenTextures(1, &m_handle);
 
-  const bool success = updateFloat(data, w, h, false);
+  const bool success = updateFloat(data, w, h, components, false);
 
   if (success) set_parameters();
 
@@ -447,14 +450,14 @@ bool texture::loadFloat(const glm::vec4 * data, int w, int h, int modemask)
 
 //-----------------------------------------------------------------------------
 
-bool texture::loadArrayFloat(const glm::vec4 * data, int w, int h, int layers, int modemask)
+bool texture::loadArrayFloat(const float * data, int w, int h, int layers, int components, int modemask)
 {
   m_type = TI_2DARRAY;
   m_mask = modemask;
   m_w = w;
   m_h = h;
   m_d = layers;
-  m_components = 4;
+  m_components = components;
 
   if (useCompress())
   {
@@ -464,7 +467,7 @@ bool texture::loadArrayFloat(const glm::vec4 * data, int w, int h, int layers, i
 
   if (modemask & (MMASK_FORCE_NO_ALPHA | MMASK_RG_ONLY | MMASK_ALPHA_ONLY))
   {
-    TRE_LOG("Cannot apply modifiers on float-textures, because RGBA is forced. loadArrayFloat failed.");
+    TRE_LOG("Cannot apply modifiers on float-textures. loadArrayFloat failed.");
     return false;
   }
 
@@ -472,7 +475,7 @@ bool texture::loadArrayFloat(const glm::vec4 * data, int w, int h, int layers, i
 
   {
     glBindTexture(GL_TEXTURE_2D_ARRAY, m_handle);
-    glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGBA16F, w, h, layers, 0, GL_RGBA, GL_FLOAT, data);
+    glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, kInternalformatsFloat16[components], w, h, layers, 0, kExternalformats[components], GL_FLOAT, data);
   }
 
   set_parameters();
@@ -565,6 +568,7 @@ bool texture::update(SDL_Surface *surface, const bool freeSurface, const bool un
     glTexImage2D(GL_TEXTURE_2D, 0, internalformat, surfLocal.w, surfLocal.h, 0, externalformat, GL_UNSIGNED_BYTE, surfLocal.pixels);
   }
 
+  if (useMipmap()) glGenerateMipmap(GL_TEXTURE_2D);
   if (unbind) glBindTexture(GL_TEXTURE_2D, 0);
 
   return IsOpenGLok("texture::update - upload pixels");
@@ -655,6 +659,7 @@ bool texture::updateArray(SDL_Surface* surface, int layerIndex, const bool freeS
     glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, layerIndex, surfLocal.w, surfLocal.h, 1, externalformat, GL_UNSIGNED_BYTE, surfLocal.pixels);
   }
 
+  // if (useMipmap()) glGenerateMipmap(GL_TEXTURE_2D_ARRAY); // to improve, should be done by the caller.
   if (unbind) glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
 
   return IsOpenGLok("texture::updateArray - upload pixels");
@@ -671,8 +676,7 @@ bool texture::update3D(const uint8_t* data, int w, int h, int d, int components,
   TRE_ASSERT(d == m_d);
   TRE_ASSERT(components == m_components);
 
-  static GLenum externalformats[5] = { 0, GL_RED, GL_RG, GL_RGB, GL_RGBA };
-  GLenum       externalformat = externalformats[components];
+  GLenum       externalformat = kExternalformats[components];
   const GLenum internalformat = getTexInternalFormat(m_components, useCompress(), useGammeCorreciton());
 
   // no modifier (for now)
@@ -687,6 +691,7 @@ bool texture::update3D(const uint8_t* data, int w, int h, int d, int components,
     glTexImage3D(GL_TEXTURE_3D, 0, internalformat, w, h, d, 0, externalformat, GL_UNSIGNED_BYTE, data);
   }
 
+  if (useMipmap()) glGenerateMipmap(GL_TEXTURE_3D);
   if (unbind) glBindTexture(GL_TEXTURE_3D, 0);
 
   return IsOpenGLok("texture::update3D - upload pixels");
@@ -694,21 +699,23 @@ bool texture::update3D(const uint8_t* data, int w, int h, int d, int components,
 
 //-----------------------------------------------------------------------------
 
-bool texture::updateFloat(const glm::vec4 * data, int w, int h, const bool unbind /* = true */) const
+bool texture::updateFloat(const float * data, int w, int h, int components, const bool unbind /* = true */) const
 {
   if (m_handle == 0) return false;
 
   TRE_ASSERT(w == m_w);
   TRE_ASSERT(h == m_h);
+  TRE_ASSERT(components == m_components);
 
   // upload
 
   glBindTexture(GL_TEXTURE_2D, m_handle);
 
   {
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, w, h, 0, GL_RGBA, GL_FLOAT, data);
+    glTexImage2D(GL_TEXTURE_2D, 0, kInternalformatsFloat16[components], w, h, 0, kExternalformats[components], GL_FLOAT, data);
   }
 
+  if (useMipmap()) glGenerateMipmap(GL_TEXTURE_2D);
   if (unbind) glBindTexture(GL_TEXTURE_2D, 0);
 
   return IsOpenGLok("texture::updateFloat - upload pixels");
@@ -716,22 +723,24 @@ bool texture::updateFloat(const glm::vec4 * data, int w, int h, const bool unbin
 
 //-----------------------------------------------------------------------------
 
-bool texture::updateArrayFloat(const glm::vec4 * data, int w, int h, int layerIndex, const bool unbind /* = true */) const
+bool texture::updateArrayFloat(const float * data, int w, int h, int layerIndex, int components, const bool unbind /* = true */) const
 {
   if (m_handle == 0) return false;
 
   TRE_ASSERT(w == m_w);
   TRE_ASSERT(h == m_h);
   TRE_ASSERT(layerIndex < m_d);
+  TRE_ASSERT(components == m_components);
 
   // upload
 
   glBindTexture(GL_TEXTURE_2D_ARRAY, m_handle);
 
   {
-    glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, layerIndex, w, h, 1,  GL_RGBA, GL_FLOAT, data);
+    glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, layerIndex, w, h, components, kExternalformats[components], GL_FLOAT, data);
   }
 
+  // if (useMipmap()) glGenerateMipmap(GL_TEXTURE_2D_ARRAY); // to improve, should be done by the caller.
   if (unbind) glBindTexture(GL_TEXTURE_2D_ARRAY, 0);
 
   return IsOpenGLok("texture::updateArrayFloat - upload pixels");

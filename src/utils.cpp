@@ -561,7 +561,7 @@ void fft(glm::vec2 * __restrict data, const std::size_t n, const bool inverse)
   (void)dataF;
   // Cooley-Tukey
   {
-    // Unfolded First loop: mmax = 2 (half = 1, m = 0, w = (1, 0))
+    // Unfolded first loop: mmax = 2: half = 1, m = 0, w = (1, 0)
     for (std::size_t i = 0; i < n; i += 2)
     {
       const std::size_t j = i + 1;
@@ -574,13 +574,15 @@ void fft(glm::vec2 * __restrict data, const std::size_t n, const bool inverse)
   {
     const std::size_t half = mmax >> 1;
     const float theta = (inverse ? +1.f : -1.f) * (2.f * float(M_PI) / float(mmax));
+    const float cosTheta = std::cos(theta);
+    const float sinTheta = std::sin(theta);
 #if defined(__AVX__) || defined(__SSE4_1__)
+    const __m128 rotation_real = _mm_set1_ps(cosTheta * cosTheta - sinTheta * sinTheta);
+    const __m128 rotation_imag = _mm_set1_ps(2.f * cosTheta * sinTheta);
+    __m128 w_real = _mm_set_ps(cosTheta, cosTheta, 1.f, 1.f);
+    __m128 w_imag = _mm_set_ps(sinTheta, sinTheta, 0.f, 0.f);
     for (std::size_t m = 0; m < half; m += 2)
     {
-      const float angle0 = float(m) * theta;
-      const float angle1 = float(m + 1) * theta;
-      const __m128 w_real = _mm_set_ps(std::cos(angle1), std::cos(angle1), std::cos(angle0), std::cos(angle0));
-      const __m128 w_imag = _mm_set_ps(std::sin(angle1), std::sin(angle1), std::sin(angle0), std::sin(angle0));
       for (std::size_t i = m; i < n; i += mmax)
       {
         const std::size_t i_ptr = i * 2;
@@ -596,17 +598,18 @@ void fft(glm::vec2 * __restrict data, const std::size_t n, const bool inverse)
         _mm_storeu_ps(&dataF[i_ptr], new_i);
         _mm_storeu_ps(&dataF[j_ptr], new_j);
       }
+      const __m128 next_w_real = _mm_sub_ps(_mm_mul_ps(w_real, rotation_real), _mm_mul_ps(w_imag, rotation_imag));
+      const __m128 next_w_imag = _mm_add_ps(_mm_mul_ps(w_real, rotation_imag), _mm_mul_ps(w_imag, rotation_real));
+      w_real = next_w_real;
+      w_imag = next_w_imag;
     }
 #else
-    const float cos_theta = std::cos(theta);
-    const float sin_theta = std::sin(theta);
     glm::vec2 w = glm::vec2(1.f, 0.f);
     for (std::size_t m = 0; m < half; ++m)
     {
       for (std::size_t i = m; i < n; i += mmax)
       {
         const std::size_t j = i + half;
-        // tempr = w * data[j]
         const float tempr_real = w.x * data[j].x - w.y * data[j].y;
         const float tempr_imag = w.x * data[j].y + w.y * data[j].x;
         data[j].x = data[i].x - tempr_real;
@@ -614,9 +617,9 @@ void fft(glm::vec2 * __restrict data, const std::size_t n, const bool inverse)
         data[i].x += tempr_real;
         data[i].y += tempr_imag;
       }
-      // w *= (cos_theta + i * sin_theta)
-      const float w_new_real = w.x * cos_theta - w.y * sin_theta;
-      const float w_new_imag = w.x * sin_theta + w.y * cos_theta;
+      // w *= (cosTheta + i * sinTheta)
+      const float w_new_real = w.x * cosTheta - w.y * sinTheta;
+      const float w_new_imag = w.x * sinTheta + w.y * cosTheta;
       w.x = w_new_real;
       w.y = w_new_imag;
     }
