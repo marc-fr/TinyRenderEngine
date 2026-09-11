@@ -1252,8 +1252,15 @@ void modelIndexed::fillDataBoxWireframe(std::size_t ipart, std::size_t offsetI, 
 
   if (m_layout.m_normals.m_size != 0)
   {
-    for (std::size_t v = 0; v < fillDataBoxWireframe_VSize(); ++v)
-      m_layout.m_normals.get<glm::vec3>(offsetV + v) = glm::vec3(0.f);
+    const glm::vec3 center = transform[3];
+    m_layout.m_normals.get<glm::vec3>(offsetV +  0) = glm::normalize(pt000 - center);
+    m_layout.m_normals.get<glm::vec3>(offsetV +  1) = glm::normalize(pt001 - center);
+    m_layout.m_normals.get<glm::vec3>(offsetV +  2) = glm::normalize(pt010 - center);
+    m_layout.m_normals.get<glm::vec3>(offsetV +  3) = glm::normalize(pt011 - center);
+    m_layout.m_normals.get<glm::vec3>(offsetV +  4) = glm::normalize(pt100 - center);
+    m_layout.m_normals.get<glm::vec3>(offsetV +  5) = glm::normalize(pt101 - center);
+    m_layout.m_normals.get<glm::vec3>(offsetV +  6) = glm::normalize(pt110 - center);
+    m_layout.m_normals.get<glm::vec3>(offsetV +  7) = glm::normalize(pt111 - center);
   }
 
   if (m_layout.m_colors.m_size != 0)
@@ -1627,10 +1634,19 @@ void modelIndexed::fillDataSquareWireframe(std::size_t ipart, std::size_t offset
   m_layout.m_index[offsetI + 6] = offsetV + 3;
   m_layout.m_index[offsetI + 7] = offsetV + 0;
 
-  TRE_ASSERT(m_layout.m_normals.m_size == 0);
   TRE_ASSERT(m_layout.m_tangents.m_size == 0); // we dont handle tangents generation.
   TRE_ASSERT(m_layout.m_uvs.m_size == 0); // we dont handle UVs generation.
   TRE_ASSERT(m_layout.m_skins.m_size == 0); // we dont handle skins generation.
+
+  if (m_layout.m_normals.m_size != 0)
+  {
+    TRE_ASSERT(m_layout.m_normals.m_size == 3);
+    const glm::vec3 outNormal = glm::normalize(glm::vec3(transform[1]));
+    m_layout.m_normals.get<glm::vec3>(offsetV + 0) = outNormal;
+    m_layout.m_normals.get<glm::vec3>(offsetV + 1) = outNormal;
+    m_layout.m_normals.get<glm::vec3>(offsetV + 2) = outNormal;
+    m_layout.m_normals.get<glm::vec3>(offsetV + 3) = outNormal;
+  }
 
   if (m_layout.m_colors.m_size != 0)
   {
