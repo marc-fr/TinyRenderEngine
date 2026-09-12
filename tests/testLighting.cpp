@@ -11,6 +11,9 @@
 #ifdef TRE_EMSCRIPTEN
 #include <emscripten.h>
 #include <emscripten/html5.h>
+constexpr int nThreads = 2;
+#else
+constexpr int nThreads = 4;
 #endif
 
 #include <math.h>
@@ -43,7 +46,6 @@ const float roomSize = 4.f; // full extend
 tre::modelStaticIndexed3D meshes = tre::modelStaticIndexed3D(tre::modelStaticIndexed3D::VB_NORMAL /*| tre::modelStaticIndexed3D::VB_UV*/);
 std::size_t modelPart = 0;
 std::size_t NmodelPart = 0;
-glm::mat4 modelTransform = glm::mat4(1.f);
 std::vector<tre::s_contact3D::s_skinKdTree> meshesSkin;
 
 tre::modelRaw2D meshQuad;
@@ -60,8 +62,7 @@ enum e_lightingModel
 };
 e_lightingModel lightingModel = MODEL_GGX;
 
-tre::shader shaderScreenSpaceNormal;
-tre::shader shaderRaytraced;
+tre::shader shaderPlainTexture;
 
 tre::renderTarget            rtMain(tre::renderTarget::RT_COLOR | tre::renderTarget::RT_DEPTH | tre::renderTarget::RT_SAMPLABLE | tre::renderTarget::RT_COLOR_HDR);
 tre::renderTarget_ShadowMap  rtShadow;
@@ -71,12 +72,12 @@ tre::postFX_ToneMapping      postEffectToneMapping;
 const      glm::vec4 roomDiffuse = glm::vec4(0.7f, 0.7f, 0.7f, 1.f);
 constexpr float      roomMetalness = 0.f;
 constexpr float      roomRoughness = 0.8f;
+bool                 showRoom = true;
 
 glm::vec4 meshDiffuse = glm::vec4(1.f,0.f,0.f,1.f);
 float     meshMetalness = 0.f;
 float     meshRoughness = 0.1f;
 
-bool            showRoom = true;
 const glm::vec3 sunLightIncomingDir = glm::normalize(glm::vec3(-0.243f,-0.970f,0.f));
 const glm::vec3 lightColor = glm::vec3(0.9f,1.3f,0.9f);
 
@@ -84,9 +85,10 @@ bool  renderMainLight = true;
 float renderAmbiantIntensity = 0.05f;
 bool  renderShadow = true;
 int   renderSSAO = 0; // 0:no, 1:ssao, 2:hbao
+float renderSSAORadius = 0.1f;
 
-bool showNormal = false;
 bool showRaytrace = false;
+bool showAO = false;
 bool showSamplingSphere = false;
 
 glm::vec4 mViewEulerAndDistance = glm::vec4(0.f, 0.f, 0.f, 4.f);
@@ -97,14 +99,24 @@ tre::baseUI2D   worldUI;
 tre::ui::window *worldWin = nullptr;
 tre::ui::window *samplingSphereWin = nullptr;
 
-thread_local std::mt19937 rng; // global generator (local thread)
-
-std::uniform_real_distribution<float> rand01(0.f, 1.f);
+thread_local std::mt19937 rng;
+thread_local std::uniform_real_distribution<float> rand01(0.f, 1.f);
 
 typedef std::chrono::steady_clock systemclock;
 typedef systemclock::time_point   systemtick;
 
 constexpr float kPi = 3.141592653589793f;
+
+// =============================================================================
+
+static inline glm::vec3 normalizeCrossSafe(const glm::vec3 &a, const glm::vec3 &b)
+{
+  const glm::vec3 cab = glm::cross(a,b);
+  const float cab2 = glm::dot(cab, cab);
+  if (cab2 > 1.e-12f) return cab / std::sqrt(cab2);
+  if (std::abs(a.x) > 1.e-6f) return glm::vec3(a.y, -a.x, 0.f) / std::sqrt(a.x*a.x + a.y*a.y);
+  return glm::vec3(0.f, -a.z, a.y) / std::sqrt(a.y*a.y + a.z*a.z);
+}
 
 // =============================================================================
 
@@ -158,8 +170,7 @@ namespace rayTracer
     // distribution = exp(-tan(theta)^2 / sigma^2) / ( sigma^2 cos^4(theta)) * cos(theta)
     //                                                                         ^^^^^^^^^^ keep a cosine-weighted term
     (void)cosThetaMin;
-    TRE_ASSERT(1.f / std::sqrt(1.f - sigma * sigma * std::log(1.f - 1.f / kPi)) >= cosThetaMin); // the min value is already greater than cosThetaMin.
-    const float cosTheta = 1.f / std::sqrt(1.f - sigma * sigma * std::log(1.f - rand01(rng) / kPi));
+    const float cosTheta = 1.f / std::sqrt(1.f - sigma * sigma * std::log(1.f - rand01(rng)) / kPi);
     const float sinTheta = std::sqrt(1.f - cosTheta * cosTheta);
     const float phi = 2.f * kPi * rand01(rng);
     const float cosPhi = std::cos(phi);
@@ -167,63 +178,71 @@ namespace rayTracer
     return normal * (cosTheta) + tangentU * (sinTheta * cosPhi) + tangentV * (sinTheta * sinPhi);
   }
 
-  glm::vec3 ray(glm::vec3 pos, glm::vec3 dir)
+  struct s_hitInfo : public tre::s_contact3D { int flag; };
+
+  s_hitInfo rayTraceHit(glm::vec3 pos, glm::vec3 dir)
   {
-    tre::s_contact3D hitInfo;
+    s_hitInfo ret;
+    ret.penet = std::numeric_limits<float>::infinity();
+    ret.flag = 0;
+
+    // Room hit
+    if (showRoom)
+    {
+      const float invDirX = (dir.x == 0.f) ? 0.f : 1.f /dir.x;
+      const float invDirY = (dir.y == 0.f) ? 0.f : 1.f /dir.y;
+      const float invDirZ = (dir.z == 0.f) ? 0.f : 1.f /dir.z;
+      {
+        // bottom
+        const float     dist = (-0.5f * roomSize - pos.y) * invDirY;
+        const glm::vec3 pt = pos + dist * dir;
+        const bool      inRange = std::abs(pt.x) < 0.5f * roomSize && std::abs(pt.z) < 0.5f * roomSize;
+        if (dist > 0.f && inRange && dist < ret.penet) { ret.penet = dist; ret.pt = pt; ret.normal = glm::vec3(0.f, 1.f, 0.f); }
+      }
+      {
+        // left
+        const float     dist = (-0.5f * roomSize - pos.x) * invDirX;
+        const glm::vec3 pt = pos + dist * dir;
+        const bool      inRange = std::abs(pt.y) < 0.5f * roomSize && std::abs(pt.z) < 0.5f * roomSize;
+        if (dist > 0.f && inRange && dist < ret.penet) { ret.penet = dist; ret.pt = pt; ret.normal = glm::vec3(1.f, 0.f, 0.f); }
+      }
+      {
+        // right
+        const float     dist = (0.5f * roomSize - pos.x) * invDirX;
+        const glm::vec3 pt = pos + dist * dir;
+        const bool      inRange = std::abs(pt.y) < 0.5f * roomSize && std::abs(pt.z) < 0.5f * roomSize;
+        if (dist > 0.f && inRange && dist < ret.penet) { ret.penet = dist; ret.pt = pt; ret.normal = glm::vec3(-1.f, 0.f, 0.f); }
+      }
+      {
+        // back
+        const float     dist = (-0.5f * roomSize - pos.z) * invDirZ;
+        const glm::vec3 pt = pos + dist * dir;
+        const bool      inRange = std::abs(pt.x) < 0.5f * roomSize && std::abs(pt.y) < 0.5f * roomSize;
+        if (dist > 0.f && inRange && dist < ret.penet) { ret.penet = dist; ret.pt = pt; ret.normal = glm::vec3(0.f, 0.f, 1.f); }
+      }
+    }
+
+    // Mesh hit
+    {
+      tre::s_contact3D hitInfoMesh;
+      const bool earlyCullMesh = tre::s_contact3D::raytrace_box(hitInfoMesh, pos, dir, meshes.partInfo(modelPart).m_bbox, 0.f);
+      if (!earlyCullMesh || !tre::s_contact3D::raytrace_skin(hitInfoMesh, pos, dir, meshesSkin[modelPart], 0.f)) hitInfoMesh.penet = 0.f;
+      if (hitInfoMesh.penet > 0.f && hitInfoMesh.penet < ret.penet){ ret.penet = hitInfoMesh.penet; ret.normal = hitInfoMesh.normal; ret.pt = hitInfoMesh.pt; ret.flag = 1; }
+    }
+
+    return ret;
+  }
+
+  glm::vec3 rayTrace(glm::vec3 pos, glm::vec3 dir)
+  {
     glm::vec3 retLight = glm::vec3(1.f);
     int bounceCount = 0;
 
     while (true)
     {
-      hitInfo.penet = std::numeric_limits<float>::infinity();
+      s_hitInfo hit = rayTraceHit(pos, dir);
 
-      // Room hit
-      if (showRoom)
-      {
-        const float invDirX = (dir.x == 0.f) ? 0.f : 1.f /dir.x;
-        const float invDirY = (dir.y == 0.f) ? 0.f : 1.f /dir.y;
-        const float invDirZ = (dir.z == 0.f) ? 0.f : 1.f /dir.z;
-        {
-          // bottom
-          const float     dist = (-0.5f * roomSize - pos.y) * invDirY;
-          const glm::vec3 pt = pos + dist * dir;
-          const bool      inRange = std::abs(pt.x) < 0.5f * roomSize && std::abs(pt.z) < 0.5f * roomSize;
-          if (dist > 0.f && inRange && dist < hitInfo.penet) { hitInfo.penet = dist; hitInfo.pt = pt; hitInfo.normal = glm::vec3(0.f, 1.f, 0.f); }
-        }
-        {
-          // left
-          const float     dist = (-0.5f * roomSize - pos.x) * invDirX;
-          const glm::vec3 pt = pos + dist * dir;
-          const bool      inRange = std::abs(pt.y) < 0.5f * roomSize && std::abs(pt.z) < 0.5f * roomSize;
-          if (dist > 0.f && inRange && dist < hitInfo.penet) { hitInfo.penet = dist; hitInfo.pt = pt; hitInfo.normal = glm::vec3(1.f, 0.f, 0.f); }
-        }
-        {
-          // right
-          const float     dist = (0.5f * roomSize - pos.x) * invDirX;
-          const glm::vec3 pt = pos + dist * dir;
-          const bool      inRange = std::abs(pt.y) < 0.5f * roomSize && std::abs(pt.z) < 0.5f * roomSize;
-          if (dist > 0.f && inRange && dist < hitInfo.penet) { hitInfo.penet = dist; hitInfo.pt = pt; hitInfo.normal = glm::vec3(-1.f, 0.f, 0.f); }
-        }
-        {
-          // back
-          const float     dist = (-0.5f * roomSize - pos.z) * invDirZ;
-          const glm::vec3 pt = pos + dist * dir;
-          const bool      inRange = std::abs(pt.x) < 0.5f * roomSize && std::abs(pt.y) < 0.5f * roomSize;
-          if (dist > 0.f && inRange && dist < hitInfo.penet) { hitInfo.penet = dist; hitInfo.pt = pt; hitInfo.normal = glm::vec3(0.f, 0.f, 1.f); }
-        }
-      }
-
-      bool hitMesh = false;
-
-      // Mesh hit
-      {
-        tre::s_contact3D hitInfoMesh;
-        const bool earlyCullMesh = tre::s_contact3D::raytrace_box(hitInfoMesh, pos, dir, meshes.partInfo(modelPart).m_bbox, 0.f);
-        if (!earlyCullMesh || !tre::s_contact3D::raytrace_skin(hitInfoMesh, pos, dir, meshesSkin[modelPart], 0.f)) hitInfoMesh.penet = 0.f;
-        if (hitInfoMesh.penet > 0.f && hitInfoMesh.penet < hitInfo.penet) { hitInfo = hitInfoMesh; hitMesh = true; }
-      }
-
-      if (!std::isfinite(hitInfo.penet))
+      if (!std::isfinite(hit.penet))
       {
         // no hit: background + sun-light
         static constexpr float kSunLightFactor = 1.f / (2.f * kPi * (1.f - 0.995f)); // in fact, the sun-light becomes a cone-light.
@@ -231,48 +250,29 @@ namespace rayTracer
         break;
       }
 
-    if (bounceCount >= bounceLimit)
-    {
-      // bounce limit
-      return glm::vec3(0.f);
-    }
+      if (bounceCount >= bounceLimit)
+      {
+        // bounce limit
+        return glm::vec3(0.f);
+      }
 
       // double-sided
 
-      if (glm::dot(-dir, hitInfo.normal) < 0.f) hitInfo.normal = -hitInfo.normal;
-
-      const float dotN = glm::dot(-dir, hitInfo.normal); // >= 0.
-      TRE_ASSERT(dotN <= 1.f);
+      if (glm::dot(-dir, hit.normal) < 0.f) hit.normal = -hit.normal;
 
       // there is a hit
 
-      const glm::vec3 matColor = hitMesh ? meshDiffuse   : roomDiffuse;
-      const float     matMetal = hitMesh ? meshMetalness : roomMetalness;
-      const float     matR2    = hitMesh ? meshRoughness * meshRoughness : roomRoughness * roomRoughness;
+      const glm::vec3 matColor = hit.flag != 0 ? meshDiffuse   : roomDiffuse;
+      const float     matMetal = hit.flag != 0 ? meshMetalness : roomMetalness;
+      const float     matR2    = hit.flag != 0 ? meshRoughness * meshRoughness : roomRoughness * roomRoughness;
 
-      const glm::vec3 tangentU = glm::normalize(glm::cross(hitInfo.normal, -dir));
-      const glm::vec3 tangentV = glm::normalize(glm::cross(hitInfo.normal, tangentU));
-
-#if 0
-      // choose a facet:
-      glm::vec3 facetNormal;
-      while (true)
-      {
-        facetNormal = genDir_uniform(hitInfo.normal, tangentU, tangentV, 1.f - matR2);
-
-        if (glm::dot(facetNormal, -dir) > 0.f) break; // ok, the facet is visible. (TODO: take also account of the facet self-shadowing)
-      }
-#endif
+      const glm::vec3 tangentU = normalizeCrossSafe(hit.normal, -dir);
+      const glm::vec3 tangentV = glm::normalize(glm::cross(hit.normal, tangentU));
 
       // choose outputs direction:
-      //const glm::vec3 dirOutReflect = dir - 2.f * glm::dot(dir, facetNormal) * facetNormal;
       glm::vec3 dirOutDiffuse;
-      while (true)
-      {
-        //dirOutDiffuse = genDir_uniform(hitInfo.normal, tangentU, tangentV, 0.001f); but put-back a "* 2.f" factor in the final light.
-        dirOutDiffuse = genDir_cosine(hitInfo.normal, tangentU, tangentV, 0.001f);
-        break; //if (glm::dot(dirOutDiffuse, facetNormal) > 0.f) break; // ok, the out-direction is visible from the facet (TODO: take also account of the facet self-shadowing)
-      }
+      //dirOutDiffuse = genDir_uniform(hit.normal, tangentU, tangentV, 0.001f); but put-back a "* 2.f" factor in the final light.
+      dirOutDiffuse = genDir_cosine(hit.normal, tangentU, tangentV, 0.001f);
 
       // Raw evaluation of the rendering equation with Monte-Carlo method: L = intg_hemisphere( fr Li n.w dw ) ~= 2 pi Mean_{w uniform distribution}(fr Li n.w)
       // But we use importance-sampling (cosine-weighted integrale): L = intg_hemisphere( fr Li n.w dw ) ~= pi Mean_{w cosine-weighted distribution}(fr Li)
@@ -280,19 +280,19 @@ namespace rayTracer
 
       const glm::vec3 half = glm::normalize(-dir + dirOutDiffuse);
       TRE_ASSERT(std::isfinite(half.x));
-      const float dotNH = std::max(glm::dot(hitInfo.normal, half), 0.f);
+      const float dotNH = std::max(glm::dot(hit.normal, half), 0.f);
       const float dotVH = std::min(glm::dot(-dir, half), 1.f);
-      const float dotNL = std::max(glm::dot(hitInfo.normal, dirOutDiffuse), 0.f);
-      const float dotNV = std::max(glm::dot(hitInfo.normal, -dir), 0.f);
+      const float dotNL = std::max(glm::dot(hit.normal, dirOutDiffuse), 0.f);
+      const float dotNV = std::max(glm::dot(hit.normal, -dir), 0.f);
       float ndf; // note: "pi" factor moved away
       float vis;
       switch (lightingModel)
       {
         case MODEL_PHONG:
         {
-          const float matR4 = matR2 * matR2;
+          const float matR4 = std::max(matR2 * matR2, 1.e-4f);
           ndf = std::pow(dotNH, 2.f / matR4 - 2.f) / matR4;
-          vis = 0.25f / std::max(std::max(dotNV, dotNL), 0.5f);
+          vis = 0.25f / std::max(std::max(dotNV, dotNL), 1.e-2f /* 0.25 in shader */);
         }
         break;
         case MODEL_GGX:
@@ -302,7 +302,7 @@ namespace rayTracer
           ndf = matR4 / (dm * dm);
           const float GGXV = dotNL * std::sqrt(dotNV * dotNV * (1.f - matR4) + matR4);
           const float GGXL = dotNV * std::sqrt(dotNL * dotNL * (1.f - matR4) + matR4);
-          vis = 0.5f / std::max(GGXV + GGXL, 1.f);
+          vis = 0.5f / std::max(GGXV + GGXL, 1.e-2f /* 0.5 in shader */);
         }
         break;
         default:
@@ -316,15 +316,85 @@ namespace rayTracer
       const glm::vec3 kRefr  = (1.f - kRefl) * (1.f - matMetal);
       TRE_ASSERT(glm::all(glm::isfinite(kRefl)));
 
-      retLight *= (kRefr * matColor + kRefl * ndf * vis); // * glm::dot(dirOutDiffuse, hitInfo.normal) * 2.f; // note: "pi" factor moved away
+      retLight *= (kRefr * matColor + kRefl * ndf * vis); // * glm::dot(dirOutDiffuse, hit.normal) * 2.f; // note: "pi" factor moved away
 
       // next ray
-      pos = hitInfo.pt + 0.001f * dirOutDiffuse;
+      pos = hit.pt + 0.001f * hit.normal;
       dir = dirOutDiffuse;
       ++bounceCount;
     }
 
     return retLight;
+  }
+
+  float rayAO(glm::vec3 pos, glm::vec3 dir, float radius, int nSamples)
+  {
+    const s_hitInfo hitFirst = rayTraceHit(pos, dir);
+    if (!std::isfinite(hitFirst.penet)) return 1.f;
+
+    const glm::vec3 tangentU = normalizeCrossSafe(hitFirst.normal, -dir);
+    const glm::vec3 tangentV = glm::normalize(glm::cross(hitFirst.normal, tangentU));
+
+    float acc = 0.f;
+
+    for (int i = 0; i < nSamples; ++i)
+    {
+
+      glm::vec3 dirOutDiffuse;
+      //dirOutDiffuse = genDir_uniform(hitInfo.normal, tangentU, tangentV, 0.001f); but put-back a "* 2.f" factor in the final light.
+      dirOutDiffuse = genDir_cosine(hitFirst.normal, tangentU, tangentV, 0.001f);
+
+      const s_hitInfo hitSecond = rayTraceHit(hitFirst.pt + 0.001f * hitFirst.normal, dirOutDiffuse);
+
+      acc += (hitSecond.penet < radius) ? 0.f : 1.f;
+    }
+
+    return acc / float(nSamples);
+  }
+
+  void runStep(int threadId, float &accumCount)
+  {
+    const glm::vec4 mProjInvRed = glm::vec4(1.f/myWindow.m_matProjection3D[0][0], 1.f/myWindow.m_matProjection3D[1][1], 1.f, 1.f / myWindow.m_near);
+    const glm::mat3 mViewRotInv = glm::mat3(glm::transpose(mView));
+    const glm::vec3 camPos = glm::vec3(- glm::transpose(mView) * mView[3]);
+    const int yS = int(threadId);
+    if (!showAO)
+    {
+      for (int y = yS; y < res.y; y += nThreads)
+      {
+        for (int x = 0; x < res.x; ++x)
+        {
+          const glm::vec4 pxCoordClipSpace = glm::vec4( (float(x) + 0.5f) / float(res.x) * 2.f - 1.f, (float(y) + 0.5f) / float(res.y) * 2.f - 1.f, -1.f, 1.f);
+          glm::vec4 pxCoordViewSpace = mProjInvRed * pxCoordClipSpace;
+          //pxCoordViewSpace /= pxCoordViewSpace.w; // ok because "w" is positive
+          pxCoordViewSpace.w = 0.f;
+          const glm::vec3 camDir = glm::normalize(mViewRotInv * glm::vec3(pxCoordViewSpace));
+
+          const glm::vec3 c = rayTrace(camPos, camDir);
+          accumBuffer[x + y * res.x] = (accumBuffer[x + y * res.x] * accumCount + glm::vec4(c, 1.f)) / (accumCount + 1.f);
+          accumBuffer[x + y * res.x].w = 1.f;
+        }
+      }
+    }
+    else
+    {
+      for (int y = yS; y < res.y; y += nThreads)
+      {
+        for (int x = 0; x < res.x; ++x)
+        {
+          const glm::vec4 pxCoordClipSpace = glm::vec4( (float(x) + 0.5f) / float(res.x) * 2.f - 1.f, (float(y) + 0.5f) / float(res.y) * 2.f - 1.f, -1.f, 1.f);
+          glm::vec4 pxCoordViewSpace = mProjInvRed * pxCoordClipSpace;
+          //pxCoordViewSpace /= pxCoordViewSpace.w; // ok because "w" is positive
+          pxCoordViewSpace.w = 0.f;
+          const glm::vec3 camDir = glm::normalize(mViewRotInv * glm::vec3(pxCoordViewSpace));
+          const float ao = rayAO(camPos, camDir, renderSSAORadius, 8);
+          const glm::vec3 c = glm::vec3(ao);
+          accumBuffer[x + y * res.x] = (accumBuffer[x + y * res.x] * accumCount + glm::vec4(c, 1.f)) / (accumCount + 1.f);
+          accumBuffer[x + y * res.x].w = 1.f;
+        }
+      }
+    }
+    accumCount += 1.f;
   }
 
 #ifdef RAYTRACER_THREADED
@@ -334,14 +404,16 @@ namespace rayTracer
     STATE_SUSPEND,
     STATE_STOP,
   };
-  e_state                    processState = STATE_SUSPEND; // target state of all threads
-  std::atomic<int>           processSuspendedCount;
-  std::array<std::thread, 4> processThreads;
-  int                        processRevision = 0;
+  e_state                           processState = STATE_SUSPEND; // target state of all threads
+  std::atomic<int>                  processSuspendedCount;
+  std::array<std::thread, nThreads> processThreads;
+  std::atomic<int>                  processRevision = 0;
 #else
   int   processStep = 0;
   float accumCount = 0.f;
 #endif
+
+  void update();
 
   bool init_threading()
   {
@@ -362,6 +434,7 @@ namespace rayTracer
             processSuspendedCount++;
             while (processState == STATE_SUSPEND)
               std::this_thread::sleep_for(std::chrono::microseconds(1));
+            processSuspendedCount--;
           }
           // check dirty
           if (processRevision != localRevision)
@@ -369,32 +442,11 @@ namespace rayTracer
             localRevision = processRevision;
             localAccumCount = 0.f;
           }
-          if (processState == STATE_STOP) break;
-          // run
-          const glm::vec4 mProjInvRed = glm::vec4(1.f/myWindow.m_matProjection3D[0][0], 1.f/myWindow.m_matProjection3D[1][1], 1.f, 1.f / myWindow.m_near);
-          const glm::mat3 mViewRotInv = glm::mat3(glm::transpose(mView));
-          const glm::vec3 camPos = glm::vec3(- glm::transpose(mView) * mView[3]);
-          const int yS = (res.y * int(threadId    )) / 4;
-          const int yE = (res.y * int(threadId + 1)) / 4;
-          for (int y = yS; y < yE; ++y)
-          {
-            for (int x = 0; x < res.x; ++x)
-            {
-              const glm::vec4 pxCoordClipSpace = glm::vec4( (float(x) + 0.5f) / float(res.x) * 2.f - 1.f, (float(y) + 0.5f) / float(res.y) * 2.f - 1.f, -1.f, 1.f);
-              glm::vec4 pxCoordViewSpace = mProjInvRed * pxCoordClipSpace;
-              //pxCoordViewSpace /= pxCoordViewSpace.w; // ok because "w" is positive
-              pxCoordViewSpace.w = 0.f;
-              const glm::vec3 camDir = glm::normalize(mViewRotInv * glm::vec3(pxCoordViewSpace));
-
-              const glm::vec3 c = ray(camPos, camDir);
-              accumBuffer[x + y * res.x] = (accumBuffer[x + y * res.x] * localAccumCount + glm::vec4(c, 1.f)) / (localAccumCount + 1.f);
-              accumBuffer[x + y * res.x].w = 1.f;
-            }
-          }
-          localAccumCount += 1.f;
+          runStep(threadId, localAccumCount);
         }
       } );
     }
+    update(); // update once to allocate the accumBuffer and textureForRender
 #endif
     return true;
   }
@@ -418,8 +470,11 @@ namespace rayTracer
 #endif
       accumBuffer.resize(res.x * res.y);
       textureForRender.clear();
-      textureForRender.loadFloat(nullptr, res.x, res.y, tre::texture::MMASK_NEAREST_MAG_FILTER);
+      textureForRender.loadFloat(nullptr, res.x, res.y, 4, tre::texture::MMASK_NEAREST_MAG_FILTER);
       isDurty = true;
+#ifdef RAYTRACER_THREADED
+      processState = STATE_RUN;
+#endif
     }
     if (isDurty)
     {
@@ -427,53 +482,20 @@ namespace rayTracer
       processRevision += 1;
 #else
       accumCount = 0.f;
-      std::memset(accumBuffer.data(), 0, sizeof(glm::vec4) * res.x * res.y);
       processStep = 0;
+      std::memset(accumBuffer.data(), 0, sizeof(glm::vec4) * res.x * res.y);
 #endif
       isDurty = false;
     }
 
-    // Ray-trace (a single pass at quarter-res)
 #ifndef RAYTRACER_THREADED
-    {
-      const systemtick tickStart = systemclock::now();
-      const glm::vec4 mProjInvRed = glm::vec4(1.f/myWindow.m_matProjection3D[0][0], 1.f/myWindow.m_matProjection3D[1][1], 1.f, 1.f / myWindow.m_near);
-      const glm::mat3 mViewRotInv = glm::mat3(glm::transpose(mView));
-      const glm::vec3 camPos = glm::vec3(- glm::transpose(mView) * mView[3]);
-      const int x0 = int(processStep / 2);
-      const int y0 = int(processStep % 2);
-      for (int y = y0; y < res.y; y += 2)
-      {
-        for (int x = x0; x < res.x; x += 2)
-        {
-          const glm::vec4 pxCoordClipSpace = glm::vec4( (float(x) + 0.5f) / float(res.x) * 2.f - 1.f, (float(y) + 0.5f) / float(res.y) * 2.f - 1.f, -1.f, 1.f);
-          glm::vec4 pxCoordViewSpace = mProjInvRed * pxCoordClipSpace;
-          //pxCoordViewSpace /= pxCoordViewSpace.w; // ok because "w" is positive
-          pxCoordViewSpace.w = 0.f;
-          const glm::vec3 camDir = glm::normalize(mViewRotInv * glm::vec3(pxCoordViewSpace));
-
-          const glm::vec3 c = ray(camPos, camDir);
-          accumBuffer[x + y * res.x] = (accumBuffer[x + y * res.x] * accumCount + glm::vec4(c, 1.f)) / (accumCount + 1.f);
-          accumBuffer[x + y * res.x].w = 1.f;
-        }
-      }
-      processStep = (processStep + 1) % 4;
-      if (processStep == 0) accumCount += 1.f;
-      const systemtick tickEnd = systemclock::now();
-      const float lastElapsedTime = std::chrono::duration<float, std::milli>(tickEnd - tickStart).count() * 1.e-3f;
-      TRE_LOG("rayTrace half-res: " << int(lastElapsedTime * 1.e4f) * 1.e-1f << " ms"); // tmp here
-    }
+    runStep(processStep++ % nThreads, accumCount); // Ray-trace (a single pass at quarter-res)
 #endif
 
     // Upload the texture
     {
       textureForRender.updateFloat(accumBuffer.data(), res.x, res.y, false);
     }
-
-#ifdef RAYTRACER_THREADED
-    processSuspendedCount = 0;
-    processState = STATE_RUN;
-#endif
   }
 }
 
@@ -533,7 +555,7 @@ namespace samplingSphere
       }
       points.push_back(dir);
       const float cosTheta = dir.y;
-      const std::size_t cosThetaIdx = std::size_t(cosTheta * float(distribution.size() - 1) + 0.5f);
+      const std::size_t cosThetaIdx = std::min(std::size_t(cosTheta * distribution.size()), distribution.size() - 1);
       distribution[cosThetaIdx] += 1.f;
     }
   }
@@ -563,7 +585,7 @@ namespace samplingSphere
         float           &v = integralSampleValues[i];
 
         const glm::vec3 H = glm::normalize(p + L);
-        const float     fr = integrandWithFresnel ? std::pow(1.f - H.y, 5.f) : 1.f;
+        const float     fr = integrandWithFresnel ? std::pow(1.f - glm::dot(H, p), 5.f) : 1.f;
 
         switch (integrand)
         {
@@ -595,7 +617,8 @@ namespace samplingSphere
         const float sampleWeight = (distributionModel == DISTRIBUTION_Uniform) ? 2.f * L.y : 1.f;
         integralValue += v * sampleWeight;
       }
-      integralValue *= kPi / float(points.size()); // TODO: the area depends also on "cosThetaMin" (and the distribution too)
+      integralValue *= kPi / float(points.size());
+      integralValue *= (distributionModel == DISTRIBUTION_Uniform) ? (1.f - cosThetaMin) : (1.f - cosThetaMin * cosThetaMin);
     }
 
     // generate the geometry for rendering
@@ -740,22 +763,7 @@ int app_init(std::string meshPath)
 
   shaderDepth.loadShader(tre::shader::PRGM_3D_DEPTH, 0);
 
-  {
-    tre::shader::s_layout layout(tre::shader::PRGM_3D);
-    layout.hasBUF_Normal = true;
-    layout.hasPIX_Normal = true;
-    layout.hasOUT_Color0 = true;
-
-    const char * srcFrag = "void main()\n"
-                           "{\n"
-                           "  color.xyz = 0.5f + 0.5f * normalize((MView * vec4(pixelNormal, 0.f)).xyz);\n"
-                           "  color.w = 1.f;\n"
-                           "}\n";
-
-    shaderScreenSpaceNormal.loadCustomShader(layout, srcFrag, "ScreenSpaceNormal");
-  }
-
-  shaderRaytraced.loadShader(tre::shader::PRGM_2D, tre::shader::PRGM_TEXTURED);
+  shaderPlainTexture.loadShader(tre::shader::PRGM_2D, tre::shader::PRGM_TEXTURED);
 
   // Rendering
 
@@ -764,7 +772,6 @@ int app_init(std::string meshPath)
   rtShadow.load(1024, 1024);
 
   rtAO.load(myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
-  rtAO.set_radius(0.1f * roomSize);
   rtAO.set_strength(2.f);
 
   postEffectToneMapping.set_gamma(2.2f);
@@ -808,7 +815,7 @@ int app_init(std::string meshPath)
 
     unsigned rowIdx = -1;
 
-    worldWin->create_widgetText(++rowIdx, 0, 1, 2)->set_text("show normal (F6)\nshow ray-trace (F7)\nshow rand on sphere (F8)");
+    worldWin->create_widgetText(++rowIdx, 0, 1, 2)->set_text("show AO (F6)\nshow ray-trace (F7)\nshow rand on sphere (F8)");
 
     worldWin->create_widgetText(++rowIdx, 0, 1, 2)->set_text("material:")->set_heightModifier(1.2f)->set_color(glm::vec4(1.f, 1.f, 0.2f, 1.f));
 
@@ -887,6 +894,11 @@ int app_init(std::string meshPath)
     static std::array<const char *, 3> listAOName = {"No", "SSAO", "HBAO" };
     tre::ui::widget *wAO = worldWin->create_widgetLineChoice(rowIdx, 1)->set_values(listAOName)->set_selectedIndex(renderSSAO)->set_iseditable(true)->set_isactive(true);
     wAO->wcb_modified_ongoing = [](tre::ui::widget *myself) { renderSSAO = static_cast<tre::ui::widgetLineChoice *>(myself)->get_selectedIndex(); };
+
+    worldWin->create_widgetText(++rowIdx, 0)->set_text("AO dist");
+    tre::ui::widget *wAOD = worldWin->create_widgetBar(rowIdx, 1)->set_value(renderSSAORadius)->set_valuemax(2.f)->set_withtext(true)->set_withborder(true)->set_iseditable(true)->set_isactive(true);
+    wAOD->wcb_modified_ongoing = [](tre::ui::widget *myself) { renderSSAORadius = static_cast<tre::ui::widgetBar *>(myself)->get_value(); };
+    wAOD->wcb_modified_finished = [](tre::ui::widget *myself) { rayTracer::isDurty = true; };
   }
 
   {
@@ -907,7 +919,7 @@ int app_init(std::string meshPath)
 
     unsigned rowIdx = -1;
 
-    samplingSphereWin->create_widgetText(++rowIdx, 0, 1, 2)->set_text("show normal (F6)\nshow ray-trace (F7)\nshow rand on sphere (F8)");
+    samplingSphereWin->create_widgetText(++rowIdx, 0, 1, 2)->set_text("quit rand on sphere (F8)");
 
     samplingSphereWin->create_widgetText(++rowIdx, 0)->set_text("distribution:");
     static const std::vector<std::string> listDistName = {"Uniform", "Cos-Weighted"};
@@ -1000,9 +1012,9 @@ void app_update()
         else if (event.key.keysym.sym == SDLK_F3) { modelPart = modelPart == NmodelPart - 1 ? 0 : modelPart + 1; rayTracer::isDurty = true; }
         else if (event.key.keysym.sym == SDLK_F4) { modelPart = NmodelPart - 1; rayTracer::isDurty = true; }
         else if (event.key.keysym.sym == SDLK_F5) { lightingModel = static_cast<e_lightingModel>((lightingModel + 1) % MODELSCOUNT); rayTracer::isDurty = true; }
-        else if (event.key.keysym.sym == SDLK_F6) { showNormal = !showNormal; showRaytrace = false; showSamplingSphere = false; }
-        else if (event.key.keysym.sym == SDLK_F7) { showRaytrace = !showRaytrace; showNormal = false; showSamplingSphere = false; }
-        else if (event.key.keysym.sym == SDLK_F8) { showSamplingSphere = !showSamplingSphere; showNormal = false; }
+        else if (event.key.keysym.sym == SDLK_F6) { showAO = !showAO; rayTracer::isDurty = true; }
+        else if (event.key.keysym.sym == SDLK_F7) { showRaytrace = !showRaytrace; rayTracer::processState = (showRaytrace) ? rayTracer::STATE_RUN : rayTracer::STATE_SUSPEND; }
+        else if (event.key.keysym.sym == SDLK_F8) { showSamplingSphere = !showSamplingSphere; }
       }
     }
 
@@ -1051,7 +1063,7 @@ void app_update()
 
     // shadow render pass ----------
 
-    if (renderShadow)
+    if (!showRaytrace && !showSamplingSphere && renderShadow)
     {
       rtShadow.bindForWritting();
       glClear(GL_DEPTH_BUFFER_BIT);
@@ -1064,44 +1076,20 @@ void app_update()
         meshRoom.drawcall(0, 1);
       }
 
-      shaderDepth.setUniformMatrix(sunLight.mPV[0] * modelTransform);
+      shaderDepth.setUniformMatrix(sunLight.mPV[0]);
       meshes.drawcall(modelPart, 1);
     }
 
-    // main render pass -------------
+    // opaque render pass -------------
 
-    tre::shader::updateUBO_sunLight(sunLight);
-
-    rtMain.bindForWritting();
-
-    if (showSamplingSphere)
+    if (!showRaytrace && !showSamplingSphere)
     {
-      glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-      const glm::mat4 mPV(myWindow.m_matProjection3D * mView);
-      glUseProgram(shaderPhong.m_drawProgram);
-      shaderPhong.setUniformMatrix(mPV * modelTransform, modelTransform, mView);
-      if (shaderPhong.layout().hasUNI_uniColor) glUniform4f(shaderPhong.getUniformLocation(tre::shader::uniColor), 0.2f, 1.f, 0.2f, 1.f);
-      if (shaderPhong.layout().hasUNI_uniMat)   glUniform2f(shaderPhong.getUniformLocation(tre::shader::uniMat), 0.f, 0.9f);
-      samplingSphere::meshForRender.drawcallAll();
-    }
-    else if (showRaytrace)
-    {
-      glDisable(GL_DEPTH_TEST);
-      glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+      tre::shader::updateUBO_sunLight(sunLight);
+      rtMain.bindForWritting();
 
-      glActiveTexture(GL_TEXTURE2);
-      glBindTexture(GL_TEXTURE_2D, rayTracer::textureForRender.m_handle);
-
-      glUseProgram(shaderRaytraced.m_drawProgram);
-      shaderRaytraced.setUniformMatrix(glm::mat3(1.f));
-      glUniform1i(shaderRaytraced.getUniformLocation(tre::shader::TexDiffuse),2);
-      meshQuad.drawcall(0, 1);
-    }
-    else
-    {
       glEnable(GL_DEPTH_TEST);
       glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-      tre::shader & curShader = showNormal ? shaderScreenSpaceNormal : ((lightingModel == 1) ? shaderGGX : shaderPhong);
+      tre::shader & curShader = (lightingModel == MODEL_GGX) ? shaderGGX : shaderPhong;
       const glm::mat4 mPV(myWindow.m_matProjection3D * mView);
       glUseProgram(curShader.m_drawProgram);
 
@@ -1121,19 +1109,19 @@ void app_update()
         meshRoom.drawcall(0, 1);
       }
 
-      curShader.setUniformMatrix(mPV * modelTransform, modelTransform, mView);
+      curShader.setUniformMatrix(mPV, glm::mat4(1.f), mView);
       if (curShader.layout().hasUNI_uniColor) glUniform4fv(curShader.getUniformLocation(tre::shader::uniColor), 1, glm::value_ptr(meshDiffuse));
       if (curShader.layout().hasUNI_uniMat)   glUniform2f(curShader.getUniformLocation(tre::shader::uniMat), meshMetalness, meshRoughness);
       meshes.drawcall(modelPart, 1);
     }
 
-    // AO -------------------------
-    // (1 frame delay, but that's ok for this test)
-
-    if (renderSSAO != 0 && !showSamplingSphere)
+    // AO render pass --------------------
+    // (delayed by 1 frame, but that's ok for this test)
+    if (!showRaytrace && !showSamplingSphere && renderSSAO != 0)
     {
       rtAO.set_power(renderSSAO == 2 ? 1.f : 2.f);
       rtAO.set_hboa(renderSSAO == 2);
+      rtAO.set_radius(renderSSAORadius);
       rtAO.process(rtMain, myWindow.m_matProjection3D);
     }
     else
@@ -1141,15 +1129,67 @@ void app_update()
       rtAO.bypass();
     }
 
+    // Ray-Tracer render pass --------------------
+    // (gamma-corrected ...)
+
+    if (showRaytrace && !showAO && !showSamplingSphere)
+    {
+      rtMain.bindForWritting();
+      glDisable(GL_DEPTH_TEST);
+      glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+      glActiveTexture(GL_TEXTURE2);
+      glBindTexture(GL_TEXTURE_2D, rayTracer::textureForRender.m_handle);
+
+      glUseProgram(shaderPlainTexture.m_drawProgram);
+      shaderPlainTexture.setUniformMatrix(glm::mat3(1.f));
+      glUniform1i(shaderPlainTexture.getUniformLocation(tre::shader::TexDiffuse),2);
+      meshQuad.drawcall(0, 1);
+    }
+
     // Post-Effects ---------------
-
-    glDisable(GL_DEPTH_TEST);
-    postEffectToneMapping.resolveToneMapping(rtMain.colorHandle(), myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
-
-    // UI-render pass -------------
 
     glBindFramebuffer(GL_FRAMEBUFFER,0);
     glViewport(0, 0, myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glDisable(GL_DEPTH_TEST);
+
+    if (showSamplingSphere)
+    {
+      const glm::mat4 mPV(myWindow.m_matProjection3D * mView);
+      glUseProgram(shaderPhong.m_drawProgram);
+      shaderPhong.setUniformMatrix(mPV, glm::mat4(1.f), mView);
+      if (shaderPhong.layout().hasUNI_uniColor) glUniform4f(shaderPhong.getUniformLocation(tre::shader::uniColor), 0.2f, 1.f, 0.2f, 1.f);
+      if (shaderPhong.layout().hasUNI_uniMat)   glUniform2f(shaderPhong.getUniformLocation(tre::shader::uniMat), 0.f, 0.9f);
+      samplingSphere::meshForRender.drawcallAll();
+    }
+    else if (showAO && showRaytrace)
+    {
+      glActiveTexture(GL_TEXTURE2);
+      glBindTexture(GL_TEXTURE_2D, rayTracer::textureForRender.m_handle);
+
+      glUseProgram(shaderPlainTexture.m_drawProgram);
+      shaderPlainTexture.setUniformMatrix(glm::mat3(1.f));
+      glUniform1i(shaderPlainTexture.getUniformLocation(tre::shader::TexDiffuse),2);
+      meshQuad.drawcall(0, 1);
+    }
+    else if (showAO)
+    {
+      glActiveTexture(GL_TEXTURE3);
+      glBindTexture(GL_TEXTURE_2D, rtAO.get_aoTextureUnit());
+
+      glUseProgram(shaderPlainTexture.m_drawProgram);
+      shaderPlainTexture.setUniformMatrix(glm::mat3(1.f));
+      glUniform1i(shaderPlainTexture.getUniformLocation(tre::shader::TexDiffuse),3);
+      meshQuad.drawcall(0, 1);
+    }
+    else
+    {
+      postEffectToneMapping.resolveToneMapping(rtMain.colorHandle(), myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
+    }
+
+    // UI-render pass -------------
+
     glDisable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
 
@@ -1178,8 +1218,7 @@ void app_quit()
   shaderGGX.clearShader();
   shaderPhong.clearShader();
   shaderDepth.clearShader();
-  shaderScreenSpaceNormal.clearShader();
-  shaderRaytraced.clearShader();
+  shaderPlainTexture.clearShader();
 
   tre::shader::clearUBO();
 
