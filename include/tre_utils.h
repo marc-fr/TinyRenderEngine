@@ -60,73 +60,6 @@ namespace tre {
 /// @{
 
 /**
- * @brief class span
- * This warps memory-views on c-style array, std::vector or std::array.
- * std::span is available in C++20 standard, but this code is not on C++20 yet
- */
-template<typename _T>
-class span
-{
-private:
-   _T                *m_ptr;
-   const std::size_t m_size;
-
-public:
-    span(_T* ptr, std::size_t len) noexcept : m_ptr(ptr), m_size(len) {}
-    span(const std::vector<_T> &v, std::size_t begin, std::size_t len) noexcept : m_ptr(const_cast<_T*>(v.data() + begin)), m_size(len) {}
-    span(const std::vector<_T> &v, std::size_t begin = 0u) noexcept : m_ptr(const_cast<_T*>(v.data() + begin)), m_size(v.size() <= begin ? 0 : v.size() - begin) {}
-    span(const std::initializer_list<_T> &v) noexcept : m_ptr(const_cast<_T*>(v.begin())), m_size(v.size()) {}
-    template<std::size_t _N> span(const std::array<_T, _N> &a) noexcept : m_ptr(const_cast<_T*>(&a[0])), m_size(a.size()) {}
-
-    _T       &operator[](std::size_t i) const noexcept { return m_ptr[i]; }
-
-    bool        empty() const noexcept { return m_size == 0; }
-    std::size_t size() const noexcept { return m_size; }
-
-    _T* data() noexcept { return m_ptr; }
-    _T* dataEnd() noexcept { return m_ptr + m_size; }
-
-    const _T* data() const noexcept { return m_ptr; }
-    const _T* dataEnd() const noexcept { return m_ptr + m_size; }
-
-    class iterator
-    {
-    public:
-      iterator(_T *data) : m_ptr(data) {}
-      inline iterator& operator++() { ++m_ptr; return *this; }
-      inline iterator  operator++(int ) { iterator retIt(*this); ++(*this); return retIt; }
-      inline bool      operator==(const iterator &other) const { return m_ptr == other.m_ptr; }
-      inline bool      operator!=(const iterator &other) const { return m_ptr != other.m_ptr; }
-      inline _T&       operator*() { return *m_ptr; }
-     private:
-      _T *m_ptr;
-    };
-    iterator begin() noexcept { return iterator(data()); }
-    iterator end() noexcept { return iterator(dataEnd()); }
-
-    class const_iterator
-    {
-    public:
-      const_iterator(const _T *data) : m_ptr(data) {}
-      inline const_iterator& operator++() { ++m_ptr; return *this; }
-      inline const_iterator  operator++(int ) { const_iterator retIt(*this); ++(*this); return retIt; }
-      inline bool            operator==(const const_iterator &other) const { return m_ptr == other.m_ptr; }
-      inline bool            operator!=(const const_iterator &other) const { return m_ptr != other.m_ptr; }
-      inline const _T&       operator*() { return *m_ptr; }
-     private:
-      const _T *m_ptr;
-    };
-    const_iterator begin() const noexcept { return const_iterator(data()); }
-    const_iterator end() const noexcept { return const_iterator(dataEnd()); }
-
-    void swap(span<_T> &other)
-    {
-      TRE_ASSERT(m_size == other.m_size);
-      std::swap(m_ptr, other.m_ptr);
-    }
-};
-
-/**
 * @brief class chunkVector
 * The chunkVector never relocates the data when growing.
 */
@@ -257,6 +190,74 @@ public:
 
   typename std::array<_T, capacity>::iterator end() noexcept { return std::array<_T, capacity>::begin() + m_sizeCounted; } // this overwrites the std::array<>::end()
   typename std::array<_T, capacity>::const_iterator end() const noexcept { return std::array<_T, capacity>::begin() + m_sizeCounted; } // this overwrites the std::array<>::end()
+};
+
+/**
+ * @brief class span
+ * This warps memory-views on c-style array, std::vector or std::array.
+ * std::span is available in C++20 standard, but this code is not on C++20 yet
+ */
+template<typename _T>
+class span
+{
+private:
+   _T                *m_ptr;
+   const std::size_t m_size;
+
+public:
+    span(_T* ptr, std::size_t len) noexcept : m_ptr(ptr), m_size(len) {}
+    span(const std::vector<_T> &v, std::size_t begin, std::size_t len) noexcept : m_ptr(const_cast<_T*>(v.data() + begin)), m_size(len) {}
+    span(const std::vector<_T> &v, std::size_t begin = 0u) noexcept : m_ptr(const_cast<_T*>(v.data() + begin)), m_size(v.size() <= begin ? 0 : v.size() - begin) {}
+    span(const std::initializer_list<_T> &v) noexcept : m_ptr(const_cast<_T*>(v.begin())), m_size(v.size()) {}
+    template<std::size_t _N> span(const std::array<_T, _N> &a) noexcept : m_ptr(const_cast<_T*>(&a[0])), m_size(a.size()) {}
+    template<std::size_t _N> span(const arrayCounted<_T, _N> &a) noexcept : m_ptr(const_cast<_T*>(&a[0])), m_size(a.sizeCounted()) {}
+
+    _T       &operator[](std::size_t i) const noexcept { return m_ptr[i]; }
+
+    bool        empty() const noexcept { return m_size == 0; }
+    std::size_t size() const noexcept { return m_size; }
+
+    _T* data() noexcept { return m_ptr; }
+    _T* dataEnd() noexcept { return m_ptr + m_size; }
+
+    const _T* data() const noexcept { return m_ptr; }
+    const _T* dataEnd() const noexcept { return m_ptr + m_size; }
+
+    class iterator
+    {
+    public:
+      iterator(_T *data) : m_ptr(data) {}
+      inline iterator& operator++() { ++m_ptr; return *this; }
+      inline iterator  operator++(int ) { iterator retIt(*this); ++(*this); return retIt; }
+      inline bool      operator==(const iterator &other) const { return m_ptr == other.m_ptr; }
+      inline bool      operator!=(const iterator &other) const { return m_ptr != other.m_ptr; }
+      inline _T&       operator*() { return *m_ptr; }
+     private:
+      _T *m_ptr;
+    };
+    iterator begin() noexcept { return iterator(data()); }
+    iterator end() noexcept { return iterator(dataEnd()); }
+
+    class const_iterator
+    {
+    public:
+      const_iterator(const _T *data) : m_ptr(data) {}
+      inline const_iterator& operator++() { ++m_ptr; return *this; }
+      inline const_iterator  operator++(int ) { const_iterator retIt(*this); ++(*this); return retIt; }
+      inline bool            operator==(const const_iterator &other) const { return m_ptr == other.m_ptr; }
+      inline bool            operator!=(const const_iterator &other) const { return m_ptr != other.m_ptr; }
+      inline const _T&       operator*() { return *m_ptr; }
+     private:
+      const _T *m_ptr;
+    };
+    const_iterator begin() const noexcept { return const_iterator(data()); }
+    const_iterator end() const noexcept { return const_iterator(dataEnd()); }
+
+    void swap(span<_T> &other)
+    {
+      TRE_ASSERT(m_size == other.m_size);
+      std::swap(m_ptr, other.m_ptr);
+    }
 };
 
 /// @}
