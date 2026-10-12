@@ -1,4 +1,3 @@
-
 #include "tre_shader.h"
 #include "tre_rendertarget.h"
 #include "tre_model_importer.h"
@@ -138,7 +137,7 @@ namespace rayTracer
     const float phi = 2.f * kPi * rand01(rng);
     const float cosPhi = std::cos(phi);
     const float sinPhi = std::sin(phi);
-    return normal * (cosTheta) + tangentU * (sinTheta * cosPhi) + tangentV * (sinTheta * sinPhi);
+    return glm::normalize(normal * (cosTheta) + tangentU * (sinTheta * cosPhi) + tangentV * (sinTheta * sinPhi)); // re-normalize to avoid numerical errors
   }
 
   glm::vec3 genDir_cosine(const glm::vec3 &normal, const glm::vec3 &tangentU, const glm::vec3 &tangentV, float cosThetaMin)
@@ -149,7 +148,7 @@ namespace rayTracer
     const float phi = 2.f * kPi * rand01(rng);
     const float cosPhi = std::cos(phi);
     const float sinPhi = std::sin(phi);
-    return normal * (cosTheta) + tangentU * (sinTheta * cosPhi) + tangentV * (sinTheta * sinPhi);
+    return glm::normalize(normal * (cosTheta) + tangentU * (sinTheta * cosPhi) + tangentV * (sinTheta * sinPhi)); // re-normalize to avoid numerical errors
   }
 
   glm::vec3 genDir_blinnPhong(const glm::vec3 &normal, const glm::vec3 &tangentU, const glm::vec3 &tangentV, float cosThetaMin, float pw)
@@ -162,7 +161,7 @@ namespace rayTracer
     const float phi = 2.f * kPi * rand01(rng);
     const float cosPhi = std::cos(phi);
     const float sinPhi = std::sin(phi);
-    return normal * (cosTheta) + tangentU * (sinTheta * cosPhi) + tangentV * (sinTheta * sinPhi);
+    return glm::normalize(normal * (cosTheta) + tangentU * (sinTheta * cosPhi) + tangentV * (sinTheta * sinPhi)); // re-normalize to avoid numerical errors
   }
 
   glm::vec3 genDir_beckmann(const glm::vec3 &normal, const glm::vec3 &tangentU, const glm::vec3 &tangentV, float cosThetaMin, float sigma)
@@ -175,7 +174,7 @@ namespace rayTracer
     const float phi = 2.f * kPi * rand01(rng);
     const float cosPhi = std::cos(phi);
     const float sinPhi = std::sin(phi);
-    return normal * (cosTheta) + tangentU * (sinTheta * cosPhi) + tangentV * (sinTheta * sinPhi);
+    return glm::normalize(normal * (cosTheta) + tangentU * (sinTheta * cosPhi) + tangentV * (sinTheta * sinPhi)); // re-normalize to avoid numerical errors
   }
 
   struct s_hitInfo : public tre::s_contact3D { int flag; };
@@ -404,9 +403,9 @@ namespace rayTracer
     STATE_SUSPEND,
     STATE_STOP,
   };
-  e_state                           processState = STATE_SUSPEND; // target state of all threads
-  std::atomic<int>                  processSuspendedCount;
+  std::atomic<e_state>              processState = STATE_SUSPEND; // target state of all threads
   std::array<std::thread, nThreads> processThreads;
+  std::atomic<int>                  processActiveCount = 0;
   std::atomic<int>                  processRevision = 0;
 #else
   int   processStep = 0;
@@ -417,6 +416,7 @@ namespace rayTracer
 
   bool init_threading()
   {
+    update(); // update once to allocate the accumBuffer and textureForRender
 #ifdef RAYTRACER_THREADED
     for (std::size_t threadId = 0; threadId < processThreads.size(); ++threadId)
     {
@@ -426,27 +426,32 @@ namespace rayTracer
         rng.seed(rd()); // (thread local)
         int   localRevision = 0;
         float localAccumCount = 0.f;
-        while (processState != STATE_STOP)
+        while (true)
         {
           // wait
-          if (processState == STATE_SUSPEND)
+          while (processState.load(std::memory_order_relaxed) == STATE_SUSPEND)
           {
-            processSuspendedCount++;
-            while (processState == STATE_SUSPEND)
-              std::this_thread::sleep_for(std::chrono::microseconds(1));
-            processSuspendedCount--;
+            std::this_thread::yield();
           }
+
+          // check stop
+          if (processState.load(std::memory_order_acquire) == STATE_STOP) break;
+
+          processActiveCount.fetch_add(1, std::memory_order_relaxed);
+
           // check dirty
-          if (processRevision != localRevision)
+          const int rev = processRevision.load(std::memory_order_acquire);
+          if (rev != localRevision)
           {
-            localRevision = processRevision;
+            localRevision = rev;
             localAccumCount = 0.f;
           }
           runStep(threadId, localAccumCount);
+
+          processActiveCount.fetch_sub(1, std::memory_order_release);
         }
       } );
     }
-    update(); // update once to allocate the accumBuffer and textureForRender
 #endif
     return true;
   }
@@ -461,25 +466,26 @@ namespace rayTracer
 
   void update()
   {
-    if (accumBuffer.size() != res.x * res.y)
+    if (res != myWindow.m_resolutioncurrent)
     {
 #ifdef RAYTRACER_THREADED
-      processState = STATE_SUSPEND;
-      while (processSuspendedCount.load() < processThreads.size())
+      processState.store(STATE_SUSPEND, std::memory_order_release);
+      while (processActiveCount.load(std::memory_order_acquire) > 0)
         std::this_thread::sleep_for(std::chrono::microseconds(1));
 #endif
+      res = myWindow.m_resolutioncurrent;
       accumBuffer.resize(res.x * res.y);
       textureForRender.clear();
       textureForRender.loadFloat(nullptr, res.x, res.y, 4, tre::texture::MMASK_NEAREST_MAG_FILTER);
       isDurty = true;
 #ifdef RAYTRACER_THREADED
-      processState = STATE_RUN;
+      processState.store(STATE_RUN, std::memory_order_release);
 #endif
     }
     if (isDurty)
     {
 #ifdef RAYTRACER_THREADED
-      processRevision += 1;
+      processRevision.fetch_add(1, std::memory_order_release);
 #else
       accumCount = 0.f;
       processStep = 0;
@@ -784,8 +790,6 @@ int app_init(std::string meshPath)
 
   // Ray-Tracer
 
-  rayTracer::res = myWindow.m_resolutioncurrent;
-
   rayTracer::init_threading();
 
   samplingSphere::meshForRender.loadIntoGPU();
@@ -1038,8 +1042,6 @@ void app_update()
 
       worldWin->set_mat3(wmat);
       samplingSphereWin->set_mat3(wmat);
-
-      rayTracer::res = myWindow.m_resolutioncurrent;
     }
 
     // compute the view

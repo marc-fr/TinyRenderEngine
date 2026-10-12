@@ -595,8 +595,8 @@ void triangulate(const std::vector<glm::vec2> &envelop, std::vector<unsigned> &l
 
   const float triMinArea = boxArea * 1.e-6f;
 
-  boxMin -= boxExtend * 0.05f;;
-  boxMax += boxExtend * 0.05f;;
+  boxMin -= boxExtend * 0.2f;
+  boxMax += boxExtend * 0.2f;
 
   // generate the "master"-quad (2 triangles)
 
@@ -778,13 +778,11 @@ void triangulate(const std::vector<glm::vec2> &envelop, std::vector<unsigned> &l
       for (; iEdge < nEdges; ++iEdge)
       {
         iEdgeP1 = (iEdge == nEdges -1) ? 0 : iEdge + 1;
-        if (listEdge[iEdge].pt2 == ptM || listEdge[iEdge].pt2 == ptN)
-          continue;
+        if (listEdge[iEdge].pt2 == ptM || listEdge[iEdge].pt2 == ptN) continue;
         const glm::vec2 v00 = *listEdge[iEdge  ].pt2 - *listEdge[iEdge].pt1;
         const glm::vec2 v02 = *listEdge[iEdgeP1].pt2 - *listEdge[iEdge].pt1;
         const float     spin = v00.x * v02.y - v00.y * v02.x;
-        if (spin > 0.f)
-          break; // got a candidate
+        if (spin > 0.f) break; // got a candidate
       }
       TRE_ASSERT(iEdge != nEdges);
       // generate the triangle
@@ -872,8 +870,7 @@ void triangulate(const std::vector<glm::vec2> &envelop, std::vector<unsigned> &l
     for (std::size_t iT = 0; iT < listTriSize; ++iT)
     {
        s_triangle &t = listTri[iT];
-      if (!t.valid() || t.flag != 1)
-        continue;
+      if (!t.valid() || t.flag != 1) continue;
       if (t.adjAB != nullptr && t.adjAB->flag != 1) { hasNewTriangle = true; t.adjAB->flag = 1; }
       if (t.adjBC != nullptr && t.adjBC->flag != 1) { hasNewTriangle = true; t.adjBC->flag = 1; }
       if (t.adjCA != nullptr && t.adjCA->flag != 1) { hasNewTriangle = true; t.adjCA->flag = 1; }
@@ -884,8 +881,7 @@ void triangulate(const std::vector<glm::vec2> &envelop, std::vector<unsigned> &l
   for (std::size_t iT = 0; iT < listTriSize; ++iT)
   {
     s_triangle &t = listTri[iT];
-    if (t.valid() && t.flag != 1)
-      t.clear();
+    if (t.valid() && t.flag != 1) t.clear();
   }
 
   // compute output triangle-list

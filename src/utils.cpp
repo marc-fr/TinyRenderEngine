@@ -276,7 +276,12 @@ void tetrahedronQuality(const glm::vec3 &vA, const glm::vec3 &vB, const glm::vec
 
   if (quality != nullptr)
   {
-    if (vol == 0.f)
+    const float lAB = glm::length(eAB);
+    const float lAC = glm::length(eAC);
+    const float lAD = glm::length(eAD);
+    const float lavg = (lAB + lAC + lAD) * (1.f / 3.f);
+
+    if (vol < 1.e-4f * lavg * lavg * lavg) // degenerated tetrahedron (avoid fp-imprecision issues)
     {
       *quality = 0.f;
     }
@@ -290,16 +295,12 @@ void tetrahedronQuality(const glm::vec3 &vA, const glm::vec3 &vB, const glm::vec
 
       const glm::vec3 eBC = vC - vB;
       const glm::vec3 eBD = vD - vB;
-
-      const float lAB = glm::length(eAB);
-      const float lAC = glm::length(eAC);
-      const float lAD = glm::length(eAD);
       const float lBC = glm::length(eBC);
       const float lBD = glm::length(eBD);
       const float lCD = glm::length(vD - vC);
       const float Rsquared_p1 = ( lAD * lBC  + lBD * lAC + lCD * lAB) * (lAD * lBC  + lBD * lAC - lCD * lAB) / (24.f * vol);
       const float Rsquared_p2 = (-lAD * lBC  + lBD * lAC + lCD * lAB) * (lAD * lBC  - lBD * lAC + lCD * lAB) / (24.f * vol);
-      const float R = sqrtf(fabsf(Rsquared_p1 * Rsquared_p2));
+      const float R = std::sqrt(std::abs(Rsquared_p1 * Rsquared_p2));
 
       const float W1 = 0.5f * glm::length(glm::cross(eAB, eAC));
       const float W2 = 0.5f * glm::length(glm::cross(eAB, eAD));
@@ -308,7 +309,6 @@ void tetrahedronQuality(const glm::vec3 &vA, const glm::vec3 &vB, const glm::vec
       const float r = 3.f * vol / (W1 + W2 + W3 + W4);
 
       const float tetraQualityInv = R / r;
-
       TRE_ASSERT(tetraQualityInv >= 3.f - 1.e-5f); // float-point precision
 
       *quality = (tetraQualityInv < 3.f) ? 1.f : 3.f/tetraQualityInv;

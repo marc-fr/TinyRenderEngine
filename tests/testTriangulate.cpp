@@ -185,9 +185,8 @@ int main(int argc, char **argv)
   wUI_main.set_fontSize(tre::ui::s_size(20, tre::ui::SIZE_PIXEL));
   wUI_main.set_colormask(glm::vec4(1.f, 1.f, 1.f, 0.6f));
 
-  wUI_main.create_widgetText(0, 0)->set_text("mode (Enter):");
+  wUI_main.create_widgetText(0, 0)->set_text("mode:");
   wUI_main.create_widgetText(0, 1);
-  wUI_main.create_widgetText(1, 0)->set_text("visu (F6/F7):");
   wUI_main.create_widgetText(1, 1);
   wUI_main.create_widgetText(2, 0, 2, 1);
 

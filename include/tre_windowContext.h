@@ -183,6 +183,8 @@ public:
     void setScreenBoundsMotion(bool isMoving) { m_mouveOnBounds = isMoving; }
 
     void treatControlEvent(const s_controls &control, const float dt);
+
+    glm::vec3 position() const;
   };
 
 };

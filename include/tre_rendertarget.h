@@ -70,7 +70,11 @@ public:
   ~renderTarget_ShadowMap() {}
 
   void setSceneBox(const s_boundbox &newbox) { m_sceneBox = newbox; }
-  void computeUBO_forMap(shader::s_UBOdata_sunLight &uboLight, unsigned shadowIndex, float biasFactor = 1.f); ///< Get the light direction from the UBO, compute the Proj-view matrix, fill data in the UBO.
+
+  /// @brief Computes the UBO data for the shadow map
+  /// @param biasFactor Bias used to avoid self-shadowing
+  /// @param nearOffset Offset (in world-units) the near plane of the shadow-map projection (negative to offset towards the light source)
+  void computeUBO_forMap(shader::s_UBOdata_sunLight &uboLight, unsigned shadowIndex, float biasFactor = 1.f, float nearOffset = 0.f);
 
   const glm::mat4 &mProj() const { return m_mProj; }
   const glm::mat4 &mView() const { return m_mView; }

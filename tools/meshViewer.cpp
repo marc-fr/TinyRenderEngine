@@ -53,13 +53,13 @@ struct s_partProcessingContext
   {
     const systemtick tick0 = systemclock::now();
 
-    //m_partDecimateCurv = tre::modelTools::decimateCurvature(*m_mesh, m_part, 0.2f);
+    m_partDecimateCurv = tre::modelTools::decimateCurvature(*m_mesh, m_partOrigin, 0.2f);
 
     const systemtick tick1 = systemclock::now();
 
-    //m_partDecimateVoxel = tre::modelTools::decimateVoxel(*m_mesh, m_part, 0.2f, true);
+    m_partDecimateVoxel = tre::modelTools::decimateVoxel(*m_mesh, m_partOrigin, 0.2f, true);
 
-     const systemtick tick2 = systemclock::now();
+    const systemtick tick2 = systemclock::now();
 
     tre::modelTools::computeConvexeEnvelop2D_XY(m_mesh->layout(), m_mesh->partInfo(m_partOrigin), glm::mat4(1.f), 1.e-2f, m_envelop2D);
 
@@ -238,12 +238,12 @@ static constexpr std::array<const char*, 4> kRenderModeNames = { "Shaded", "Norm
 enum e_showProcess
 {
   SHOW_ORIGIN,
-  SHOW_DECIMATE_1,
-  SHOW_DECIMATE_2,
+  SHOW_DECIMATE_CURV,
+  SHOW_DECIMATE_VOXEL,
   SHOW_TETRA,
 };
 e_showProcess process = SHOW_ORIGIN;
-static constexpr std::array<const char*, 4> kProcessNames = { "Origin", "Decimate 1", "Decimate 2", "Tetra" };
+static constexpr std::array<const char*, 4> kProcessNames = { "Origin", "Decimate Curv", "Decimate Voxel", "Tetra" };
 
 tre::font        font;
 tre::baseUI2D    bUI_main;
@@ -777,10 +777,10 @@ static void app_update()
 
   switch (process)
   {
-    case SHOW_DECIMATE_1:
+    case SHOW_DECIMATE_CURV:
     if (meshContextSelected.m_partDecimateCurv != -1) partToRender = meshContextSelected.m_partDecimateCurv;
     break;
-    case SHOW_DECIMATE_2:
+    case SHOW_DECIMATE_VOXEL:
     if (meshContextSelected.m_partDecimateVoxel != -1) partToRender = meshContextSelected.m_partDecimateVoxel;
     break;
     case SHOW_TETRA:

@@ -602,6 +602,13 @@ void windowContext::s_view3D::treatControlEvent(const s_controls &control, const
   }
 }
 
+// ----------------------------------------------------------------------------
+
+glm::vec3 windowContext::s_view3D::position() const
+{
+  return - glm::inverse(glm::mat3(m_matView)) * glm::vec3(m_matView[3]);
+}
+
 // ============================================================================
 
 } // namespace

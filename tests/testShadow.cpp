@@ -51,21 +51,30 @@ struct s_shadowDebug
     _isLoaded = true;
   }
 
-  void draw(const glm::mat3 &mProj2D) const
+  void draw(const glm::mat3 &mProj2D, bool withNearMap) const
   {
     if (!_isLoaded) return;
 
     glUseProgram(shader.m_drawProgram);
 
-    glUniform1i(shader.getUniformLocation(tre::shader::TexDiffuse),2); // texture already bind
+    {
+      glUniform1i(shader.getUniformLocation(tre::shader::TexDiffuse), 2);
+      const glm::mat3 mModel_sunDebug = glm::mat3(0.3f, 0.0f, 0.f,
+                                                  0.0f, 0.3f, 0.f,
+                                                  1.0f, 0.6f, 1.f);
+      shader.setUniformMatrix(mProj2D * mModel_sunDebug);
+      geom.drawcall(0, 1);
+    }
 
-    const glm::mat3 mModel_sunDebug = glm::mat3(0.3f, 0.0f, 0.f,
-                                                0.0f, 0.3f, 0.f,
-                                                1.0f, 0.6f, 1.f);
-
-    shader.setUniformMatrix(mProj2D * mModel_sunDebug);
-
-    geom.drawcall(0, 1);
+    if (withNearMap)
+    {
+      glUniform1i(shader.getUniformLocation(tre::shader::TexDiffuse), 3);
+      const glm::mat3 mModel_sunDebug = glm::mat3(0.3f, 0.0f, 0.f,
+                                                  0.0f, 0.3f, 0.f,
+                                                  1.0f, -0.6f, 1.f);
+      shader.setUniformMatrix(mProj2D * mModel_sunDebug);
+      geom.drawcall(0, 1);
+    }
   }
 
   void clear()
@@ -107,6 +116,12 @@ struct s_meshInstance
             pos.y > 0.f     && pos.y < kBound &&
             pos.z > -kBound && pos.z < kBound);
   }
+  void update(float dt)
+  {
+    pos += vel * dt;
+    rot += rotVel * dt;
+    // TODO: bouncing cubes
+  }
 };
 std::vector<s_meshInstance> instances;
 
@@ -129,7 +144,8 @@ tre::shader        shaderText2D;
 
 s_shadowDebug sunShadow_debug;
 
-tre::renderTarget_ShadowMap sunLight_ShadowMap;
+tre::renderTarget_ShadowMap sunLight_ShadowMapFar;
+tre::renderTarget_ShadowMap sunLight_ShadowMapNear;
 
 // ============================================================================
 
@@ -172,22 +188,24 @@ int app_init()
 
   // render targets
 
-  sunLight_ShadowMap.load(1024, 1024);
+  sunLight_ShadowMapFar.load(512, 512);
+  sunLight_ShadowMapNear.load(1024, 1024);
 
   // load HUD
 
   worldHUDFont.load({ tre::font::loadFromBMPandFNT(TESTIMPORTPATH "resources/font_arial_88") }, true);
 
   {
-    static const char* txts[3] = { "FPS",
+    static const char* txts[4] = { "FPS",
                                    "right clic: lock/unlock camera",
                                    "F5: show/hide render-target",
+                                   "F6: enable/disable near-map",
                                  };
 
-    for (int it = 0; it < 3; ++it)
+    for (int it = 0; it < 4; ++it)
     {
       tre::textgenerator::s_textInfo tInfo;
-      tInfo.setupBasic(&worldHUDFont, txts[it], glm::vec2(0.f, -0.08f - 0.08f * it));
+      tInfo.setupBasic(&worldHUDFont, txts[it], glm::vec2(0.f, -0.08f * it));
       tInfo.setupSize(0.06f);
       tInfo.m_fontPixelSize = 14;
       worldHUDModel.createPart(tre::textgenerator::geometry_VertexCount(tInfo.m_text));
@@ -201,11 +219,11 @@ int app_init()
 
   // material (shaders)
 
-  shaderMaterialFlat.setShadowSunSamplerCount(1);
+  shaderMaterialFlat.setShadowSunSamplerCount(2);
   shaderMaterialFlat.loadShader(tre::shader::PRGM_3D,
                                tre::shader::PRGM_UNICOLOR | tre::shader::PRGM_LIGHT_SUN);
 
-  shaderMaterialInstanced.setShadowSunSamplerCount(1);
+  shaderMaterialInstanced.setShadowSunSamplerCount(2);
   shaderMaterialInstanced.loadShader(tre::shader::PRGM_3D,
                                   tre::shader::PRGM_UNICOLOR | tre::shader::PRGM_LIGHT_SUN |
                                   tre::shader::PRGM_INSTANCED | tre::shader::PRGM_ORIENTATION);
@@ -214,7 +232,7 @@ int app_init()
 
   shaderDepthInstanced.loadShader(tre::shader::PRGM_3D_DEPTH, tre::shader::PRGM_INSTANCED | tre::shader::PRGM_ORIENTATION);
 
-  shaderText2D.loadShader(tre::shader::PRGM_2D, tre::shader::PRGM_TEXTURED);
+  shaderText2D.loadShader(tre::shader::PRGM_2D, tre::shader::PRGM_TEXTURED | tre::shader::PRGM_COLOR);
 
   // debug shadow
 
@@ -245,6 +263,7 @@ int app_init()
 // ============================================================================
 
 bool showMaps = false;
+bool nearMap = true;
 
 void app_update()
 {
@@ -254,7 +273,7 @@ void app_update()
   sunLight_Data.color = glm::vec3(0.8f);
   sunLight_Data.colorAmbiant = glm::vec3(0.1f);
 
-  sunLight_Data.nShadow = 1; // TODO: cascaded shadow maps
+  sunLight_Data.nShadow = nearMap ? 2 : 1;
 
   // - start frame
 
@@ -273,31 +292,30 @@ void app_update()
       myControls.treatSDLEvent(event);
 
       if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_F5) showMaps = !showMaps;
+      if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_F6) nearMap = !nearMap;
     }
 
     if (myWindow.m_hasFocus) myView3D.treatControlEvent(myControls, myTimings.frametime);
 
     if (myControls.m_mouseRIGHT & myControls.MASK_BUTTON_RELEASED) myView3D.setMouseBinding(!myView3D.m_mouseBound);
-  } // end events
+  }
 
   // world simulation -------------------
 
+  // sun
+  {
+    const float sunTheta = 0.4f + 0.3f * std::sin(myTimings.scenetime * (6.28f * 0.02f));
+    sunLight_Data.direction = -glm::vec3( 0.f, std::cos(sunTheta), std::sin(sunTheta) );
+  }
+
   if (!myControls.m_pause)
   {
-
-    // sun
-    {
-      const float sunTheta = 0.4f + 0.3f * std::sin(myTimings.scenetime * (6.28f * 0.02f));
-      sunLight_Data.direction = -glm::vec3( 0.f, std::cos(sunTheta), std::sin(sunTheta) );
-    }
-
     // meshes instances
     {
       for (auto &si : instances)
       {
-        si.pos += si.vel * myTimings.frametime;
-        si.rot += si.rotVel * myTimings.frametime;
         if (!si.inBounds()) si.initialize();
+        si.update(myTimings.frametime);
       }
 
       // fill GPU buffer
@@ -314,129 +332,147 @@ void app_update()
         *bufferX4++ = rotM[2];
       }
     }
+  }
 
-    // shadow maps
+  // shadow maps
+  {
+    sunLight_ShadowMapFar.setSceneBox(tre::s_boundbox(glm::vec3(-kBound*1.1f), glm::vec3(kBound*1.1f)));
+    sunLight_ShadowMapFar.computeUBO_forMap(sunLight_Data, 0);
+
+    const glm::vec3 boxCenter = myView3D.position();
+    sunLight_ShadowMapNear.setSceneBox(tre::s_boundbox(boxCenter - 0.1f * kBound, boxCenter + 0.1f * kBound));
+    sunLight_ShadowMapNear.computeUBO_forMap(sunLight_Data, 1, 1.f, -kBound);
+  }
+
+  // upload
+  {
+    tre::shader::updateUBO_sunLight(sunLight_Data);
+
+    meshes.updateIntoGPU();
+  }
+
+  const glm::mat4 mPV = myWindow.m_matProjection3D * myView3D.m_matView;
+
+  // shadow-map render pass --------------
+
+  {
+    glDisable(GL_BLEND);
+    glEnable(GL_DEPTH_TEST);
+
+    // Far map
     {
-      sunLight_ShadowMap.setSceneBox(tre::s_boundbox(glm::vec3(-kBound*1.1f), glm::vec3(kBound*1.1f)));
-      sunLight_ShadowMap.computeUBO_forMap(sunLight_Data, 0);
-    }
-
-    // prepare render ----------------------
-
-    {
-      tre::shader::updateUBO_sunLight(sunLight_Data);
-
-      meshes.updateIntoGPU();
-    }
-
-    const glm::mat4 mPV = myWindow.m_matProjection3D * myView3D.m_matView;
-
-    // shadow-map render pass --------------
-
-    {
-      glDisable(GL_BLEND);
-      glEnable(GL_DEPTH_TEST);
-
-      sunLight_ShadowMap.bindForWritting();
+      sunLight_ShadowMapFar.bindForWritting();
       glClear(GL_DEPTH_BUFFER_BIT);
-
-      const glm::mat4 localMPV = sunLight_ShadowMap.mProj() * sunLight_ShadowMap.mView();
-
-      glUseProgram(shaderDepth.m_drawProgram);
-      shaderDepth.setUniformMatrix(localMPV);
-      meshPlane.drawcallAll();
+      const glm::mat4 localMPV = sunLight_ShadowMapFar.mProj() * sunLight_ShadowMapFar.mView();
 
       glUseProgram(shaderDepthInstanced.m_drawProgram);
       shaderDepthInstanced.setUniformMatrix(localMPV);
       meshes.drawInstanced(0, 0, instances.size());
-
-      tre::IsOpenGLok("shadow render pass");
     }
 
-    // opaque render pass ----------------
-
+    if (nearMap) // Near map
     {
-      glBindFramebuffer(GL_FRAMEBUFFER, 0);
-      glViewport(0, 0, myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
-      glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+      sunLight_ShadowMapNear.bindForWritting();
+      glClear(GL_DEPTH_BUFFER_BIT);
+      const glm::mat4 localMPV = sunLight_ShadowMapNear.mProj() * sunLight_ShadowMapNear.mView();
 
-      glDisable(GL_BLEND);
-      glEnable(GL_DEPTH_TEST);
-
-      glActiveTexture(GL_TEXTURE2);
-      glBindTexture(GL_TEXTURE_2D,sunLight_ShadowMap.depthHandle());
-
-      glUseProgram(shaderMaterialFlat.m_drawProgram);
-      glUniform1i(shaderMaterialFlat.getUniformLocation(tre::shader::TexShadowSun0),2);
-      glUniform4f(shaderMaterialFlat.getUniformLocation(tre::shader::uniColor), 0.6f, 0.6f, 0.6f, 1.f);
-      glUniform2f(shaderMaterialFlat.getUniformLocation(tre::shader::uniMat), 0.f, 0.98f);
-      shaderMaterialFlat.setUniformMatrix(mPV, glm::mat4(1.f), myView3D.m_matView);
-      meshPlane.drawcallAll();
-
-      glUseProgram(shaderMaterialInstanced.m_drawProgram);
-      glUniform1i(shaderMaterialInstanced.getUniformLocation(tre::shader::TexShadowSun0),2);
-      glUniform4f(shaderMaterialInstanced.getUniformLocation(tre::shader::uniColor), 1.f, 0.6f, 0.6f, 1.f);
-      glUniform2f(shaderMaterialInstanced.getUniformLocation(tre::shader::uniMat), 0.f, 0.5f);
-      shaderMaterialInstanced.setUniformMatrix(mPV, glm::mat4(1.f), myView3D.m_matView);
+      glUseProgram(shaderDepthInstanced.m_drawProgram);
+      shaderDepthInstanced.setUniformMatrix(localMPV);
       meshes.drawInstanced(0, 0, instances.size());
-
-      tre::IsOpenGLok("opaque render pass");
     }
 
-    // UI-render pass -------------
-
-    {
-      glDisable(GL_DEPTH_TEST);
-
-      if (showMaps)
-      {
-        glDisable(GL_BLEND);
-        sunShadow_debug.draw(myWindow.m_matProjection2D);
-      }
-
-      if (true)
-      {
-        glEnable(GL_BLEND);
-        char txtFPS[128];
-        std::snprintf(txtFPS, 127, "%03d fps", int(1.f/myTimings.frametime));
-        tre::textgenerator::s_textInfo tInfo;
-        tInfo.setupBasic(&worldHUDFont, txtFPS, glm::vec2(0.f, -0.08f - 0.08f * 0));
-        tInfo.setupSize(0.06f);
-        tInfo.m_fontPixelSize = 14;
-        worldHUDModel.resizePart(0, tre::textgenerator::geometry_VertexCount(tInfo.m_text));
-        tre::textgenerator::generate(tInfo, &worldHUDModel, 0, 0, nullptr);
-
-        worldHUDModel.colorizePart(2, showMaps ? glm::vec4(0.f, 1.f, 0.f, 1.f) : glm::vec4(0.8f));
-
-        worldHUDModel.updateIntoGPU();
-
-        glm::mat3 mViewModel_hud = glm::mat3(1.f);
-        mViewModel_hud[0][0] = 1.f;
-        mViewModel_hud[1][1] = 1.f;
-        mViewModel_hud[2][0] = -0.98f / myWindow.m_matProjection2D[0][0];
-        mViewModel_hud[2][1] =  0.98f;
-
-        glUseProgram(shaderText2D.m_drawProgram);
-        shaderText2D.setUniformMatrix(myWindow.m_matProjection2D * mViewModel_hud);
-
-        glActiveTexture(GL_TEXTURE3);
-        glBindTexture(GL_TEXTURE_2D,worldHUDFont.get_texture().m_handle);
-        glUniform1i(shaderText2D.getUniformLocation(tre::shader::TexDiffuse),3);
-
-        worldHUDModel.drawcallAll();
-      }
-
-      glEnable(GL_BLEND);
-
-      tre::IsOpenGLok("UI render pass - draw UI");
-    }
-
-    // end render pass --------------
-
-    myTimings.endFrame_beforeGPUPresent();
-
-    SDL_GL_SwapWindow( myWindow.m_window );
+    tre::IsOpenGLok("shadow render pass");
   }
+
+  // opaque render pass ----------------
+
+  {
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glViewport(0, 0, myWindow.m_resolutioncurrent.x, myWindow.m_resolutioncurrent.y);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    glDisable(GL_BLEND);
+    glEnable(GL_DEPTH_TEST);
+
+    glActiveTexture(GL_TEXTURE2);
+    glBindTexture(GL_TEXTURE_2D,sunLight_ShadowMapFar.depthHandle());
+
+    glActiveTexture(GL_TEXTURE3);
+    glBindTexture(GL_TEXTURE_2D,sunLight_ShadowMapNear.depthHandle());
+
+    glUseProgram(shaderMaterialFlat.m_drawProgram);
+    glUniform1i(shaderMaterialFlat.getUniformLocation(tre::shader::TexShadowSun0),2);
+    glUniform1i(shaderMaterialFlat.getUniformLocation(tre::shader::TexShadowSun1),3);
+    glUniform4f(shaderMaterialFlat.getUniformLocation(tre::shader::uniColor), 0.6f, 0.6f, 0.6f, 1.f);
+    glUniform2f(shaderMaterialFlat.getUniformLocation(tre::shader::uniMat), 0.f, 0.98f);
+    shaderMaterialFlat.setUniformMatrix(mPV, glm::mat4(1.f), myView3D.m_matView);
+    meshPlane.drawcallAll();
+
+    glUseProgram(shaderMaterialInstanced.m_drawProgram);
+    glUniform1i(shaderMaterialInstanced.getUniformLocation(tre::shader::TexShadowSun0),2);
+    glUniform1i(shaderMaterialInstanced.getUniformLocation(tre::shader::TexShadowSun1),3);
+    glUniform4f(shaderMaterialInstanced.getUniformLocation(tre::shader::uniColor), 1.f, 0.6f, 0.6f, 1.f);
+    glUniform2f(shaderMaterialInstanced.getUniformLocation(tre::shader::uniMat), 0.f, 0.5f);
+    shaderMaterialInstanced.setUniformMatrix(mPV, glm::mat4(1.f), myView3D.m_matView);
+    meshes.drawInstanced(0, 0, instances.size());
+
+    tre::IsOpenGLok("opaque render pass");
+  }
+
+  // UI-render pass -------------
+
+  {
+    glDisable(GL_DEPTH_TEST);
+
+    if (showMaps)
+    {
+      glDisable(GL_BLEND);
+      sunShadow_debug.draw(myWindow.m_matProjection2D, nearMap);
+    }
+
+    // HUD
+    {
+      glEnable(GL_BLEND);
+      char txtFPS[128];
+      std::snprintf(txtFPS, 127, "%03d fps", int(1.f/myTimings.frametime));
+      tre::textgenerator::s_textInfo tInfo;
+      tInfo.setupBasic(&worldHUDFont, txtFPS, glm::vec2(0.f, - 0.08f * 0));
+      tInfo.setupSize(0.06f);
+      tInfo.m_fontPixelSize = 14;
+      worldHUDModel.resizePart(0, tre::textgenerator::geometry_VertexCount(tInfo.m_text));
+      tre::textgenerator::generate(tInfo, &worldHUDModel, 0, 0, nullptr);
+
+      worldHUDModel.colorizePart(2, showMaps ? glm::vec4(0.f, 1.f, 0.f, 1.f) : glm::vec4(1.f));
+      worldHUDModel.colorizePart(3, nearMap ? glm::vec4(0.f, 1.f, 0.f, 1.f) : glm::vec4(1.f));
+
+      worldHUDModel.updateIntoGPU();
+
+      glm::mat3 mViewModel_hud = glm::mat3(1.f);
+      mViewModel_hud[0][0] = 1.f;
+      mViewModel_hud[1][1] = 1.f;
+      mViewModel_hud[2][0] = -0.98f / myWindow.m_matProjection2D[0][0];
+      mViewModel_hud[2][1] =  0.98f;
+
+      glUseProgram(shaderText2D.m_drawProgram);
+      shaderText2D.setUniformMatrix(myWindow.m_matProjection2D * mViewModel_hud);
+
+      glActiveTexture(GL_TEXTURE4);
+      glBindTexture(GL_TEXTURE_2D,worldHUDFont.get_texture().m_handle);
+      glUniform1i(shaderText2D.getUniformLocation(tre::shader::TexDiffuse),4);
+
+      worldHUDModel.drawcallAll();
+    }
+
+    glEnable(GL_BLEND);
+
+    tre::IsOpenGLok("UI render pass - draw UI");
+  }
+
+  // end render pass --------------
+
+  myTimings.endFrame_beforeGPUPresent();
+
+  SDL_GL_SwapWindow( myWindow.m_window );
 }
 
 // ============================================================================
@@ -462,7 +498,8 @@ void app_quit()
 
   sunShadow_debug.clear();
 
-  sunLight_ShadowMap.clear();
+  sunLight_ShadowMapFar.clear();
+  sunLight_ShadowMapNear.clear();
 
   myWindow.OpenGLQuit();
   myWindow.SDLImageQuit();
