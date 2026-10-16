@@ -1,117 +1,105 @@
 # TinyRenderEngine
 
-TinyRnederEngine provides various utilities for the development of games or game engines,
-such as mesh operations, contact algorithm, GUI.
-It empowers game programmers to create prototypes.
-It favors simplicity to embed and to use. 
+TinyRenderEngine is a lightweight C++ toolkit for building games and game engines.
+It provides ready-to-use building blocks (mesh operations, contact algorithms, materials, a GUI, audio and more)
+so that game programmers can get prototypes up and running quickly.
 
-It is written in C++17, with the usage of the STL.
-Usage of third-parties is kept limited.
-The main target platform is desktop that supports OpenGL 3.3 (primilary Windows and Linux).
-The web-assembly platform is also supported, with the help of [Emscriten](https://emscripten.org/) and the compatibility with OpenGL ES 3. 
+The library favors simplicity: it is easy to embed in an existing project and easy to use.
 
-## Usage
+- **Language:** C++17, using the STL
+- **Third-party dependencies:** kept to a minimum (see [Dependencies](#dependencies))
+- **Platforms:**
+  - Desktop with OpenGL 3.3 (primarily Windows and Linux)
+  - WebAssembly, via [Emscripten](https://emscripten.org/) and OpenGL ES 3.0 (WebGL 2)
 
-No specific build process is required. 
-You can either build a static/dynamic library from it (a CMake project is included, that handles being included inside another project),
-or directly add the sources files into your existing project.
+## Getting started
 
-Some samples are provided in the [tests](./tests) directory.
+No specific build process is required. You can either:
 
-Additional tools are provided in the [tools](./tools) directory.
+- **build it as a library** (static or shared) using the included CMake project, which also works when added as a sub-project of your own CMake build, or
+- **add the source files directly** to your existing project.
 
+Sample programs are available in the [`tests`](./tests) directory, and additional tools in the [`tools`](./tools) directory.
 
 ## Features
 
 ### Contact algorithms (2D and 3D)
 
-The contact algorithms perform intersection test between two ojbects.
-It can additionally return the barycenter of the interpenetration, with the minimal translation needed to make the objects not penetrating with each others.
-
+The contact algorithms test for intersection between two objects.
+When the objects overlap, they can also return the barycenter of the interpenetration region,
+along with the minimal translation needed to separate the objects.
 
 ### Mesh operations
 
-Besides a light wrapper to OpenGL that holds GPU-buffers handlers and that encapsulates draw-call commands,
-some mesh-processing algorithms are implemented.
-These algorithms are not designed to be run in a real-time context, but for pre-processing purpose.
+TinyRenderEngine includes a light wrapper around OpenGL that manages GPU buffer handles and encapsulates draw calls.
 
-* compute of the bounding-box
+It also implements several mesh-processing algorithms. These are intended for pre-processing, not for real-time use:
 
-* compute of the barycentric center, the aera (in 2D) and the volume (in 3D)
+- bounding-box computation
+- barycenter, area (2D) and volume (3D) computation
+- convex hull computation (**WIP**)
+- simplification by reducing the number of vertices (**WIP**)
+- triangulation (2D) and tetrahedralization (3D)
 
-* compute of the convexe hull (**WIP**)
+### Texture utilities
 
-* simplification by reducing the number of vertices (**WIP**)
+Handling textures can be tricky when dealing with formats and compression across OpenGL versions.
+TinyRenderEngine wraps the `glTexImage2D` calls to take care of these details.
 
-* triangulation (in 2D) and tetrahedrization (in 3D)
+Texture compression algorithms are also implemented, even though OpenGL drivers can perform compression on desktop platforms.
+The implementation is intentionally simple and has fewer features than reference implementations such as
+[ETCPACK](https://github.com/Ericsson/ETCPACK).
 
-
-### Textures utilities
-
-Handeling of textures can be tricky when dealing with formats and compression across OpenGL versions.
-It basically wraps the 'glTexture2D' calls.
-
-Compression algorithms have been implemented, even if the OpenGL drivers can acheive it on desktop platforms.
-The proposed implementation is simple and it has limited features compared to standard implementations,
-like [ETCPACK](https://github.com/Ericsson/ETCPACK)
-
-Re-sampling methods are also available, that can transform the UV space.
-A good example is to generate the cube-map faces from a single map in the equirectangular-spherical projection.
-
+Resampling methods are available to transform the UV space. For example, they can generate the six faces of a cube map
+from a single equirectangular (spherical) map.
 
 ### Basic materials
 
-A basic material library is proposed, that allows quick prototyping.
-The generated shaders can be overwritten for more complexe rendering.
+A basic material library is provided for quick prototyping.
+The generated shaders can be overridden when more complex rendering is needed.
 
-It implements:
-* Diffuse color options: uniform-color, vertex-color, textured
-* Lighting options: unidirectional light, point lights, shadow casting from the unidirectional light and the point lights
-* Lighting models: Phong, BRDF
-* Other features: texture altas and blending, soft-distance fadeout, instanced orientation and color  
-
-Example: instanced billboards, textured and lighted:
-```cpp
-shaderInstancedBB.loadShader(
-  tre::shader::PRGM_2Dto3D,
-  tre::shader::PRGM_TEXTURED | tre::shader::PRGM_LIGHT_SUN | tre::shader::PRGM_SHADOW_SUN |
-  tre::shader::PRGM_UNIPHONG | tre::shader::PRGM_INSTANCED | tre::shader::PRGM_INSTCOLOR  );
-```
+| Category        | Options                                                                                     |
+|-----------------|---------------------------------------------------------------------------------------------|
+| Diffuse color   | uniform color, vertex color, textured                                                       |
+| Lighting        | directional light (sun), point lights, shadow casting from both the directional and point lights |
+| Lighting models | Phong, BRDF                                                                                 |
+| Other           | texture atlas and blending, soft distance fade-out, per-instance orientation and color      |
 
 ### Graphical user interface
 
-A G.U.I toolkit is provided, that comes with a text-rendering helper and a font management.
-It supports to bind callbacks and animations.
-Note that [ImGUI](https://github.com/ocornut/imgui) is a powerful alternative to the present implementation.
+A GUI toolkit is provided, together with a text-rendering helper and font management.
+It supports binding callbacks and animations to widgets.
 
+If you need a more full-featured solution, [Dear ImGui](https://github.com/ocornut/imgui) is a powerful alternative.
 
 ### Profiler
 
-A basic profiler is provided.
-The code should be intrumentalized with `TRE_PROFILEDSCOPE("name", scoped-unique-cpp-name);`.
-For now, it only supports one single thread.
+A basic profiler is included. To profile a block of code, instrument it with the `TRE_PROFILEDSCOPE` macro:
 
+```cpp
+{
+  TRE_PROFILEDSCOPE("name", scopedUniqueCppName);
+  // ... code to profile ...
+}
+```
+
+> **Note:** the profiler currently supports a single thread only.
 
 ### Audio
 
-A wrapper to the SDL2 audio API is implemented.
-This is an optional alternative to SDL_Mixer.
+A wrapper around the SDL2 audio API is provided as an alternative to SDL_mixer.
 
-It also supports to read WAV and OPUS files, and is able to bake audio data.
-
+It can read WAV, MP3 and Opus files, and can bake audio data either as raw samples or compressed with Opus.
 
 ## Dependencies
 
-* OpenGL
-
-* SDL2
-
-* [glm](https://glm.g-truc.net/0.9.9/index.html)
-
-* freetype (optional)
-
-* SDL_Image (optional)
-
-* [libTIFF](http://www.libtiff.org) (optional)
-
-* [opus](https://opus-codec.org) (optional)
+| Dependency                                        | Required | Purpose                      |
+|---------------------------------------------------|----------|------------------------------|
+| OpenGL (3.3, or ES 3.0 for WebAssembly)           | Yes      | Rendering                    |
+| [SDL2](https://www.libsdl.org/)                   | Yes      | Windowing, input, audio      |
+| [GLM](https://github.com/g-truc/glm)              | Yes      | Math                         |
+| [FreeType](https://freetype.org/)                 | Optional | Font loading                 |
+| [SDL_image](https://github.com/libsdl-org/SDL_image) | Optional | Image loading             |
+| [libtiff](https://libtiff.gitlab.io/libtiff/)     | Optional | TIFF image loading           |
+| [Opus](https://opus-codec.org/)                   | Optional | Opus audio encoding/decoding |
+| [minimp3](https://github.com/lieff/minimp3)       | Optional | MP3 decoding (embedded as a single header) |

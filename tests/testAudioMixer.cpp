@@ -200,7 +200,7 @@ public:
     tre::ui::fillLine(dd.m_bufferLine, pA, pB, glm::vec4(0.3f, 1.f, 0.3f, 1.f));
   }
 
-  template<class _soundData, class _soundSampler>
+  template<class _soundData>
   static void genWaveForm(const _soundData &data, SDL_Surface *tex, int y0, int y1)
   {
     TRE_ASSERT(tex->format->BytesPerPixel == 4);
@@ -215,27 +215,34 @@ public:
     std::vector<float> buffer;
     buffer.resize(samplesPerPixel * 2);
 
-    _soundSampler                    sampler;
-    tre::soundSampler::s_noControl   samplerControl;
+    tre::sound2D sampler;
+    sampler.setAudioData(&data);
 
-    sampler.m_repet = false;
+    sampler.control().m_isPlaying = true;
+    sampler.control().m_isRepeating = false;
+    sampler.control().setTarget(tre::sound2D::s_stereoControl(1.f, 0.f), 0.f);
+    sampler.sync();
+    { float dummy[2] = { 0.f, 0.f }; sampler.sample(dummy, 1, data.m_freq); } // dummy sampling to set volume = 1
 
     for (int x = 0; x < width; ++x)
     {
-      sampler.m_cursor = float(x * samples) / float(width);
-      sampler.m_valuePeak = 0.f;
-      sampler.m_valueRMS = 0.f;
+      sampler.control().m_cursor = unsigned(float(x) * float(samples) / float(width));
+      sampler.sync();
 
-      memset(buffer.data(), 0, samplesPerPixel * 2 * sizeof(float));
+      std::fill(buffer.begin(), buffer.end(), 0.f);
+      sampler.sample(buffer.data(), samplesPerPixel, data.m_freq);
 
-      sampler.sample(data, samplerControl, samplerControl, buffer.data(), samplesPerPixel, data.m_freq);
-
-      float valuePeak = sampler.m_valuePeak;
-      float valueRMS = sampler.m_valueRMS;
-
-      valuePeak = (std::max(20.f * std::log(valuePeak / 1.f), -80.f) + 80.f) / 80.f; // dB scale, clamped between [-80, 0]
-      valueRMS  = (std::max(20.f * std::log(valueRMS  / 1.f), -80.f) + 80.f) / 80.f; // dB scale, clamped between [-80, 0]
-
+      // levels measured on the sampled data (L and R)
+      float valuePeak = 0.f;
+      float valueSumSq = 0.f;
+      for (const float v : buffer)
+      {
+        valuePeak = std::max(valuePeak, std::abs(v));
+        valueSumSq += v * v;
+      }
+      float valueRMS = std::sqrt(valueSumSq / float(buffer.size()));
+      valuePeak = (std::max(20.f * std::log10(valuePeak), -80.f) + 80.f) / 80.f; // dB scale, clamped between [-80, 0]
+      valueRMS  = (std::max(20.f * std::log10(valueRMS ), -80.f) + 80.f) / 80.f; // dB scale, clamped between [-80, 0]
       const int valuePeak_px = int(valuePeak * halfHeight_px);
       const int valueRMS_px = int(valueRMS * halfHeight_px);
 
@@ -425,34 +432,32 @@ static int app_init()
     windowMain->set_fontSize(tre::ui::s_size(20,tre::ui::SIZE_PIXEL));
     windowMain->set_alignMask(tre::ui::ALIGN_MASK_CENTERED);
     windowMain->set_mat3(glm::mat3(1.f));
-    windowMain->set_layoutGrid(64,8);
+    windowMain->set_layoutGrid(32,7);
     windowMain->set_cellMargin(tre::ui::s_size(2,tre::ui::SIZE_PIXEL));
     windowMain->create_widgetText(0,0)->set_text("name")->set_color(glm::vec4(1.f,1.f,0.f,1.f));
     windowMain->create_widgetText(0,1)->set_text("play")->set_color(glm::vec4(1.f,1.f,0.f,1.f));
     windowMain->create_widgetText(0,3)->set_text("repeat")->set_color(glm::vec4(1.f,1.f,0.f,1.f));
     windowMain->create_widgetText(0,4)->set_text("mute")->set_color(glm::vec4(1.f,1.f,0.f,1.f));
     windowMain->create_widgetText(0,5)->set_text("volume")->set_color(glm::vec4(1.f,1.f,0.f,1.f));
-    windowMain->create_widgetText(0,6)->set_text("UV meter")->set_color(glm::vec4(1.f,1.f,0.f,1.f));
-    windowMain->create_widgetText(0,7)->set_text("Waveform")->set_color(glm::vec4(1.f,1.f,0.f,1.f));
+    windowMain->create_widgetText(0,6)->set_text("Waveform")->set_color(glm::vec4(1.f,1.f,0.f,1.f));
   }
 
   if (withAudio)
   {
     unsigned iRaw = 1;
 
-    const std::size_t textureWaveformSlot = baseUI.addTexture(&textureWaveforms);
-
     // compute WAV-form
     SDL_Surface *textureWaveformLoading = SDL_CreateRGBSurface(0, 128, 32 * textureWaveformMaxCount, 32, 0, 0, 0, 0);
-
     TRE_ASSERT(audioDataRaw.size() == 4); // patch the code.
     TRE_ASSERT(audioDataOpus.size() == 2); // patch the code.
-    widgetWaveform::genWaveForm<tre::soundData::s_RawSDL, tre::soundSampler::s_sampler_Raw >(audioDataRaw[0] , textureWaveformLoading, 0 + 32 * 0, 32 + 32 * 0);
-    widgetWaveform::genWaveForm<tre::soundData::s_RawSDL, tre::soundSampler::s_sampler_Raw >(audioDataRaw[1] , textureWaveformLoading, 0 + 32 * 1, 32 + 32 * 1);
-    widgetWaveform::genWaveForm<tre::soundData::s_Opus,   tre::soundSampler::s_sampler_Opus>(audioDataOpus[0], textureWaveformLoading, 0 + 32 * 2, 32 + 32 * 2);
-    widgetWaveform::genWaveForm<tre::soundData::s_Opus,   tre::soundSampler::s_sampler_Opus>(audioDataOpus[1], textureWaveformLoading, 0 + 32 * 3, 32 + 32 * 3);
-    widgetWaveform::genWaveForm<tre::soundData::s_RawSDL, tre::soundSampler::s_sampler_Raw >(audioDataRaw[2] , textureWaveformLoading, 0 + 32 * 4, 32 + 32 * 4);
-    widgetWaveform::genWaveForm<tre::soundData::s_RawSDL, tre::soundSampler::s_sampler_Raw >(audioDataRaw[3] , textureWaveformLoading, 0 + 32 * 5, 32 + 32 * 5);
+    widgetWaveform::genWaveForm(audioDataRaw[0] , textureWaveformLoading, 0 + 32 * 0, 32 + 32 * 0);
+    widgetWaveform::genWaveForm(audioDataRaw[1] , textureWaveformLoading, 0 + 32 * 1, 32 + 32 * 1);
+    widgetWaveform::genWaveForm(audioDataOpus[0], textureWaveformLoading, 0 + 32 * 2, 32 + 32 * 2);
+    widgetWaveform::genWaveForm(audioDataOpus[1], textureWaveformLoading, 0 + 32 * 3, 32 + 32 * 3);
+    widgetWaveform::genWaveForm(audioDataRaw[2] , textureWaveformLoading, 0 + 32 * 4, 32 + 32 * 4);
+    widgetWaveform::genWaveForm(audioDataRaw[3] , textureWaveformLoading, 0 + 32 * 5, 32 + 32 * 5);
+    textureWaveforms.load(textureWaveformLoading, 0, true);
+    const std::size_t textureWaveformSlot = baseUI.addTexture(&textureWaveforms);
 
     unsigned isound = 0;
     for (auto &s : listSound)
@@ -502,23 +507,6 @@ static int app_init()
         s.m_tracks[0].control().m_target.m_volume = 0.5f;
         s.m_tracks[0].control().m_targetDelay = 2.f;
 
-        auto     *wUVmeter = new widgetUVmeter();
-        unsigned localCountdown = 10;
-        wUVmeter->wcb_animate = [&s, localCountdown](tre::ui::widget *w, float dt) mutable
-        {
-          widgetUVmeter *wM = static_cast<widgetUVmeter*>(w);
-          if (s.m_tracks[0].feedback().m_playedSampleCount == 0 && --localCountdown != 0) return;
-          localCountdown = 10;
-          const float valuePeak = (std::max(20.f * std::log(s.m_tracks[0].feedback().m_playedLevelPeak / 1.f), -80.f) + 80.f) / 80.f; // dB scale, clamped between [-80, 0]
-          const float valueRMS  = (std::max(20.f * std::log(s.m_tracks[0].feedback().m_playedLevelRMS  / 1.f), -80.f) + 80.f) / 80.f; // dB scale, clamped between [-80, 0]
-          const float aP = (valuePeak > wM->wvalue.m_peak) ? 1.f : 1.f - expf(-dt/0.020f);
-          const float aR = (valueRMS  > wM->wvalue.m_RMS ) ? 1.f : 1.f - expf(-dt/0.100f);
-          wM->wvalue.m_peak = (1.f - aP) * wM->wvalue.m_peak + aP * valuePeak;
-          wM->wvalue.m_RMS  = (1.f - aR) * wM->wvalue.m_RMS  + aR * valueRMS ;
-          wM->setValueModified();
-        };
-        windowMain->set_widget(wUVmeter, iRaw, 6);
-
         auto  *wWaveform = new widgetWaveform();
 
         wWaveform->set_texId(textureWaveformSlot)->set_texUV(glm::vec4(0.f, (isound * 1.f) / textureWaveformMaxCount, 1.f, (isound + 1.f) / textureWaveformMaxCount));
@@ -526,9 +514,9 @@ static int app_init()
         wWaveform->wcb_animate = [&s, isound](tre::ui::widget *w, float )
         {
           widgetWaveform *wW = static_cast<widgetWaveform*>(w);
-          wW->setCursor(float(s.m_tracks[0].feedback().m_playedSampleCursor)/float(audioDataRaw[isound].m_nSamples));
+          wW->setCursor(float(s.m_tracks[0].playedCursor())/float(audioDataRaw[isound].m_nSamples));
         };
-        windowMain->set_widget(wWaveform, iRaw, 7);
+        windowMain->set_widget(wWaveform, iRaw, 6);
 
       }
       ++iRaw;
@@ -605,33 +593,15 @@ static int app_init()
         s.control().m_target.m_volume = 0.5f;
         s.control().m_targetDelay = 2.f;
 
-        auto     *wUVmeter = new widgetUVmeter();
-        unsigned localCountdown = 10;
-        wUVmeter->wcb_animate = [&s, localCountdown](tre::ui::widget *w, float dt) mutable
-        {
-          widgetUVmeter *wM = static_cast<widgetUVmeter*>(w);
-          if (s.feedback().m_playedSampleCount == 0 && --localCountdown != 0) return;
-          localCountdown = 10;
-          const float valuePeak = (std::max(20.f * std::log(s.feedback().m_playedLevelPeak / 1.f), -80.f) + 80.f) / 80.f; // dB scale, clamped between [-80, 0]
-          const float valueRMS  = (std::max(20.f * std::log(s.feedback().m_playedLevelRMS  / 1.f), -80.f) + 80.f) / 80.f; // dB scale, clamped between [-80, 0]
-          const float aP = (valuePeak> wM->wvalue.m_peak) ? 1.f : 1.f - expf(-dt/0.020f);
-          const float aR = (valueRMS > wM->wvalue.m_RMS ) ? 1.f : 1.f - expf(-dt/0.100f);
-          wM->wvalue.m_peak = (1.f - aP) * wM->wvalue.m_peak + aP * valuePeak;
-          wM->wvalue.m_RMS  = (1.f - aR) * wM->wvalue.m_RMS  + aR * valueRMS ;
-          wM->setValueModified();
-        };
-        windowMain->set_widget(wUVmeter, iRaw, 6);
-
         auto  *wWaveform = new widgetWaveform();
-
         wWaveform->set_texId(textureWaveformSlot)->set_texUV(glm::vec4(0.f, (listSound.size() + itrack) * 1.f / textureWaveformMaxCount, 1.f, (listSound.size() + itrack + 1.f) / textureWaveformMaxCount));
 
         wWaveform->wcb_animate = [&s, itrack](tre::ui::widget *w, float )
         {
           widgetWaveform *wW = static_cast<widgetWaveform*>(w);
-          wW->setCursor(float(s.feedback().m_playedSampleCursor)/float(audioDataRaw[2 + itrack].m_nSamples));
+          wW->setCursor(float(s.playedCursor())/float(audioDataRaw[2 + itrack].m_nSamples));
         };
-        windowMain->set_widget(wWaveform, iRaw, 7);
+        windowMain->set_widget(wWaveform, iRaw, 6);
 
         ++iRaw;
         ++itrack;
@@ -668,23 +638,6 @@ static int app_init()
         trackProceduralNoises[k].m_requestGain = !widMute->get_value() ? wBar->get_value() : 0.f;
       };
 
-      auto     *wUVmeter = new widgetUVmeter();
-      unsigned localCountdown = 10;
-      wUVmeter->wcb_animate = [localCountdown, k](tre::ui::widget *w, float dt) mutable
-      {
-        widgetUVmeter *wM = static_cast<widgetUVmeter*>(w);
-        if (--localCountdown != 0) return;
-        localCountdown = 10;
-        const float valuePeak = (std::max(20.f * std::log(trackProceduralNoises[k].m_playedLevelPeak / 1.f), -80.f) + 80.f) / 80.f; // dB scale, clamped between [-80, 0]
-        const float valueRMS  = (std::max(20.f * std::log(trackProceduralNoises[k].m_playedLevelRMS  / 1.f), -80.f) + 80.f) / 80.f; // dB scale, clamped between [-80, 0]
-        const float aP = (valuePeak> wM->wvalue.m_peak) ? 1.f : 1.f - expf(-dt/0.020f);
-        const float aR = (valueRMS > wM->wvalue.m_RMS ) ? 1.f : 1.f - expf(-dt/0.100f);
-        wM->wvalue.m_peak = (1.f - aP) * wM->wvalue.m_peak + aP * valuePeak;
-        wM->wvalue.m_RMS  = (1.f - aR) * wM->wvalue.m_RMS  + aR * valueRMS ;
-        wM->setValueModified();
-      };
-      windowMain->set_widget(wUVmeter, iRaw, 6);
-
       ++iRaw;
     }
 
@@ -706,10 +659,8 @@ static int app_init()
 
     }
 
-    textureWaveforms.load(textureWaveformLoading, 0, true);
-
     {
-      windowMain->create_widgetText(iRaw, 0, 1, 8)->wcb_animate = [](tre::ui::widget *w, float )
+      windowMain->create_widgetText(iRaw, 0, 1, 5)->wcb_animate = [](tre::ui::widget *w, float )
       {
         tre::ui::widgetText *wText = static_cast<tre::ui::widgetText*>(w);
         char txt[128];
@@ -718,6 +669,25 @@ static int app_init()
         std::snprintf(txt, 127, "perf[audio-callback]: load %.0f%% (%.1f ms)", avgLoad * 100.f, elapsedTime * 1000.f);
         wText->set_text(txt);
       };
+
+      auto     *wUVmeter = new widgetUVmeter();
+      unsigned localCountdown = 10;
+      wUVmeter->wcb_animate = [localCountdown](tre::ui::widget *w, float dt) mutable
+      {
+        widgetUVmeter *wM = static_cast<widgetUVmeter*>(w);
+        const tre::audioContext::s_levels &levels = audioCtx.getLevels(); // global levels (the whole mix)
+        if (levels.m_sampleCount == 0 && --localCountdown != 0) return;
+        localCountdown = 10;
+        const float valuePeak = (std::max(20.f * std::log10(levels.m_peak), -80.f) + 80.f) / 80.f; // dB scale, clamped between [-80, 0]
+        const float valueRMS  = (std::max(20.f * std::log10(levels.m_RMS ), -80.f) + 80.f) / 80.f; // dB scale, clamped between [-80, 0]
+        const float aP = (valuePeak > wM->wvalue.m_peak) ? 1.f : 1.f - expf(-dt/0.020f);
+        const float aR = (valueRMS  > wM->wvalue.m_RMS ) ? 1.f : 1.f - expf(-dt/0.100f);
+        wM->wvalue.m_peak = (1.f - aP) * wM->wvalue.m_peak + aP * valuePeak;
+        wM->wvalue.m_RMS  = (1.f - aR) * wM->wvalue.m_RMS  + aR * valueRMS ;
+        wM->setValueModified();
+      };
+      windowMain->set_widget(wUVmeter, iRaw, 6);
+
       ++iRaw;
     }
   }

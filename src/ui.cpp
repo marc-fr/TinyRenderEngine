@@ -227,6 +227,7 @@ void baseUI::clearGPU()
 
 std::size_t baseUI::addTexture(const s_textureRef &textureRef)
 {
+  TRE_ASSERT(textureRef.m_handle != 0); // the texture must be loaded before being added to the UI
   for (std::size_t i = 0; i < m_textures.size(); ++i)
   {
     if (m_textures[i].m_handle == textureRef.m_handle) return i;

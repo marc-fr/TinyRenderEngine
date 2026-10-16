@@ -112,6 +112,11 @@ else()
   unset(OPUS_LIBRARIES)
 endif()
 
+option(ENABLE_MINIMP3 "Build and link with mini-mp3 (single-header-file)" ON)
+if (ENABLE_MINIMP3)
+  target_compile_definitions(${PROJECT_NAME} PUBLIC TRE_WITH_MINIMP3)
+endif()
+
 ## Export library configuration
 
 get_directory_property(hasParent PARENT_DIRECTORY)

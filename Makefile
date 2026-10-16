@@ -67,6 +67,9 @@ $(OBJDIR)/%.o : $(ROOTDIR)/tools/%.cpp
 %.html : $(CORE_OBJ) $(OBJDIR)/%.o
 	$(CXX) -o $@ $^ $(LDFLAGS) --preload-file ../resources@resources-dir/resources/
 
+tools/%.html : $(CORE_OBJ) $(OBJDIR)/tools/%.o
+	$(CXX) -o $@ $^ $(LDFLAGS) --preload-file ../resources@resources-dir/resources/ -sEXPORTED_FUNCTIONS=_main,_malloc,_free,_audio_file_picked -sEXPORTED_RUNTIME_METHODS=HEAPU8
+
 #-
 
 .SECONDARY: $(CORE_OBJ)
