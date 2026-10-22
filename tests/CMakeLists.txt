@@ -34,6 +34,9 @@ endif()
 add_executable(testTextureSampling testTextureSampling.cpp)
 target_link_libraries(testTextureSampling ${LINK_LIB_LIST})
 
+add_executable(testFixedScheduler testFixedScheduler.cpp)
+target_link_libraries(testFixedScheduler ${LINK_LIB_LIST})
+
 ## Add graphic-tests
 
 add_executable(testAudioMixer WIN32 testAudioMixer.cpp)

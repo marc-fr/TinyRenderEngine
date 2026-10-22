@@ -211,6 +211,7 @@ public:
     span(const std::initializer_list<_T> &v) noexcept : m_ptr(const_cast<_T*>(v.begin())), m_size(v.size()) {}
     template<std::size_t _N> span(const std::array<_T, _N> &a) noexcept : m_ptr(const_cast<_T*>(&a[0])), m_size(a.size()) {}
     template<std::size_t _N> span(const arrayCounted<_T, _N> &a) noexcept : m_ptr(const_cast<_T*>(&a[0])), m_size(a.sizeCounted()) {}
+    template<std::size_t N> constexpr span(_T (&arr)[N]) noexcept : m_ptr(arr), m_size(N) {}
 
     _T       &operator[](std::size_t i) const noexcept { return m_ptr[i]; }
 
