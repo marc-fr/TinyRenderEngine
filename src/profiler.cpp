@@ -240,9 +240,10 @@ void profiler::initSubThread()
 
 // ============================================================================
 
-void profiler::updateCameraInfo(const glm::mat3 &mProjView, const glm::vec2 &screenSize)
+void profiler::updateCameraInfo(const glm::mat3 &mView, const glm::vec2 &screenSize)
 {
-  m_PV = mProjView;
+  tre::compute2DOrthoProjection(m_PV, float(screenSize.y) / float(screenSize.x));
+  m_PV = m_PV * mView;
   m_viewportSize = screenSize;
 }
 

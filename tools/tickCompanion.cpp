@@ -239,9 +239,8 @@ private:
 // Algorithm ==================================================================
 
 /// Streaming phase vocoder with identity phase locking (Laroche & Dolson, 1999).
-/// Changes the duration without changing the pitch.
 /// Each "process" call produces k_hopS output samples, and moves the input position by k_hopS / timeScale.
-class c_phaseVocoder
+class phaseVocoder
 {
 public:
   static constexpr unsigned k_N    = 2048;      ///< analysis/synthesis window (power of two)
@@ -250,32 +249,32 @@ public:
 
   bool m_phaseLocking = true; ///< identity phase locking (less "phasiness"). False gives the classic phase vocoder.
 
-  c_phaseVocoder()
+  phaseVocoder()
   {
     for (unsigned n = 0; n < k_N; ++n) m_window[n] = 0.5f - 0.5f * std::cos(2.f * pi * float(n) / float(k_N)); // periodic Hann
     m_spec.resize(k_N);
     m_peaks.reserve(k_bins);
-    reset(0.);
+    reset(0.f);
   }
 
   /// Full reset: clears the pending output. The next frame starts at "inputPos" (in input samples).
-  void reset(double inputPos)
+  void reset(float inputPos)
   {
     m_ola.fill(0.f);
     seek(inputPos);
   }
 
   /// Jump to "inputPos" with a phase reset. The pending output is kept: the previous content fades out with the window.
-  void seek(double inputPos)
+  void seek(float inputPos)
   {
     m_inputPos = inputPos;
     m_hasPrev = false;
   }
 
-  double inputPosition() const { return m_inputPos; }
+  float inputPosition() const { return m_inputPos; }
 
   /// Generate k_hopS output samples. timeScale > 1 means slower (longer output).
-  void process(const float *input, std::size_t inputSize, double timeScale, float *out)
+  void process(const float *input, std::size_t inputSize, float timeScale, float *out)
   {
     const long pos = long(std::floor(m_inputPos + 0.5));
 
@@ -343,11 +342,11 @@ public:
     std::copy(m_ola.begin() + k_hopS, m_ola.end(), m_ola.begin());
     std::fill(m_ola.end() - k_hopS, m_ola.end(), 0.f);
 
-    m_inputPos += double(k_hopS) / timeScale;
+    m_inputPos += float(k_hopS) / timeScale;
   }
 
 private:
-  static float _wrap(float phase) // to [-pi, pi]: keeps the accumulated phases bounded (float precision)
+  static float _wrap(float phase) // to [-pi, pi]: keeps the accumulated phases bounded
   {
     return phase - 2.f * pi * std::floor(phase / (2.f * pi) + 0.5f);
   }
@@ -365,7 +364,7 @@ private:
   std::vector<glm::vec2>    m_spec;
   std::array<float, k_bins> m_mag, m_phaseA, m_phaseS, m_prevPhaseA, m_prevPhaseS, m_phaseSPeak;
   std::vector<unsigned>     m_peaks;
-  double                    m_inputPos = 0.;
+  float                     m_inputPos = 0.;
   long                      m_prevPos = 0;
   bool                      m_hasPrev = false;
 };
@@ -376,7 +375,7 @@ private:
 class c_soundSampler : public tre::soundInterface
 {
 public:
-  typedef std::shared_ptr<const std::vector<float>> t_audioPtr;
+  typedef std::vector<float> audioData;
 
   bool     m_play = false;
   float    m_volume = 0.5f;
@@ -392,22 +391,22 @@ public:
   /// Set the input audio (mono). The audio-thread picks it up on the next sync.
   void setInput(std::vector<float> &&samples, int frequency)
   {
-    m_input = std::make_shared<const std::vector<float>>(std::move(samples));
+    m_input = std::move(samples);
     m_inputFreq = frequency;
   }
-  const t_audioPtr &input() const     { return m_input; }
+  const audioData  &input() const     { return m_input; }
   int               inputFreq() const { return m_inputFreq; }
-  bool              empty() const     { return !m_input || m_input->empty(); }
+  bool              empty() const     { return m_input.empty(); }
 
   void setStretchFactor(float stretch) { m_stretcherFactor = stretch; }
   void setPitchFactor(float pitch)     { m_pitchFactor = pitch; }
 
 protected:
-  t_audioPtr m_input;     ///< main-thread copy
+  audioData  m_input;     ///< main-thread copy
   int        m_inputFreq = 0;
 
   // audio-thread data (exchanged in sync)
-  t_audioPtr     ac_input;
+  audioData      ac_input;
   bool           ac_inputChanged = false;
   bool           ac_play = false;
   float          ac_volume = 0.f;        ///< target gain
@@ -415,22 +414,22 @@ protected:
   float          ac_stretch = 1.f;
   float          ac_pitch = 1.f;
   int            ac_inputFreq = 0;
-  double         ac_loopStart = 0.;      ///< [input sample]
-  double         ac_loopEnd = 0.;        ///< [input sample]
-  double         ac_seekPos = -1.;       ///< [input sample], when positive
-  double         ac_heardPos = 0.;       ///< [input sample], read-back
+  float          ac_loopStart = 0.;      ///< [input sample]
+  float          ac_loopEnd = 0.;        ///< [input sample]
+  float          ac_seekPos = -1.;       ///< [input sample], when positive
+  float          ac_heardPos = 0.;       ///< [input sample], read-back
   bool           ac_loopWrapped = false; ///< the vocoder wrapped at the loop end (since the last seek)
-  c_phaseVocoder ac_vocoder;
-  std::array<float, 4 * c_phaseVocoder::k_hopS> ac_buf; ///< vocoder output, not played yet
+  phaseVocoder ac_vocoder;
+  std::array<float, 4 * phaseVocoder::k_hopS> ac_buf; ///< vocoder output, not played yet
   std::size_t    ac_bufCount = 0;
-  double         ac_readPos = 0.;        ///< read position in ac_buf (resampling for the pitch and the frequency)
+  float          ac_readPos = 0.;        ///< read position in ac_buf (resampling for the pitch and the frequency)
 
 public:
   virtual void sync() override final
   {
     // receive
-    if (ac_input && !ac_input->empty()) m_playCursor = float(ac_heardPos / double(ac_input->size()));
-    else                                m_playCursor = 0.f;
+    if (ac_input.empty()) m_playCursor = float(ac_heardPos) / float(ac_input.size());
+    else                  m_playCursor = 0.f;
 
     // send
     if (m_input != ac_input)
@@ -438,7 +437,7 @@ public:
       ac_input = m_input; // the old buffer (if any) is released here, in the main-thread
       ac_inputChanged = true;
     }
-    const double inputSize = ac_input ? double(ac_input->size()) : 0.;
+    const float  inputSize = float(ac_input.size());
 
     ac_play = m_play && inputSize > 0.;
     ac_volume = m_volume;
@@ -447,35 +446,35 @@ public:
     ac_inputFreq = m_inputFreq;
     ac_vocoder.m_phaseLocking = m_phaseLocking;
 
-    ac_loopStart = double(glm::clamp(m_playCursorStart, 0.f, 1.f)) * inputSize;
-    ac_loopEnd   = double(glm::clamp(m_playCursorEnd  , 0.f, 1.f)) * inputSize;
+    ac_loopStart = float (glm::clamp(m_playCursorStart, 0.f, 1.f)) * inputSize;
+    ac_loopEnd   = float (glm::clamp(m_playCursorEnd  , 0.f, 1.f)) * inputSize;
     if (ac_loopEnd <= ac_loopStart + 1.) { ac_loopStart = 0.; ac_loopEnd = inputSize; }
 
     if (m_playCursorSet >= 0.f)
     {
-      ac_seekPos = double(glm::clamp(m_playCursorSet, 0.f, 1.f)) * inputSize;
+      ac_seekPos = float (glm::clamp(m_playCursorSet, 0.f, 1.f)) * inputSize;
       m_playCursorSet = -1.f;
     }
   }
 
   virtual void sample(float* __restrict outBufferAdd, unsigned sampleCount, int sampleFreq) override final
   {
-    if (sampleFreq <= 0 || !ac_input || ac_input->empty() || ac_inputFreq <= 0) return;
+    if (sampleFreq <= 0 || ac_input.empty() || ac_inputFreq <= 0) return;
 
     if (ac_inputChanged)
     {
       ac_inputChanged = false;
       ac_vocoder.reset(ac_loopStart);
       ac_bufCount = 0;
-      ac_readPos = 0.;
+      ac_readPos = 0.f;
       ac_loopWrapped = false;
     }
     if (ac_seekPos >= 0.)
     {
       ac_vocoder.seek(ac_seekPos);
       ac_bufCount = 0; // drop the pending output for a responsive seek (the vocoder still fades it out)
-      ac_readPos = 0.;
-      ac_seekPos = -1.;
+      ac_readPos = 0.f;
+      ac_seekPos = -1.f;
       ac_loopWrapped = false;
     }
 
@@ -484,12 +483,11 @@ public:
     if (ac_gain == 0.f && gainTarget == 0.f) return;
     const float gainStep = (sampleCount != 0) ? (gainTarget - ac_gain) / float(sampleCount) : 0.f;
 
-    const std::vector<float> &input = *ac_input;
-    const double readStep = double(ac_pitch) * double(ac_inputFreq) / double(sampleFreq);
+    const float  readStep = float (ac_pitch) * float (ac_inputFreq) / float (sampleFreq);
 
     for (unsigned i = 0; i < sampleCount; ++i)
     {
-      for (;;) // need ac_buf[r] and ac_buf[r+1]
+      while (true) // need ac_buf[r] and ac_buf[r+1]
       {
         const std::size_t r = std::size_t(ac_readPos);
         if (r + 1 < ac_bufCount) break;
@@ -497,12 +495,12 @@ public:
         {
           std::copy(ac_buf.begin() + r, ac_buf.begin() + ac_bufCount, ac_buf.begin());
           ac_bufCount -= r;
-          ac_readPos -= double(r);
+          ac_readPos -= float (r);
         }
-        _produceHop(input);
+        _produceHop(ac_input);
       }
       const std::size_t r = std::size_t(ac_readPos);
-      const float       w = float(ac_readPos - double(r));
+      const float       w = float(ac_readPos - float (r));
       const float       v = (ac_buf[r] + w * (ac_buf[r + 1] - ac_buf[r])) * (ac_gain + gainStep * float(i));
       outBufferAdd[2*i+0] += v;
       outBufferAdd[2*i+1] += v;
@@ -511,17 +509,17 @@ public:
     ac_gain = gainTarget;
 
     // read-back: input position of what is heard (vocoder latency + pending output)
-    const double timeScale = double(ac_stretch) * double(ac_pitch);
-    const double pending = double(c_phaseVocoder::k_N / 2 + c_phaseVocoder::k_hopS) + (double(ac_bufCount) - ac_readPos);
+    const float  timeScale = float (ac_stretch) * float (ac_pitch);
+    const float  pending = float (phaseVocoder::k_N / 2 + phaseVocoder::k_hopS) + (float (ac_bufCount) - ac_readPos);
     ac_heardPos = ac_vocoder.inputPosition() - pending / timeScale;
     if (ac_heardPos < ac_loopStart && ac_loopWrapped) ac_heardPos += (ac_loopEnd - ac_loopStart); // just after a loop wrap
-    ac_heardPos = glm::clamp(ac_heardPos, 0., double(input.size()));
+    ac_heardPos = glm::clamp(ac_heardPos, 0.f, float (ac_input.size()));
   }
 
 private:
   void _produceHop(const std::vector<float> &input)
   {
-    const double pos = ac_vocoder.inputPosition();
+    const float  pos = ac_vocoder.inputPosition();
     if (pos >= ac_loopEnd)
     {
       ac_vocoder.seek(ac_loopStart); // loop (the tail fades out)
@@ -531,9 +529,9 @@ private:
     {
       ac_vocoder.seek(ac_loopStart); // the loop region has changed
     }
-    TRE_ASSERT(ac_bufCount + c_phaseVocoder::k_hopS <= ac_buf.size());
-    ac_vocoder.process(input.data(), input.size(), double(ac_stretch) * double(ac_pitch), &ac_buf[ac_bufCount]);
-    ac_bufCount += c_phaseVocoder::k_hopS;
+    TRE_ASSERT(ac_bufCount + phaseVocoder::k_hopS <= ac_buf.size());
+    ac_vocoder.process(input.data(), input.size(), float (ac_stretch) * float (ac_pitch), &ac_buf[ac_bufCount]);
+    ac_bufCount += phaseVocoder::k_hopS;
   }
 };
 
@@ -573,8 +571,8 @@ public:
     uint32_t * __restrict pxData = reinterpret_cast<uint32_t*>(wTextureUpload->pixels);
     const int w = wTextureUpload->w; // only first mip-map level (maybe add in futur)
     const int h = wTextureUpload->h;
-    const c_soundSampler::t_audioPtr input = wsndSampler.input();
-    const int nSamples = input ? int(input->size()) : 0;
+    const c_soundSampler::audioData input = wsndSampler.input();
+    const int nSamples = int(input.size());
     const int nSamplesPerPixel = nSamples / w;
 
     const int y0 = int(0.5f * float(h-1) + 0.5f);
@@ -595,7 +593,7 @@ public:
         const int sampleEnd = std::min(nSamples, (ix + 1) * nSamplesPerPixel);
         for (int is = sampleStart; is < sampleEnd; ++is)
         {
-          const float v = (*input)[is];
+          const float v = input[is];
           vMin = std::min(vMin, v);
           vMax = std::max(vMax, v);
         }
@@ -622,7 +620,7 @@ public:
         const int sampleEnd = std::min(nSamples, (ix + 1) * nSamplesPerPixel);
         for (int is = sampleStart; is < sampleEnd; ++is)
         {
-          const float v = (*input)[is];
+          const float v = input[is];
           vMin = std::min(vMin, v);
           vMax = std::max(vMax, v);
           vRMS += v * v;
@@ -769,12 +767,12 @@ public:
     // power per pixel
     std::vector<float>     level(std::size_t(w) * std::size_t(h));
     std::vector<glm::vec2> spec(kN);
-    const double           samplesPerColumn = double(input.size()) / double(w);
+    const float            samplesPerColumn = float (input.size()) / float (w);
     float                  levelMax = 0.f;
 
     for (int ix = 0; ix < w; ++ix)
     {
-      const long start = long((double(ix) + 0.5) * samplesPerColumn) - long(kN / 2); // window centered on the column
+      const long start = long((float (ix) + 0.5) * samplesPerColumn) - long(kN / 2); // window centered on the column
       for (std::size_t n = 0; n < kN; ++n)
       {
         const long  i = start + long(n);
@@ -812,9 +810,9 @@ public:
     const int w = wTextureUpload->w; // only first mip-map level (maybe add in futur)
     const int h = wTextureUpload->h;
 
-    const c_soundSampler::t_audioPtr input = wsndSampler.input();
-    if (input) computeSpectrogram(*input, wsndSampler.inputFreq(), pxData, w, h, get_parentWindow()->get_colortheme().m_colorOnSurface);
-    else       std::fill_n(pxData, w * h, 0u);
+    const c_soundSampler::audioData & input = wsndSampler.input();
+    if (!input.empty()) computeSpectrogram(input, wsndSampler.inputFreq(), pxData, w, h, get_parentWindow()->get_colortheme().m_colorOnSurface);
+    else                std::fill_n(pxData, w * h, 0u);
 
     wTexture.update(wTextureUpload, false);
   }
@@ -1080,7 +1078,7 @@ static bool myInit()
     wStretch->wcb_valuePrinter = [](const int v)
     {
       char txt[16];
-      std::snprintf(txt, 15, "%d%%", v * 10);
+      std::snprintf(txt, 15, "%+d%%", v * 10);
       return std::string(txt);
     };
 
@@ -1254,7 +1252,7 @@ static void myUpdate()
       if (event.type == SDL_KEYDOWN && event.key.keysym.sym == SDLK_SPACE) soundSampler.m_play = !soundSampler.m_play;
       if (event.type == SDL_KEYDOWN && (event.key.keysym.sym == SDLK_LEFT || event.key.keysym.sym == SDLK_RIGHT) && !soundSampler.empty())
       {
-        const float delta = 5.f * float(soundSampler.inputFreq()) / float(soundSampler.input()->size()); // 5 seconds
+        const float delta = 5.f * float(soundSampler.inputFreq()) / float(soundSampler.input().size()); // 5 seconds
         const float sign = (event.key.keysym.sym == SDLK_LEFT) ? -1.f : 1.f;
         soundSampler.m_playCursorSet = glm::clamp(soundSampler.m_playCursor + sign * delta, 0.f, 1.f);
       }

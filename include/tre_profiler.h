@@ -197,7 +197,7 @@ inline bool profiler_isPaused() { return profilerRoot.isPaused(); }
 inline void profiler_enable(bool enable) { profilerRoot.enable(enable); }
 inline bool profiler_isEnabled() { return profilerRoot.isEnabled(); }
 
-inline void profiler_updateCameraInfo(const glm::mat3 &mProjView, const glm::vec2 &screenSize) { profilerRoot.updateCameraInfo(mProjView, screenSize); }
+inline void profiler_updateCameraInfo(const glm::vec2 &screenSize, const glm::mat3 &mView = glm::mat3(1.f)) { profilerRoot.updateCameraInfo(mView, screenSize); }
 inline void profiler_updateModelMatrix(const glm::mat3 &mModel) { profilerRoot.updateModelMatrix(mModel); }
 inline bool profiler_acceptEvent(const SDL_Event &event) { return profilerRoot.acceptEvent(event); }
 inline void profiler_acceptEvent(const glm::ivec2 &mousePosition) { profilerRoot.acceptEvent(mousePosition); }
@@ -232,7 +232,7 @@ inline bool profiler_isPaused() { return true; }
 inline void profiler_enable(bool ) {}
 inline bool profiler_isEnabled() { return false; }
 
-inline void profiler_updateCameraInfo(const glm::mat3 &, const glm::vec2 &) {}
+inline void profiler_updateCameraInfo(const glm::vec2 &, const glm::mat3 & = glm::mat3(1.f)) {}
 inline void profiler_updateModelMatrix(const glm::mat3 &) {}
 inline bool profiler_acceptEvent(const SDL_Event &) { return false; }
 inline void profiler_acceptEvent(const glm::ivec2 &) {}
