@@ -555,8 +555,8 @@ static int app_init()
         tre::ui::widgetBoxCheck *wGMute = static_cast<tre::ui::widgetBoxCheck*>(w);
         for (std::size_t it = 0; it < m.m_tracks.size(); ++it)
         {
-          tre::ui::widgetBoxCheck *wLMute = windowMain->get_widgetBoxCheck(iRaw + 1 + it, 4);
-          tre::ui::widgetBar      *wLVol = windowMain->get_widgetBar(iRaw + 1 + it, 5);
+          tre::ui::widgetBoxCheck *wLMute = windowMain->get_widgetBoxCheck(iRaw + 1 + unsigned(it), 4);
+          tre::ui::widgetBar      *wLVol = windowMain->get_widgetBar(iRaw + 1 + unsigned(it), 5);
           m.m_tracks[it].control().m_target.m_volume = !wGMute->get_value() && !wLMute->get_value() ? wLVol->get_value() : 0.f;
           m.m_tracks[it].control().m_targetDelay = 0.f;
         }

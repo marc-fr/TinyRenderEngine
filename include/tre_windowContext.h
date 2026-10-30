@@ -110,14 +110,13 @@ public:
     using clockT = std::chrono::steady_clock;
 
     float worktime_average = 0.f;
-    float worktime = 0; ///< time elpased between the last "newFrame() / endFrame_beforeGPUPresent()", in seconds.
+    float worktime = 0; ///< time elapsed between the last "newFrame() / endFrame_beforeGPUPresent()", in seconds.
 
     float frametime_average = 0.f;
-    float frametime = 0.f; ///< time elpased between the two last "newFrame()", in seconds.
+    float frametime = 0.f; ///< time elapsed between the two last "newFrame()", in seconds.
     clockT::time_point oldtime;
 
-    float scenetime = 0.f;
-
+    float    scenetime = 0.f;
     unsigned ndata = 0;
 
     void initialize();

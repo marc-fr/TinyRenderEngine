@@ -1,16 +1,6 @@
-
-#ifndef FS_TEST_INLINE
-#define FS_THREADED
-#endif
 #include "tre_fixed_scheduler.h"
 
-#include <algorithm>
-#include <array>
-#include <atomic>
-#include <chrono>
-#include <cstdio>
 #include <string>
-#include <thread>
 
 // ----------------------------------------------------------------------------
 
@@ -24,14 +14,9 @@ static int kNfailed = 0;
   } while (0)
 
 static void section(const char* name) { TRE_LOG("== " << name); }
+static void section(const char* name, bool threaded) { TRE_LOG("== " << name << (threaded ? " [threaded]" : " [inline]")); }
 
-#ifdef FS_THREADED
-static constexpr bool kThreaded = true;
-#else
-static constexpr bool kThreaded = false;
-#endif
-
-static void nop(void*) {}
+static bool nop(void*) { return false; } // never does any work
 
 // Table entry from run-time values (rate and lane are uint8_t: brace-init from a variable would narrow).
 template <class S>
@@ -44,7 +29,8 @@ template <class L>
 static unsigned maxLoad(const L& lane)
 {
   unsigned mx = 0;
-  for (unsigned k = 0; k < lane.due.size(); ++k) mx = std::max(mx, lane.load(k));
+  for (unsigned k = 0; k < lane.due.size(); ++k)
+    if (lane.load(k) > mx) mx = lane.load(k);
   return mx;
 }
 
@@ -74,26 +60,28 @@ struct Agent
   unsigned budget;
   unsigned runs = 0;
   explicit Agent(unsigned b = 2000) : budget(b) {}
-  static void think(void* p)
+  static bool think(void* p)
   {
     Agent& a = *static_cast<Agent*>(p);
     ++a.runs;
     for (unsigned i = 0; i < a.budget; ++i) // stand-in for planning work
       a.state = a.state * 6364136223846793005ull + 1442695040888963407ull;
+    return true;
   }
 };
 
+template <bool kThreaded>
 static void testDemo()
 {
-  section("demo: agents on 2 free-running workers, main lane ticked");
+  section("demo: agents on 2 free-running workers, main lane ticked", kThreaded);
   std::array<Agent, 8> agents;
   Agent planner{20000};
   int   uiTicks = 0;
 
-  using Sched = tre::fixedScheduler<3, 16>; // main + 2 workers, 16-slot cycle, 12 of 16 tasks used
-  Sched::s_task tasks[] =
+  using Sched = tre::fixedScheduler<3, 16, kThreaded>; // main + 2 workers, 16-slot cycle, 12 of 16 tasks used
+  typename Sched::s_task tasks[] =
   {
-    { [](void* p) { ++*static_cast<int*>(p); }, &uiTicks, 1, 0, "ui" }, // main, rate 1
+    { [](void* p) { ++*static_cast<int*>(p); return true; }, &uiTicks, 1, 0, "ui" }, // main, rate 1
     { &Agent::think, &planner  , 4, 1, "planner" },                      // w1, rate 4, heavy
     { &Agent::think, &agents[0], 2, 1, "agent.w1" },                     // w1, rate 2
     { &Agent::think, &agents[1], 2, 1, "agent.w1" },
@@ -109,9 +97,10 @@ static void testDemo()
   Sched sched;
   CHECK(sched.start(tasks));
 
+  unsigned busyTicks = 0;
   for (int f = 0; f < 256; ++f)
   {
-    sched.tick();
+    busyTicks += sched.tick();
     std::this_thread::sleep_for(std::chrono::microseconds(500)); // "frame"
   }
   sched.stop();
@@ -123,7 +112,12 @@ static void testDemo()
   }
 
   CHECK(uiTicks == 128); // lane 0 runs inline: always exact
-  if (kThreaded)
+  // threaded: lane 0 = "ui" + "frame-hook" (never works) -> idle every other tick
+  // inline:   every task is on lane 0, and the 8 rate-2 agents cover every slot -> never idle
+  const unsigned expectBusy = kThreaded ? 128 : 256;
+  CHECK(busyTicks == expectBusy);
+  if (Sched::s_stats::kEnabled) CHECK(sched.laneStats(0).idle == 256 - expectBusy);
+  if constexpr (kThreaded)
   {
     // workers free-run: no absolute count, but within a lane the rates hold (rate 2 = 4x rate 4)
     CHECK(planner.runs > 0);
@@ -144,8 +138,8 @@ namespace seq
 {
 
 std::string g_out;
-void a(void*) { g_out += 'A'; }
-void b(void*) { g_out += 'B'; }
+bool a(void*) { g_out += 'A'; return true; }
+bool b(void*) { g_out += 'B'; return true; }
 
 void test()
 {
@@ -203,7 +197,7 @@ static void testBalance()
       for (unsigned i = 0; i < n; ++i) t[i] = task<S>(nop, nullptr, r);
       const S::s_lane L = S::makeLane({t.data(), n}, 0);
       bool flat = true;
-      for (unsigned k = 0; k < 16; ++k) flat &= L.load(k) == 1;
+      for (unsigned k = 0; k < S::kSlots; ++k) flat &= L.load(k) == 1;
       CHECK(flat);
     }
   }
@@ -224,8 +218,8 @@ namespace pausing
 
 std::atomic<unsigned> g_a{0};
 std::atomic<unsigned> g_b{0};
-void a(void*) { g_a.fetch_add(1, std::memory_order_relaxed); }
-void b(void*) { g_b.fetch_add(1, std::memory_order_relaxed); }
+bool a(void*) { g_a.fetch_add(1, std::memory_order_relaxed); return true; }
+bool b(void*) { g_b.fetch_add(1, std::memory_order_relaxed); return true; }
 
 // pause() does not wait: wait until the counter stops moving (or ~1s)
 static unsigned settle(const std::atomic<unsigned>& c)
@@ -243,9 +237,8 @@ static unsigned settle(const std::atomic<unsigned>& c)
 
 void test()
 {
-  if (!kThreaded) return;
   section("pause / reset on a free-running worker (no sync)");
-  using S = tre::fixedScheduler<2, 2>;
+  using S = tre::fixedScheduler<2, 2, true>;
   S::s_task t[] = { { a, nullptr, 0, 1 }, { b, nullptr, 4, 1 } }; // lane 1: A every slot, B on slot 0
   S s;
   CHECK(s.start(t));
@@ -273,14 +266,57 @@ void test()
 
 // ----------------------------------------------------------------------------
 
+namespace idling
+{
+
+std::atomic<unsigned> g_idle{0};
+std::atomic<unsigned> g_sparse{0};
+bool idle(void*)   { g_idle.fetch_add(1, std::memory_order_relaxed); return false; }
+bool sparse(void*) { g_sparse.fetch_add(1, std::memory_order_relaxed); return true; }
+
+void test()
+{
+  section("idle: a worker sleeps after a slot whose tasks did nothing, not after an empty slot");
+  using S = tre::fixedScheduler<3, 2, true>;
+  S::s_task t[] =
+  {
+    { idle  , nullptr, 0, 1 }, // lane 1: due on every slot, never works -> sleeps after every slot
+    { sparse, nullptr, 4, 2 }, // lane 2: works on slot 0, the 15 others are empty -> never sleeps
+  };
+  S s;
+  const auto t0 = std::chrono::steady_clock::now();
+  CHECK(s.start(t));
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  s.stop();
+  const unsigned us = static_cast<unsigned>(
+    std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - t0).count());
+  const unsigned ni = g_idle.load(), ns = g_sparse.load();
+  TRE_LOG("  " << us << " us: idle lane " << ni << " slots, sparse lane " << ns << " cycles");
+
+  CHECK(ni > 0);
+  CHECK(ni <= us / S::kIdleSleepUs + 1); // sleep_for() sleeps at least that long: hard upper bound
+  CHECK(ns > us / S::kIdleSleepUs);      // more cycles than one sleep per cycle would allow
+  if (S::s_stats::kEnabled)
+  {
+    CHECK(s.laneStats(1).idle == ni);
+    CHECK(s.laneStats(2).idle == 0);
+  }
+}
+
+} // namespace idling
+
+// ----------------------------------------------------------------------------
+
 int main(int, char**)
 {
   using Any = tre::fixedScheduler<1, 1>;
-  TRE_LOG("test mode: " << (kThreaded ? "threaded" : "inline") << (Any::s_stats::kEnabled ? " + TRE_PROFILE" : ""));
-  testDemo();
+  TRE_LOG("test mode: threaded + inline" << (Any::s_stats::kEnabled ? " + TRE_PROFILE" : ""));
+  testDemo<true>();
+  testDemo<false>();
   seq::test();
   testBalance();
-  pausing::test();
+  pausing::test();  // threaded only
+  idling::test();   // threaded only
   TRE_LOG(kNchecks - kNfailed << "/" << kNchecks << " checks passed");
   return kNfailed;
 }

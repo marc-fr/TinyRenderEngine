@@ -1,23 +1,16 @@
 #pragma once
 
 // Fixed-size free-running task scheduler
-// !! IMPORTANT !!
-// Use "#define FS_THREADED" before including this file to enable threading.
-// Otherwise, the plain inline mode is used.
 
-#include "tre_utils.h" // TRE_ASSERT, TRE_LOG, tre::span
+#include "tre_utils.h"
 
-#include <algorithm>
 #include <array>
-
-#ifdef TRE_PROFILE
-#include <chrono>
-#endif
-
-#ifdef FS_THREADED
 #include <atomic>
 #include <chrono>
 #include <thread>
+
+#ifdef TRE_PROFILE
+#include <cstdio> // snprintf
 #endif
 
 #if defined(_MSC_VER)
@@ -54,42 +47,45 @@ inline unsigned popcount32(uint32_t x) noexcept
 /// Fixed-size task scheduler, free-running lanes
 /// - NThreads: nbr of threads (<= 8), main-thread included: lane 0 = the thread calling tick(), lanes 1..N-1 = workers
 /// - MaxTasks: capacity (<= 32). Max size of the task table
+/// - Multithread: true = lanes 1..N-1 run on their own worker threads,
+///                false = inline mode: every task runs on lane 0 (the "lane" of a task is ignored), no thread is created
+/// - IdleSleepUs: how long a worker sleeps after an idle slot (and while paused)
 /// - task-rate: a task of rate r runs once every 2^r slots of its lane (0 = every slot, 1 = every other slot, ...)
 /// Each lane owns its schedule and task table (a worker gets its copy at start). Lanes are not synchronized
 /// A lane cycles through kSlots = 2^MaxRate slots. On each slot it runs its due tasks (in table order)
-/// A worker runs a slot, yields, runs the next one. No frame sync.
-/// Tasks are independent and light, as it can run on the main thread (notably without FS_THREADED).
-template <unsigned NThreads, unsigned MaxTasks>
+/// A task returns true if it did actual work, false if it had nothing to do.
+/// A slot is idle when tasks were due and none did actual work. An empty slot (no task due) is not idle.
+/// Tasks are independent and light, as it can run on the main thread (notably in inline mode).
+template <unsigned NThreads, unsigned MaxTasks, bool Multithread = true, unsigned IdleSleepUs = 100>
 class fixedScheduler
 {
 public:
-  static constexpr unsigned MaxRate = 4;
-  static constexpr unsigned kSlots  = 1u << MaxRate;
+  static constexpr unsigned MaxRate      = 4;
+  static constexpr unsigned kSlots       = 1u << MaxRate;
+  static constexpr unsigned kIdleSleepUs = IdleSleepUs;
 
   static_assert(NThreads >= 1 && NThreads <= 8, "at most 8 threads (main included)");
   static_assert(MaxTasks >= 1 && MaxTasks <= 32, "at most 32 tasks");
   static_assert(MaxRate <= 4, "at most 4 rates");
+  static_assert(IdleSleepUs >= 1, "idle sleep must be > 0");
 
-  using Fn = void (*)(void*);
-  static constexpr unsigned kThreads = NThreads;
+  using Fn = bool (*)(void*); // returns false when no actual computation was done
 
-#ifdef FS_THREADED
-  static constexpr unsigned kLanes = NThreads;
-#else
-  static constexpr unsigned kLanes = 1;
-#endif
+  static constexpr unsigned kLanes = Multithread ? NThreads : 1;
 
   /// One entry of the task table, owned by the caller.
   struct s_task
   {
-    Fn          fn   = nullptr;
+    Fn          fn   = nullptr; // returns false when it had nothing to do
     void*       ctx  = nullptr;
     uint8_t     rate = 0;       // runs every 2^rate slots of its lane
     uint8_t     lane = 0;       // thread-id (0 = main thread). Ignored in inline mode
     const char* name = nullptr; // reporting only
   };
 
-  /// What the run loop touches
+  static unsigned laneOf(const s_task& t) noexcept { return Multithread ? t.lane : 0u; }
+
+  /// Task's own context
   struct s_hot
   {
     Fn    fn  = nullptr;
@@ -137,7 +133,11 @@ public:
   };
   struct s_laneStats : s_stats
   {
-    std::array<uint32_t, kSlots> due {}; // copy of the lane's schedule, for logLoad()
+    uint64_t                     idle = 0; // idle slots (tasks due, none did work): a worker sleeps after those
+    std::array<uint32_t, kSlots> due {};   // copy of the lane's schedule, for logLoad()
+
+    void recordIdle() noexcept { ++idle; }
+    void setDue(const s_lane& L) noexcept { due = L.due; }
   };
 #else
   struct s_stats
@@ -152,7 +152,13 @@ public:
     float avgUs() const { return 0.f; }
     float maxUs() const { return 0.f; }
   };
-  struct s_laneStats : s_stats {};
+  struct s_laneStats : s_stats
+  {
+    static constexpr uint64_t idle = 0;
+
+    void recordIdle() noexcept {}
+    void setDue(const s_lane&) noexcept {}
+  };
 #endif
 
   fixedScheduler() = default;
@@ -165,22 +171,22 @@ public:
   {
     s_lane   L;
     uint32_t slotLoad[kSlots] = {};
-    for (unsigned i = 0; i < tasks.size(); ++i)
+    for (std::size_t i = 0; i < tasks.size(); ++i)
     {
       const s_task& t = tasks[i];
       if (laneOf(t) != l) continue;
       const unsigned period = 1u << t.rate;
 
       unsigned best    = 0;
-      uint32_t bestMax = UINT32_MAX;
-      uint32_t bestSum = UINT32_MAX;
+      uint32_t bestMax = uint32_t(-1);
+      uint32_t bestSum = uint32_t(-1);
       for (unsigned ph = 0; ph < period; ++ph)
       {
         uint32_t mx  = 0;
         uint32_t sum = 0;
         for (unsigned s = ph; s < kSlots; s += period)
         {
-          mx = std::max(mx, slotLoad[s]);
+          if (slotLoad[s] > mx) mx = slotLoad[s];
           sum += slotLoad[s];
         }
         if (mx < bestMax || (mx == bestMax && sum < bestSum))
@@ -206,37 +212,38 @@ public:
   {
     // check (debug only)
     TRE_ASSERT(tasks.size() <= MaxTasks);
-    for (size_t i = 0; i < tasks.size(); ++i)
+    for (std::size_t i = 0; i < tasks.size(); ++i)
     {
       const s_task& t = tasks[i];
       TRE_ASSERT(t.fn != nullptr && t.rate <= MaxRate && t.lane < NThreads);
+      (void)t;
     }
 
     m_main = makeLane(tasks, 0);
-#ifdef TRE_PROFILE
-    m_laneStats[0].due = m_main.due;
-#endif
+    m_laneStats[0].setDue(m_main);
 
-#ifdef FS_THREADED
-    for (unsigned l = 1; l < kLanes; ++l)
+    if constexpr (Multithread)
     {
-      const s_lane L = makeLane(tasks, l);
-      if (!L.tasks()) continue; // no thread for an empty lane
-#ifdef TRE_PROFILE
-      m_laneStats[l].due = L.due;
-#endif
-      m_threads[l - 1] = std::thread([this, l, L] { workerLoop(l, L); });
+      for (unsigned l = 1; l < kLanes; ++l)
+      {
+        const s_lane L = makeLane(tasks, l);
+        if (!L.tasks()) continue; // no thread for an empty lane
+        m_laneStats[l].setDue(L);
+        m_threads[l - 1] = std::thread([this, l, L] { workerLoop(l, L); });
+      }
     }
-#endif
     return true;
   }
 
   /// Run lane 0's next slot, inline. No-op while paused.
-  void tick() noexcept
+  /// Returns false when lane 0 idled (paused, or tasks were due and none did work; an empty slot is not idle),
+  /// so the caller can sleep its own loop the same way the workers do.
+  bool tick() noexcept
   {
-    if (m_state & kPaused) return;
-    runlane(0, m_main, m_slot);
-    m_slot = (m_slot + 1) & (kSlots - 1);
+    if (m_state & kPaused) return false;
+    const bool idle = runlane(0, m_main, m_slot);
+    m_slot          = (m_slot + 1) & (kSlots - 1);
+    return !idle;
   }
 
   /// Lane 0 stops ticking at once, each worker pauses after completing its current slot
@@ -256,17 +263,15 @@ public:
 
   bool paused() const noexcept { return m_state & kPaused; }
 
-  /// Terminate: workers exit after their current slot, then are joined.
+  /// Terminate: workers exit after their current slot (or idle sleep), then are joined.
   void stop() noexcept
   {
     m_state |= kQuit;
     publish();
-#ifdef FS_THREADED
-    for (auto& t : m_threads)
+    for (auto& t : m_threads) // empty in inline mode
     {
       if (t.joinable()) t.join();
     }
-#endif
   }
 
   /// Stats are written by the lanes, unsynchronized
@@ -276,8 +281,8 @@ public:
   void logLoad() const
   {
 #ifdef TRE_PROFILE
-    char   txt[4096];
-    size_t n = 0;
+    char txt[4096];
+    int  n = 0;
 
     for (unsigned l = 0; l < kLanes; ++l)
     {
@@ -295,14 +300,14 @@ public:
   void logStats() const
   {
 #ifdef TRE_PROFILE
-    char   txt[4096];
-    size_t n = 0;
+    char txt[4096];
+    int  n = 0;
 
     for (unsigned l = 0; l < kLanes; ++l)
     {
       const s_laneStats s = laneStats(l);
-      n += std::snprintf(txt + n, sizeof(txt) - n, "\nthread-%u: %.3e slots, avg=%6.2f ms, max=%6.2f ms",
-                         l, float(s.calls), s.avgUs() * 1.e-3f, s.maxUs() * 1.e-3f);
+      n += std::snprintf(txt + n, sizeof(txt) - n, "\nthread-%u: %.3e slots, %.3e idle, avg=%6.2f ms, max=%6.2f ms",
+                         l, float(s.calls), float(s.idle), s.avgUs() * 1.e-3f, s.maxUs() * 1.e-3f);
     }
 
     for (unsigned i = 0; i < MaxTasks; ++i)
@@ -327,40 +332,30 @@ private:
 
   void publish() noexcept
   {
-#ifdef FS_THREADED
-    m_ctrl.store(m_state, std::memory_order_relaxed);
-#endif
+    if constexpr (Multithread) m_ctrl.store(m_state, std::memory_order_relaxed);
   }
 
-  static unsigned laneOf(const s_task& t) noexcept
-  {
-#ifdef FS_THREADED
-    return t.lane;
-#else
-    (void)t;
-    return 0;
-#endif
-  }
-
-  void runlane(unsigned l, const s_lane& L, unsigned slot) noexcept
+  bool runlane(unsigned l, const s_lane& L, unsigned slot) noexcept
   {
     uint32_t m = L.due[slot];
-    if (!m) return;
+    if (!m) return false; // empty slot: not idle
+    bool           work = false;
     const uint64_t t0   = s_stats::now();
     uint64_t       prev = t0;
     while (m)
     {
       const unsigned i = detail::ctz32(m);
       m &= m - 1;
-      L.hot[i].fn(L.hot[i].ctx); // call of the task's function here !
+      if (L.hot[i].fn(L.hot[i].ctx)) work = true; // call of the task's function here !
       const uint64_t t = s_stats::now();
       m_taskStats[i].record(t - prev);
       prev = t;
     }
     m_laneStats[l].record(prev - t0);
+    if (!work) m_laneStats[l].recordIdle();
+    return !work;
   }
 
-#ifdef FS_THREADED
   void workerLoop(unsigned l, const s_lane &L) noexcept
   {
     unsigned slot  = 0;
@@ -376,24 +371,26 @@ private:
       }
       if (c & kPaused)
       {
-        std::this_thread::sleep_for(std::chrono::microseconds(100));
+        std::this_thread::sleep_for(std::chrono::microseconds(kIdleSleepUs));
         continue;
       }
-      runlane(l, L, slot);
-      slot = (slot + 1) & (kSlots - 1);
-      std::this_thread::yield(); // release pressure between slots
+      const bool idle = runlane(l, L, slot);
+      slot            = (slot + 1) & (kSlots - 1);
+      if (idle)
+        std::this_thread::sleep_for(std::chrono::microseconds(kIdleSleepUs)); // nothing to do: spin less
+      else
+        std::this_thread::yield(); // release pressure between slots
     }
   }
 
-  alignas(64) std::atomic<uint32_t>   m_ctrl = 0; // control word, read by the workers
-  std::array<std::thread, kLanes - 1> m_threads;
-#endif
+  alignas(64) std::atomic<uint32_t>   m_ctrl = 0; // control word, read by the workers (unused in inline mode)
+  std::array<std::thread, kLanes - 1> m_threads;  // workers (empty in inline mode)
 
-  s_lane                            m_main;           // lane 0, main-thread only
-  unsigned                          m_slot   = 0;     // lane 0's next slot
-  uint32_t                          m_state  = 0;     // control word, main-thread copy
-  std::array<s_stats, MaxTasks>     m_taskStats {};
-  std::array<s_laneStats, kLanes>   m_laneStats {};
+  s_lane                          m_main;          // lane 0, main-thread only
+  unsigned                        m_slot  = 0;     // lane 0's next slot
+  uint32_t                        m_state = 0;     // control word, main-thread copy
+  std::array<s_stats, MaxTasks>   m_taskStats {};
+  std::array<s_laneStats, kLanes> m_laneStats {};
 };
 
 // ============================================================================

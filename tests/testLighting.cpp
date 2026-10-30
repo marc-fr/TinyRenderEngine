@@ -6,26 +6,24 @@
 #include "tre_font.h"
 #include "tre_windowContext.h"
 #include "tre_contact_3D.h"
+#include "tre_fixed_scheduler.h"
 
 #ifdef TRE_EMSCRIPTEN
 #include <emscripten.h>
 #include <emscripten/html5.h>
-constexpr int nThreads = 2;
+constexpr unsigned nThreads = 2;
 #else
-constexpr int nThreads = 4;
+constexpr unsigned nThreads = 4;
 #endif
 
 #include <math.h>
-#include <string>
-#include <random>
 #include <chrono>
+#include <functional>
+#include <mutex>
+#include <random>
+#include <thread>
 
 #define RAYTRACER_THREADED
-
-#ifdef RAYTRACER_THREADED
-#include <thread>
-#include <atomic>
-#endif
 
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/euler_angles.hpp>
@@ -108,26 +106,111 @@ constexpr float kPi = 3.141592653589793f;
 
 // =============================================================================
 
-static inline glm::vec3 normalizeCrossSafe(const glm::vec3 &a, const glm::vec3 &b)
+/// Orthonormal basis from a unit vector (Duff et al. 2017, "Building an Orthonormal Basis, Revisited").
+static inline void makeONB(const glm::vec3 &n, glm::vec3 &t, glm::vec3 &b)
 {
-  const glm::vec3 cab = glm::cross(a,b);
-  const float cab2 = glm::dot(cab, cab);
-  if (cab2 > 1.e-12f) return cab / std::sqrt(cab2);
-  if (std::abs(a.x) > 1.e-6f) return glm::vec3(a.y, -a.x, 0.f) / std::sqrt(a.x*a.x + a.y*a.y);
-  return glm::vec3(0.f, -a.z, a.y) / std::sqrt(a.y*a.y + a.z*a.z);
+  const float sign = std::copysign(1.f, n.z);
+  const float a    = -1.f / (sign + n.z);
+  const float c    = n.x * n.y * a;
+  t = glm::vec3(1.f + sign * n.x * n.x * a, sign * c, -sign * n.x);
+  b = glm::vec3(c, sign + n.y * n.y * a, -n.y);
 }
+
+static inline float luminance(const glm::vec3 &c) { return glm::dot(c, glm::vec3(0.2126f, 0.7152f, 0.0722f)); }
 
 // =============================================================================
 
 namespace rayTracer
 {
-  glm::ivec2             res = glm::ivec2(0);
-  std::vector<glm::vec4> accumBuffer;
+  // ---- scheduling ------------------------------------------------------------
+
+#ifdef RAYTRACER_THREADED
+  constexpr bool kThreaded = true;
+#else
+  constexpr bool kThreaded = false;
+#endif
+
+  using t_scheduler = tre::fixedScheduler<nThreads + 1, nThreads, kThreaded>;
+
+  // ---- scene snapshot --------------------------------------------------------
+
+  struct s_material
+  {
+    glm::vec3 color = glm::vec3(0.f);
+    float     metal = 0.f;
+    float     alpha = 1.f; // roughness^2, clamped
+  };
+
+  struct s_params
+  {
+    glm::ivec2      res        = glm::ivec2(0);
+    glm::vec2       projInv    = glm::vec2(1.f);
+    glm::mat3       viewRotInv = glm::mat3(1.f);
+    glm::vec3       camPos     = glm::vec3(0.f);
+    s_material      matMesh;
+    s_material      matRoom;
+    e_lightingModel model       = MODEL_GGX;
+    std::size_t     modelPart   = 0;
+    bool            showRoom    = true;
+    bool            showAO      = false;
+    int             bounceLimit = 1;
+    float           aoRadius    = 0.1f;
+    int             revision    = 0; // bumped on every change
+  };
+
+  /// Per-task context
+  struct s_stripe
+  {
+    unsigned index      = 0;
+    int      revision   = -1;
+    float    accumCount = 0.f;
+  };
+
+  // ---- state -----------------------------------------------------------------
+
+  glm::ivec2             res = glm::ivec2(0); // main-thread copy
+  std::vector<glm::vec4> accumBuffer;         // written by the tasks (disjoint rows), read by the main thread for upload
   int                    bounceLimit = 1;
 
   bool isDurty = false;
 
   tre::texture textureForRender;
+
+  t_scheduler                                scheduler;
+  std::array<s_stripe, nThreads>             stripes;
+  std::array<t_scheduler::s_task, nThreads>  tasks;
+
+  std::mutex paramsMutex;
+  s_params   paramsShared;       // guarded by paramsMutex
+  int        paramsRevision = 0; // main-thread only
+
+  // Gate: lets the main thread wait until no task touches accumBuffer (needed to re-allocate it)
+  constexpr int    kGateClosed = -10000;
+  std::atomic<int> gateActive = 0;
+
+  bool gateEnter() noexcept
+  {
+    if (gateActive.fetch_add(1, std::memory_order_acquire) >= 0) return true;
+    gateActive.fetch_sub(1, std::memory_order_relaxed); // gate closed: back out
+    return false;
+  }
+  void gateLeave() noexcept { gateActive.fetch_sub(1, std::memory_order_release); }
+  void gateClose() noexcept
+  {
+    gateActive.fetch_add(kGateClosed, std::memory_order_relaxed);                                // refuse new tasks
+    while (gateActive.load(std::memory_order_acquire) != kGateClosed) std::this_thread::yield(); // wait for the running ones
+  }
+  void gateOpen() noexcept { gateActive.fetch_sub(kGateClosed, std::memory_order_release); }
+
+  // ---- sampling --------------------------------------------------------------
+
+  constexpr float kRayOffset     = 1.e-3f;
+  constexpr float kMinAlpha      = 1.e-3f; // alpha^2 = 1e-6 stays well above the float epsilon around N.H = 1
+  constexpr float kSunCosMax     = 0.995f; // the sun is a cone-light
+  constexpr float kSunSolidAngle = 2.f * kPi * (1.f - kSunCosMax);
+  constexpr float kSunPdf        = 1.f / kSunSolidAngle; // uniform sampling of the cone
+  constexpr float kSunRadiance   = 1.f / kSunSolidAngle; // irradiance at normal incidence = lightColor
+  const glm::vec3 kToSun         = -sunLightIncomingDir;
 
   glm::vec3 genDir_uniform(const glm::vec3 &normal, const glm::vec3 &tangentU, const glm::vec3 &tangentV, float cosThetaMin)
   {
@@ -169,7 +252,7 @@ namespace rayTracer
     // distribution = exp(-tan(theta)^2 / sigma^2) / ( sigma^2 cos^4(theta)) * cos(theta)
     //                                                                         ^^^^^^^^^^ keep a cosine-weighted term
     (void)cosThetaMin;
-    const float cosTheta = 1.f / std::sqrt(1.f - sigma * sigma * std::log(1.f - rand01(rng)) / kPi);
+    const float cosTheta = 1.f / std::sqrt(1.f - sigma * sigma * std::log(1.f - rand01(rng)));
     const float sinTheta = std::sqrt(1.f - cosTheta * cosTheta);
     const float phi = 2.f * kPi * rand01(rng);
     const float cosPhi = std::cos(phi);
@@ -177,46 +260,102 @@ namespace rayTracer
     return glm::normalize(normal * (cosTheta) + tangentU * (sinTheta * cosPhi) + tangentV * (sinTheta * sinPhi)); // re-normalize to avoid numerical errors
   }
 
+  static inline glm::vec3 fromLocal(const glm::vec3 &n, const glm::vec3 &t, const glm::vec3 &b, float cosTheta, float sinTheta, float phi)
+  {
+    return glm::normalize(n * cosTheta + t * (sinTheta * std::cos(phi)) + b * (sinTheta * std::sin(phi)));
+  }
+
+  /// pdf = cos(theta) / pi. Computed with sin^2 = u, cos^2 = 1 - u: no cancellation, cos(theta) > 0.
+  glm::vec3 sampleCosine(const glm::vec3 &n, const glm::vec3 &t, const glm::vec3 &b)
+  {
+    const float u = rand01(rng);
+    return fromLocal(n, t, b, std::sqrt(1.f - u), std::sqrt(u), 2.f * kPi * rand01(rng));
+  }
+
+  /// Half-vector with pdf = D(h) * dot(n,h)
+  glm::vec3 sampleHalfVector(e_lightingModel model, float alpha, const glm::vec3 &n, const glm::vec3 &t, const glm::vec3 &b)
+  {
+    const float u = rand01(rng);
+    const float a2 = alpha * alpha;
+    float cosTheta, sinTheta;
+    if (model == MODEL_PHONG)
+    {
+      // D ~ cos^e with e = 2/a2 - 2, so e + 2 = 2/a2: cos = (1-u)^(1/(e+2))
+      const float a2p = std::max(a2, 1.e-4f);
+      const float l   = std::log(1.f - u) * (0.5f * a2p); // <= 0
+      cosTheta = std::exp(l);
+      sinTheta = std::sqrt(-std::expm1(2.f * l)); // 1 - cos^2, without cancellation for large exponents
+    }
+    else
+    {
+      // GGX: tan^2 = a2 u / (1-u). sin^2 and cos^2 computed directly (1 - cos^2 cancels for small alpha)
+      const float den = (1.f - u) + a2 * u;
+      cosTheta = std::sqrt((1.f - u) / den);
+      sinTheta = std::sqrt(a2 * u / den);
+    }
+    return fromLocal(n, t, b, cosTheta, sinTheta, 2.f * kPi * rand01(rng));
+  }
+
+  /// Uniform direction in the sun cone, pdf = kSunPdf
+  glm::vec3 sampleSunCone()
+  {
+    glm::vec3 t, b;
+    makeONB(kToSun, t, b);
+    const float oneMinusCos = rand01(rng) * (1.f - kSunCosMax);
+    return fromLocal(kToSun, t, b, 1.f - oneMinusCos, std::sqrt(oneMinusCos * (2.f - oneMinusCos)), 2.f * kPi * rand01(rng));
+  }
+
+  static inline float powerHeuristic(float pdfA, float pdfB)
+  {
+    const float a2 = pdfA * pdfA;
+    const float b2 = pdfB * pdfB;
+    return a2 / (a2 + b2);
+  }
+
+  // ---- geometry --------------------------------------------------------------
+
   struct s_hitInfo : public tre::s_contact3D { int flag; };
 
-  s_hitInfo rayTraceHit(glm::vec3 pos, glm::vec3 dir)
+  s_hitInfo rayTraceHit(const s_params &p, const glm::vec3 &pos, const glm::vec3 &dir)
   {
     s_hitInfo ret;
     ret.penet = std::numeric_limits<float>::infinity();
     ret.flag = 0;
 
     // Room hit
-    if (showRoom)
+    if (p.showRoom)
     {
       const float invDirX = (dir.x == 0.f) ? 0.f : 1.f /dir.x;
       const float invDirY = (dir.y == 0.f) ? 0.f : 1.f /dir.y;
       const float invDirZ = (dir.z == 0.f) ? 0.f : 1.f /dir.z;
+      const float halfSize = 0.5f * roomSize;
+      const float edge     = halfSize + 1.e-4f; // inclusive, slightly enlarged: no ray slips through the seams between 2 walls
       {
         // bottom
-        const float     dist = (-0.5f * roomSize - pos.y) * invDirY;
+        const float     dist = (-halfSize - pos.y) * invDirY;
         const glm::vec3 pt = pos + dist * dir;
-        const bool      inRange = std::abs(pt.x) < 0.5f * roomSize && std::abs(pt.z) < 0.5f * roomSize;
+        const bool      inRange = std::abs(pt.x) <= edge && std::abs(pt.z) <= edge;
         if (dist > 0.f && inRange && dist < ret.penet) { ret.penet = dist; ret.pt = pt; ret.normal = glm::vec3(0.f, 1.f, 0.f); }
       }
       {
         // left
-        const float     dist = (-0.5f * roomSize - pos.x) * invDirX;
+        const float     dist = (-halfSize - pos.x) * invDirX;
         const glm::vec3 pt = pos + dist * dir;
-        const bool      inRange = std::abs(pt.y) < 0.5f * roomSize && std::abs(pt.z) < 0.5f * roomSize;
+        const bool      inRange = std::abs(pt.y) <= edge && std::abs(pt.z) <= edge;
         if (dist > 0.f && inRange && dist < ret.penet) { ret.penet = dist; ret.pt = pt; ret.normal = glm::vec3(1.f, 0.f, 0.f); }
       }
       {
         // right
-        const float     dist = (0.5f * roomSize - pos.x) * invDirX;
+        const float     dist = (halfSize - pos.x) * invDirX;
         const glm::vec3 pt = pos + dist * dir;
-        const bool      inRange = std::abs(pt.y) < 0.5f * roomSize && std::abs(pt.z) < 0.5f * roomSize;
+        const bool      inRange = std::abs(pt.y) <= edge && std::abs(pt.z) <= edge;
         if (dist > 0.f && inRange && dist < ret.penet) { ret.penet = dist; ret.pt = pt; ret.normal = glm::vec3(-1.f, 0.f, 0.f); }
       }
       {
         // back
-        const float     dist = (-0.5f * roomSize - pos.z) * invDirZ;
+        const float     dist = (-halfSize - pos.z) * invDirZ;
         const glm::vec3 pt = pos + dist * dir;
-        const bool      inRange = std::abs(pt.x) < 0.5f * roomSize && std::abs(pt.y) < 0.5f * roomSize;
+        const bool      inRange = std::abs(pt.x) <= edge && std::abs(pt.y) <= edge;
         if (dist > 0.f && inRange && dist < ret.penet) { ret.penet = dist; ret.pt = pt; ret.normal = glm::vec3(0.f, 0.f, 1.f); }
       }
     }
@@ -224,284 +363,327 @@ namespace rayTracer
     // Mesh hit
     {
       tre::s_contact3D hitInfoMesh;
-      const bool earlyCullMesh = tre::s_contact3D::raytrace_box(hitInfoMesh, pos, dir, meshes.partInfo(modelPart).m_bbox, 0.f);
-      if (!earlyCullMesh || !tre::s_contact3D::raytrace_skin(hitInfoMesh, pos, dir, meshesSkin[modelPart], 0.f)) hitInfoMesh.penet = 0.f;
+      const bool earlyCullMesh = tre::s_contact3D::raytrace_box(hitInfoMesh, pos, dir, meshes.partInfo(p.modelPart).m_bbox, 0.f);
+      if (!earlyCullMesh || !tre::s_contact3D::raytrace_skin(hitInfoMesh, pos, dir, meshesSkin[p.modelPart], 0.f)) hitInfoMesh.penet = 0.f;
       if (hitInfoMesh.penet > 0.f && hitInfoMesh.penet < ret.penet){ ret.penet = hitInfoMesh.penet; ret.normal = hitInfoMesh.normal; ret.pt = hitInfoMesh.pt; ret.flag = 1; }
     }
 
     return ret;
   }
 
-  glm::vec3 rayTrace(glm::vec3 pos, glm::vec3 dir)
+  /// Unit normal facing the incoming ray (double-sided surfaces). False if degenerate.
+  static inline bool shadingNormal(const glm::vec3 &nRaw, const glm::vec3 &dir, glm::vec3 &n)
   {
-    glm::vec3 retLight = glm::vec3(1.f);
-    int bounceCount = 0;
-
-    while (true)
-    {
-      s_hitInfo hit = rayTraceHit(pos, dir);
-
-      if (!std::isfinite(hit.penet))
-      {
-        // no hit: background + sun-light
-        static constexpr float kSunLightFactor = 1.f / (2.f * kPi * (1.f - 0.995f)); // in fact, the sun-light becomes a cone-light.
-        retLight *= kSunLightFactor * (glm::dot(dir, sunLightIncomingDir) < -0.995f) * lightColor;
-        break;
-      }
-
-      if (bounceCount >= bounceLimit)
-      {
-        // bounce limit
-        return glm::vec3(0.f);
-      }
-
-      // double-sided
-
-      if (glm::dot(-dir, hit.normal) < 0.f) hit.normal = -hit.normal;
-
-      // there is a hit
-
-      const glm::vec3 matColor = hit.flag != 0 ? meshDiffuse   : roomDiffuse;
-      const float     matMetal = hit.flag != 0 ? meshMetalness : roomMetalness;
-      const float     matR2    = hit.flag != 0 ? meshRoughness * meshRoughness : roomRoughness * roomRoughness;
-
-      const glm::vec3 tangentU = normalizeCrossSafe(hit.normal, -dir);
-      const glm::vec3 tangentV = glm::normalize(glm::cross(hit.normal, tangentU));
-
-      // choose outputs direction:
-      glm::vec3 dirOutDiffuse;
-      //dirOutDiffuse = genDir_uniform(hit.normal, tangentU, tangentV, 0.001f); but put-back a "* 2.f" factor in the final light.
-      dirOutDiffuse = genDir_cosine(hit.normal, tangentU, tangentV, 0.001f);
-
-      // Raw evaluation of the rendering equation with Monte-Carlo method: L = intg_hemisphere( fr Li n.w dw ) ~= 2 pi Mean_{w uniform distribution}(fr Li n.w)
-      // But we use importance-sampling (cosine-weighted integrale): L = intg_hemisphere( fr Li n.w dw ) ~= pi Mean_{w cosine-weighted distribution}(fr Li)
-      // Note: We still compute the NDF, but we could also include in the importance-sampling (with a weigthed-distribution, or with the facet-normal distribution (TODO)).
-
-      const glm::vec3 half = glm::normalize(-dir + dirOutDiffuse);
-      TRE_ASSERT(std::isfinite(half.x));
-      const float dotNH = std::max(glm::dot(hit.normal, half), 0.f);
-      const float dotVH = std::min(glm::dot(-dir, half), 1.f);
-      const float dotNL = std::max(glm::dot(hit.normal, dirOutDiffuse), 0.f);
-      const float dotNV = std::max(glm::dot(hit.normal, -dir), 0.f);
-      float ndf; // note: "pi" factor moved away
-      float vis;
-      switch (lightingModel)
-      {
-        case MODEL_PHONG:
-        {
-          const float matR4 = std::max(matR2 * matR2, 1.e-4f);
-          ndf = std::pow(dotNH, 2.f / matR4 - 2.f) / matR4;
-          vis = 0.25f / std::max(std::max(dotNV, dotNL), 1.e-2f /* 0.25 in shader */);
-        }
-        break;
-        case MODEL_GGX:
-        {
-          const float matR4 = matR2 * matR2;
-          const float dm = dotNH * dotNH * (matR4 - 1.f) + 1.f;
-          ndf = matR4 / (dm * dm);
-          const float GGXV = dotNL * std::sqrt(dotNV * dotNV * (1.f - matR4) + matR4);
-          const float GGXL = dotNV * std::sqrt(dotNL * dotNL * (1.f - matR4) + matR4);
-          vis = 0.5f / std::max(GGXV + GGXL, 1.e-2f /* 0.5 in shader */);
-        }
-        break;
-        default:
-        TRE_FATAL("Not reached: bad model");
-      }
-      TRE_ASSERT(std::isfinite(ndf));
-
-      // BRDF (Cook-Torrance model):
-      const glm::vec3 F0     = glm::mix(glm::vec3(0.04f), matColor, matMetal);
-      const glm::vec3 kRefl  = F0 + (1.f - F0) * std::pow(1.f - dotVH, 5.f);
-      const glm::vec3 kRefr  = (1.f - kRefl) * (1.f - matMetal);
-      TRE_ASSERT(glm::all(glm::isfinite(kRefl)));
-
-      retLight *= (kRefr * matColor + kRefl * ndf * vis); // * glm::dot(dirOutDiffuse, hit.normal) * 2.f; // note: "pi" factor moved away
-
-      // next ray
-      pos = hit.pt + 0.001f * hit.normal;
-      dir = dirOutDiffuse;
-      ++bounceCount;
-    }
-
-    return retLight;
-  }
-
-  float rayAO(glm::vec3 pos, glm::vec3 dir, float radius, int nSamples)
-  {
-    const s_hitInfo hitFirst = rayTraceHit(pos, dir);
-    if (!std::isfinite(hitFirst.penet)) return 1.f;
-
-    const glm::vec3 tangentU = normalizeCrossSafe(hitFirst.normal, -dir);
-    const glm::vec3 tangentV = glm::normalize(glm::cross(hitFirst.normal, tangentU));
-
-    float acc = 0.f;
-
-    for (int i = 0; i < nSamples; ++i)
-    {
-
-      glm::vec3 dirOutDiffuse;
-      //dirOutDiffuse = genDir_uniform(hitInfo.normal, tangentU, tangentV, 0.001f); but put-back a "* 2.f" factor in the final light.
-      dirOutDiffuse = genDir_cosine(hitFirst.normal, tangentU, tangentV, 0.001f);
-
-      const s_hitInfo hitSecond = rayTraceHit(hitFirst.pt + 0.001f * hitFirst.normal, dirOutDiffuse);
-
-      acc += (hitSecond.penet < radius) ? 0.f : 1.f;
-    }
-
-    return acc / float(nSamples);
-  }
-
-  void runStep(int threadId, float &accumCount)
-  {
-    const glm::vec4 mProjInvRed = glm::vec4(1.f/myWindow.m_matProjection3D[0][0], 1.f/myWindow.m_matProjection3D[1][1], 1.f, 1.f / myWindow.m_near);
-    const glm::mat3 mViewRotInv = glm::mat3(glm::transpose(mView));
-    const glm::vec3 camPos = glm::vec3(- glm::transpose(mView) * mView[3]);
-    const int yS = int(threadId);
-    if (!showAO)
-    {
-      for (int y = yS; y < res.y; y += nThreads)
-      {
-        for (int x = 0; x < res.x; ++x)
-        {
-          const glm::vec4 pxCoordClipSpace = glm::vec4( (float(x) + 0.5f) / float(res.x) * 2.f - 1.f, (float(y) + 0.5f) / float(res.y) * 2.f - 1.f, -1.f, 1.f);
-          glm::vec4 pxCoordViewSpace = mProjInvRed * pxCoordClipSpace;
-          //pxCoordViewSpace /= pxCoordViewSpace.w; // ok because "w" is positive
-          pxCoordViewSpace.w = 0.f;
-          const glm::vec3 camDir = glm::normalize(mViewRotInv * glm::vec3(pxCoordViewSpace));
-
-          const glm::vec3 c = rayTrace(camPos, camDir);
-          accumBuffer[x + y * res.x] = (accumBuffer[x + y * res.x] * accumCount + glm::vec4(c, 1.f)) / (accumCount + 1.f);
-          accumBuffer[x + y * res.x].w = 1.f;
-        }
-      }
-    }
-    else
-    {
-      for (int y = yS; y < res.y; y += nThreads)
-      {
-        for (int x = 0; x < res.x; ++x)
-        {
-          const glm::vec4 pxCoordClipSpace = glm::vec4( (float(x) + 0.5f) / float(res.x) * 2.f - 1.f, (float(y) + 0.5f) / float(res.y) * 2.f - 1.f, -1.f, 1.f);
-          glm::vec4 pxCoordViewSpace = mProjInvRed * pxCoordClipSpace;
-          //pxCoordViewSpace /= pxCoordViewSpace.w; // ok because "w" is positive
-          pxCoordViewSpace.w = 0.f;
-          const glm::vec3 camDir = glm::normalize(mViewRotInv * glm::vec3(pxCoordViewSpace));
-          const float ao = rayAO(camPos, camDir, renderSSAORadius, 8);
-          const glm::vec3 c = glm::vec3(ao);
-          accumBuffer[x + y * res.x] = (accumBuffer[x + y * res.x] * accumCount + glm::vec4(c, 1.f)) / (accumCount + 1.f);
-          accumBuffer[x + y * res.x].w = 1.f;
-        }
-      }
-    }
-    accumCount += 1.f;
-  }
-
-#ifdef RAYTRACER_THREADED
-  enum e_state
-  {
-    STATE_RUN,
-    STATE_SUSPEND,
-    STATE_STOP,
-  };
-  std::atomic<e_state>              processState = STATE_SUSPEND; // target state of all threads
-  std::array<std::thread, nThreads> processThreads;
-  std::atomic<int>                  processActiveCount = 0;
-  std::atomic<int>                  processRevision = 0;
-#else
-  int   processStep = 0;
-  float accumCount = 0.f;
-#endif
-
-  void update();
-
-  bool init_threading()
-  {
-    update(); // update once to allocate the accumBuffer and textureForRender
-#ifdef RAYTRACER_THREADED
-    for (std::size_t threadId = 0; threadId < processThreads.size(); ++threadId)
-    {
-      processThreads[threadId] = std::thread( [threadId]()
-      {
-        std::random_device rd;
-        rng.seed(rd()); // (thread local)
-        int   localRevision = 0;
-        float localAccumCount = 0.f;
-        while (true)
-        {
-          // wait
-          while (processState.load(std::memory_order_relaxed) == STATE_SUSPEND)
-          {
-            std::this_thread::yield();
-          }
-
-          // check stop
-          if (processState.load(std::memory_order_acquire) == STATE_STOP) break;
-
-          processActiveCount.fetch_add(1, std::memory_order_relaxed);
-
-          // check dirty
-          const int rev = processRevision.load(std::memory_order_acquire);
-          if (rev != localRevision)
-          {
-            localRevision = rev;
-            localAccumCount = 0.f;
-          }
-          runStep(threadId, localAccumCount);
-
-          processActiveCount.fetch_sub(1, std::memory_order_release);
-        }
-      } );
-    }
-#endif
+    const float n2 = glm::dot(nRaw, nRaw);
+    if (!(n2 > 1.e-12f)) return false;
+    n = nRaw * (1.f / std::sqrt(n2));
+    if (glm::dot(n, dir) > 0.f) n = -n;
     return true;
   }
 
-  void close_threading()
+  // ---- BRDF ------------------------------------------------------------------
+
+  /// Shading context at a path vertex
+  struct s_vertex
   {
-#ifdef RAYTRACER_THREADED
-    processState = STATE_STOP;
-    for (auto &trd : processThreads) trd.join();
-#endif
+    glm::vec3         n, t, b; // frame (n faces the viewer)
+    glm::vec3         v;       // toward the viewer
+    float             NV;
+    glm::vec3         F0;
+    float             pSpec;   // probability to sample the specular lobe
+    const s_material *mat;
+  };
+
+  /// "Pi" convention as before: valuePi = pi * fr, pdfPi = pi * pdf (solid angle)
+  struct s_bsdfEval
+  {
+    glm::vec3 valuePi = glm::vec3(0.f);
+    float     pdfPi   = 0.f;
+    float     NL      = 0.f;
+  };
+
+  s_bsdfEval evalBsdf(e_lightingModel model, const s_vertex &vx, const glm::vec3 &l)
+  {
+    s_bsdfEval r;
+    r.NL = glm::dot(vx.n, l);
+    if (!(r.NL > 0.f)) return r;
+
+    const glm::vec3 hRaw  = vx.v + l;
+    const float     hLen2 = glm::dot(hRaw, hRaw);
+    if (!(hLen2 > 1.e-12f)) return r;
+    const glm::vec3 h = hRaw * (1.f / std::sqrt(hLen2));
+
+    const float     NL     = r.NL;
+    const float     NV     = vx.NV;
+    const float     NH     = glm::clamp(glm::dot(vx.n, h), 0.f, 1.f);
+    const float     VH     = glm::clamp(glm::dot(vx.v, h), 0.f, 1.f);
+    const glm::vec3 nxh    = glm::cross(vx.n, h);
+    const float     sin2NH = glm::dot(nxh, nxh); // = 1 - NH^2, but accurate when NH ~ 1
+    const float     a2     = vx.mat->alpha * vx.mat->alpha;
+
+    float ndf; // = pi * D
+    float vis; // = G / (4 NL NV)
+    if (model == MODEL_PHONG)
+    {
+      const float a2p = std::max(a2, 1.e-4f);
+      ndf = std::pow(NH, 2.f / a2p - 2.f) / a2p;
+      vis = 0.25f / std::max(std::max(NV, NL), 1.e-2f /* 0.25 in shader */);
+    }
+    else
+    {
+      const float dm = NH * NH * a2 + sin2NH; // = NH^2 (a2 - 1) + 1, without the catastrophic cancellation
+      ndf = a2 / (dm * dm);
+      const float GGXV = NL * std::sqrt(NV * NV * (1.f - a2) + a2);
+      const float GGXL = NV * std::sqrt(NL * NL * (1.f - a2) + a2);
+      vis = 0.5f / std::max(GGXV + GGXL, 1.e-2f /* 0.5 in shader */);
+    }
+
+    // Cook-Torrance
+    const glm::vec3 kRefl = vx.F0 + (1.f - vx.F0) * std::pow(1.f - VH, 5.f);
+    const glm::vec3 kRefr = (1.f - kRefl) * (1.f - vx.mat->metal);
+
+    r.valuePi = kRefr * vx.mat->color + kRefl * (ndf * vis);
+    // mixture pdf: cosine-weighted (cos/pi) + half-vector sampling (D NH / (4 VH))
+    r.pdfPi   = (1.f - vx.pSpec) * NL + vx.pSpec * ndf * NH / (4.f * std::max(VH, 1.e-6f));
+    return r;
+  }
+
+  // ---- integrators -----------------------------------------------------------
+
+  /// Path tracing with next-event estimation on the sun and MIS (power heuristic).
+  /// bounceLimit = number of surface interactions (1 = direct lighting only), as before.
+  glm::vec3 rayTrace(const s_params &p, glm::vec3 pos, glm::vec3 dir)
+  {
+    glm::vec3 radiance   = glm::vec3(0.f);
+    glm::vec3 throughput = glm::vec3(1.f);
+    float     prevPdf    = 0.f; // solid-angle pdf of the last BSDF-sampled direction
+
+    for (int bounce = 0; ; ++bounce)
+    {
+      const s_hitInfo hit = rayTraceHit(p, pos, dir);
+
+      if (!std::isfinite(hit.penet))
+      {
+        // no hit: background (black) + sun cone. Camera rays see it directly, BSDF rays share it with the NEE.
+        if (glm::dot(dir, kToSun) > kSunCosMax)
+        {
+          const float w = (bounce == 0) ? 1.f : powerHeuristic(prevPdf, kSunPdf);
+          radiance += throughput * (kSunRadiance * w) * lightColor;
+        }
+        break;
+      }
+
+      if (bounce >= p.bounceLimit) break;
+
+      s_vertex vx;
+      if (!shadingNormal(hit.normal, dir, vx.n)) break;
+      makeONB(vx.n, vx.t, vx.b);
+      vx.v   = -dir;
+      vx.NV  = std::max(glm::dot(vx.n, vx.v), 0.f);
+      vx.mat = (hit.flag != 0) ? &p.matMesh : &p.matRoom;
+      vx.F0  = glm::mix(glm::vec3(0.04f), vx.mat->color, vx.mat->metal);
+      {
+        const glm::vec3 Fv    = vx.F0 + (1.f - vx.F0) * std::pow(1.f - vx.NV, 5.f);
+        const float     specW = luminance(Fv);
+        const float     diffW = luminance((1.f - Fv) * (1.f - vx.mat->metal) * vx.mat->color);
+        vx.pSpec = glm::clamp(specW / std::max(specW + diffW, 1.e-6f), 0.1f, 0.9f);
+      }
+
+      const glm::vec3 posNext = hit.pt + kRayOffset * vx.n;
+
+      // next-event estimation: one shadow ray toward the sun cone
+      {
+        const glm::vec3  wl = sampleSunCone();
+        const s_bsdfEval e  = evalBsdf(p.model, vx, wl);
+        if (e.NL > 0.f && !std::isfinite(rayTraceHit(p, posNext, wl).penet))
+        {
+          const float w = powerHeuristic(kSunPdf, e.pdfPi / kPi);
+          radiance += throughput * e.valuePi * ((e.NL / kPi) * kSunRadiance / kSunPdf * w) * lightColor;
+        }
+      }
+
+      // continuation: sample the BRDF (mixture of the diffuse and the specular lobes)
+      glm::vec3 wo;
+      if (rand01(rng) < vx.pSpec)
+      {
+        const glm::vec3 h = sampleHalfVector(p.model, vx.mat->alpha, vx.n, vx.t, vx.b);
+        wo = 2.f * glm::dot(vx.v, h) * h - vx.v;
+      }
+      else
+      {
+        wo = sampleCosine(vx.n, vx.t, vx.b);
+      }
+
+      const s_bsdfEval e = evalBsdf(p.model, vx, wo);
+      if (!(e.NL > 0.f) || !(e.pdfPi > 0.f)) break; // sample below the surface: zero contribution
+
+      throughput *= e.valuePi * (e.NL / e.pdfPi);
+      prevPdf     = e.pdfPi / kPi;
+
+      pos = posNext;
+      dir = glm::normalize(wo);
+    }
+
+    return radiance;
+  }
+
+  float rayAO(const s_params &p, const glm::vec3 &pos, const glm::vec3 &dir, float radius, int nSamples)
+  {
+    const s_hitInfo hitFirst = rayTraceHit(p, pos, dir);
+    if (!std::isfinite(hitFirst.penet)) return 1.f;
+
+    glm::vec3 n, t, b;
+    if (!shadingNormal(hitFirst.normal, dir, n)) return 1.f;
+    makeONB(n, t, b);
+    const glm::vec3 origin = hitFirst.pt + kRayOffset * n;
+
+    float acc = 0.f;
+    for (int i = 0; i < nSamples; ++i)
+    {
+      const s_hitInfo hitSecond = rayTraceHit(p, origin, sampleCosine(n, t, b));
+      acc += (hitSecond.penet < radius) ? 0.f : 1.f;
+    }
+    return acc / float(nSamples);
+  }
+
+  // ---- tasks -----------------------------------------------------------------
+
+  void traceRow(const s_params &p, int y, float accumCount)
+  {
+    const float ndcY     = (float(y) + 0.5f) / float(p.res.y) * 2.f - 1.f;
+    const float invCount = 1.f / (accumCount + 1.f);
+    glm::vec4  *row      = accumBuffer.data() + std::size_t(y) * std::size_t(p.res.x);
+
+    for (int x = 0; x < p.res.x; ++x)
+    {
+      const float     ndcX   = (float(x) + 0.5f) / float(p.res.x) * 2.f - 1.f;
+      const glm::vec3 camDir = glm::normalize(p.viewRotInv * glm::vec3(ndcX * p.projInv.x, ndcY * p.projInv.y, -1.f));
+
+      glm::vec3 c = p.showAO ? glm::vec3(rayAO(p, p.camPos, camDir, p.aoRadius, 8)) : rayTrace(p, p.camPos, camDir);
+      if (!std::isfinite(c.x + c.y + c.z)) c = glm::vec3(0.f); // safety net: one bad sample must not poison the pixel forever
+
+      glm::vec4 &acc = row[x];
+      if (accumCount == 0.f) acc = glm::vec4(c, 1.f);
+      else                   acc = glm::vec4(glm::vec3(acc) + (c - glm::vec3(acc)) * invCount, 1.f); // running mean
+    }
+  }
+
+  /// Task: traces one pass over the rows of its stripe.
+  bool taskTrace(void *ctx)
+  {
+    s_stripe &s = *static_cast<s_stripe *>(ctx);
+
+    if (!gateEnter()) return false;
+
+    s_params p;
+    {
+      std::lock_guard<std::mutex> lock(paramsMutex);
+      p = paramsShared;
+    }
+
+    bool work = false;
+    if (p.res.x > 0 && int(s.index) < p.res.y)
+    {
+      if (p.revision != s.revision)
+      {
+        s.revision   = p.revision;
+        s.accumCount = 0.f;
+      }
+
+      for (int y = int(s.index); y < p.res.y; y += int(nThreads))
+        traceRow(p, y, s.accumCount);
+      s.accumCount += 1.f;
+      work = true;
+    }
+
+    gateLeave();
+    return work;
+  }
+
+  // ---- main-thread API -------------------------------------------------------
+
+  s_material makeMaterial(const glm::vec4 &color, float metal, float roughness)
+  {
+    s_material m;
+    m.color = glm::vec3(color);
+    m.metal = metal;
+    m.alpha = std::max(roughness * roughness, kMinAlpha);
+    return m;
+  }
+
+  void publishParams()
+  {
+    s_params p;
+    p.res         = res;
+    p.projInv     = glm::vec2(1.f / myWindow.m_matProjection3D[0][0], 1.f / myWindow.m_matProjection3D[1][1]);
+    p.viewRotInv  = glm::mat3(glm::transpose(mView));
+    p.camPos      = glm::vec3(- glm::transpose(mView) * mView[3]);
+    p.matMesh     = makeMaterial(meshDiffuse, meshMetalness, meshRoughness);
+    p.matRoom     = makeMaterial(roomDiffuse, roomMetalness, roomRoughness);
+    p.model       = lightingModel;
+    p.modelPart   = modelPart;
+    p.showRoom    = showRoom;
+    p.showAO      = showAO;
+    p.bounceLimit = bounceLimit;
+    p.aoRadius    = renderSSAORadius;
+    p.revision    = ++paramsRevision;
+
+    std::lock_guard<std::mutex> lock(paramsMutex);
+    paramsShared = p;
   }
 
   void update()
   {
     if (res != myWindow.m_resolutioncurrent)
     {
-#ifdef RAYTRACER_THREADED
-      processState.store(STATE_SUSPEND, std::memory_order_release);
-      while (processActiveCount.load(std::memory_order_acquire) > 0)
-        std::this_thread::sleep_for(std::chrono::microseconds(1));
-#endif
+      gateClose(); // from here, no task touches accumBuffer
       res = myWindow.m_resolutioncurrent;
-      accumBuffer.resize(res.x * res.y);
+      accumBuffer.assign(std::size_t(res.x) * std::size_t(res.y), glm::vec4(0.f, 0.f, 0.f, 1.f));
       textureForRender.clear();
       textureForRender.loadFloat(nullptr, res.x, res.y, 4, tre::texture::MMASK_NEAREST_MAG_FILTER);
-      isDurty = true;
-#ifdef RAYTRACER_THREADED
-      processState.store(STATE_RUN, std::memory_order_release);
-#endif
+      publishParams();
+      isDurty = false;
+      gateOpen();
     }
-    if (isDurty)
+    else if (isDurty)
     {
-#ifdef RAYTRACER_THREADED
-      processRevision.fetch_add(1, std::memory_order_release);
-#else
-      accumCount = 0.f;
-      processStep = 0;
-      std::memset(accumBuffer.data(), 0, sizeof(glm::vec4) * res.x * res.y);
-#endif
+      publishParams();
       isDurty = false;
     }
 
-#ifndef RAYTRACER_THREADED
-    runStep(processStep++ % nThreads, accumCount); // Ray-trace (a single pass at quarter-res)
-#endif
+    scheduler.tick();
 
     // Upload the texture
+    textureForRender.updateFloat(accumBuffer.data(), res.x, res.y, false);
+  }
+
+  bool init_threading()
+  {
+    for (unsigned i = 0; i < nThreads; ++i)
     {
-      textureForRender.updateFloat(accumBuffer.data(), res.x, res.y, false);
+      stripes[i].index = i;
+      tasks[i].fn      = &taskTrace;
+      tasks[i].ctx     = &stripes[i];
+      tasks[i].rate    = 1; // half-res with no-threaded mode
+      tasks[i].lane    = uint8_t(1 + i);
+      tasks[i].name    = "ray-trace";
     }
+
+    scheduler.pause(); // start paused
+    update();          // allocate the accumBuffer and textureForRender, publish the parameters
+    return scheduler.start(tre::span<t_scheduler::s_task>(tasks.data(), tasks.size()));
+  }
+
+  void close_threading()
+  {
+    scheduler.stop();
+    scheduler.logStats();
+  }
+
+  void show(bool visible)
+  {
+    if (visible) scheduler.reset();
+    else         scheduler.pause();
   }
 }
 
@@ -783,14 +965,13 @@ int app_init(std::string meshPath)
   postEffectToneMapping.set_gamma(2.2f);
   postEffectToneMapping.load();
 
-  // RNG
+  // Ray-Tracer (the RNG is thread_local and seeds itself on first use)
 
-  std::random_device rd;
-  rng.seed(rd());
-
-  // Ray-Tracer
-
-  rayTracer::init_threading();
+  if (!rayTracer::init_threading())
+  {
+    TRE_LOG("Fail to start the ray-tracer scheduler. Abort.");
+    return -4;
+  }
 
   samplingSphere::meshForRender.loadIntoGPU();
 
@@ -1017,7 +1198,7 @@ void app_update()
         else if (event.key.keysym.sym == SDLK_F4) { modelPart = NmodelPart - 1; rayTracer::isDurty = true; }
         else if (event.key.keysym.sym == SDLK_F5) { lightingModel = static_cast<e_lightingModel>((lightingModel + 1) % MODELSCOUNT); rayTracer::isDurty = true; }
         else if (event.key.keysym.sym == SDLK_F6) { showAO = !showAO; rayTracer::isDurty = true; }
-        else if (event.key.keysym.sym == SDLK_F7) { showRaytrace = !showRaytrace; rayTracer::processState = (showRaytrace) ? rayTracer::STATE_RUN : rayTracer::STATE_SUSPEND; }
+        else if (event.key.keysym.sym == SDLK_F7) { showRaytrace = !showRaytrace; rayTracer::show(showRaytrace); }
         else if (event.key.keysym.sym == SDLK_F8) { showSamplingSphere = !showSamplingSphere; }
       }
     }
@@ -1229,8 +1410,8 @@ void app_quit()
   rtAO.clear();
   postEffectToneMapping.clear();
 
-  rayTracer::textureForRender.clear();
   rayTracer::close_threading();
+  rayTracer::textureForRender.clear();
 
   samplingSphere::meshForRender.clearGPU();
 
