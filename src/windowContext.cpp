@@ -4,6 +4,7 @@
 #include <emscripten/html5.h>
 #endif
 
+#include <thread>
 #include <iostream>
 
 namespace tre {
@@ -367,43 +368,41 @@ void windowContext::s_timer::initialize()
   scenetime = 0.f;
   ndata = 0;
 
-  oldtime = SDL_GetTicks();
+  oldtime = clockT::now();
 }
 
 // ----------------------------------------------------------------------------
 
 void windowContext::s_timer::newFrame(const int waitForFPS /* = 0 means no wait */, const bool isSimPaused)
 {
-  const Uint32 newtime = SDL_GetTicks();
-  const Uint32 dtms = newtime - oldtime;
+  clockT::time_point newtime = clockT::now();
+  float              dt = std::chrono::duration<float>(newtime - oldtime).count();
   if (waitForFPS > 0)
   {
-    const Uint32 targetdtms = 1000 / waitForFPS;
-    if (dtms < targetdtms)
+    const float targetdt = 1.f / waitForFPS;
+    if (dt < targetdt)
     {
-      frametime = targetdtms * 1.e-3f;
-      SDL_Delay(targetdtms + dtms);
-    }
-    else
-    {
-      frametime = dtms * 1.e-3f;
+      using namespace std::chrono_literals;
+      const clockT::time_point newtimeTarget = oldtime + std::chrono::duration_cast<clockT::duration>(std::chrono::duration<float>(targetdt));
+      if (targetdt - dt > 2.e-3f)
+        std::this_thread::sleep_until(newtimeTarget - 2ms);
+      while ((newtime = clockT::now()) < newtimeTarget)
+        std::this_thread::yield();
+      dt = std::chrono::duration<float>(newtime - oldtime).count();
     }
   }
-  else
-  {
-    frametime = dtms * 1.e-3f;
-  }
+  oldtime = newtime;
+  frametime = dt;
   frametime_average = 0.9f * frametime_average + 0.1f * frametime;
   if (!isSimPaused) scenetime += frametime;
-  oldtime = newtime;
 }
 
 // ----------------------------------------------------------------------------
 
 void  windowContext::s_timer::endFrame_beforeGPUPresent()
 {
-  const Uint32 newtime = SDL_GetTicks();
-  worktime = float(newtime - oldtime) * 1.e-3f;
+  const clockT::time_point newtime = clockT::now();
+  worktime = std::chrono::duration<float>(newtime - oldtime).count();
   worktime_average = 0.9f * worktime_average + 0.1f * worktime;
 }
 
