@@ -584,10 +584,6 @@ void s_uiManager::applySceneOptions()
   if (hudWmain != nullptr) hudWmain->set_transparency(m_sceneOption.m_ui_alpha);
   if (hudWfixedSize != nullptr) hudWfixedSize->set_transparency(m_sceneOption.m_ui_alpha);
 
-  if (menuWmain != nullptr) menuWmain->set_cellMargin(tre::ui::s_size(float(m_sceneOption.m_ui_cellMargin), tre::ui::SIZE_PIXEL));
-  if (hudWmain != nullptr) hudWmain->set_cellMargin(tre::ui::s_size(float(m_sceneOption.m_ui_cellMargin), tre::ui::SIZE_PIXEL));
-  if (hudWfixedSize != nullptr) hudWfixedSize->set_cellMargin(tre::ui::s_size(float(m_sceneOption.m_ui_cellMargin), tre::ui::SIZE_PIXEL));
-
   tre::ui::s_colorTheme theme = tre::ui::s_colorTheme(); // default is dark
   switch (m_sceneOption.m_ui_colorTheme)
   {
@@ -610,8 +606,12 @@ void s_uiManager::applySceneOptions()
       theme.m_colorOnObject = glm::vec4(0.4f, 0.4f, 0.4f, 1.f);
     break;
   }
+  theme.m_margin = tre::ui::s_size(float(m_sceneOption.m_ui_cellMargin), tre::ui::SIZE_PIXEL);
+
   if (menuWmain != nullptr) menuWmain->set_colortheme(theme);
   if (menuWcolor != nullptr) menuWcolor->set_colortheme(theme);
+  if (hudWmain != nullptr) hudWmain->set_cellMargin(tre::ui::s_size(float(m_sceneOption.m_ui_cellMargin), tre::ui::SIZE_PIXEL));
+  if (hudWfixedSize != nullptr) hudWfixedSize->set_cellMargin(tre::ui::s_size(float(m_sceneOption.m_ui_cellMargin), tre::ui::SIZE_PIXEL));
 
   if (menuWmain != nullptr) menuWmain->set_colSpacement(0, tre::ui::s_size(float(m_sceneOption.m_ui_col0Spacing), tre::ui::SIZE_PIXEL), false);
 

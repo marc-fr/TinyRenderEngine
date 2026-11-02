@@ -64,8 +64,8 @@ void widgetCloseButton::compute_data(s_drawData &dd)
   fillRect(dd.m_bufferSolid, m_zone, colorBG);
 
   const glm::vec2 dXY = glm::vec2(m_zone.z - m_zone.x, m_zone.w - m_zone.y);
-  static const float fExt = wmargin;
-  static const float fInt = wmargin + wthin;
+  const float fExt = wthin;
+  const float fInt = fExt + wthin;
 
   *dd.m_bufferSolid++ = glm::vec4(m_zone.x + fExt * dXY.x, m_zone.y + fExt * dXY.y, 0.f, 0.f); *dd.m_bufferSolid++ = colorCross;
   *dd.m_bufferSolid++ = glm::vec4(m_zone.z - fInt * dXY.x, m_zone.w - fExt * dXY.y, 0.f, 0.f); *dd.m_bufferSolid++ = colorCross;
@@ -91,8 +91,10 @@ void window::set_isactiveWindow(bool a_active)
   if (a_active == wisactive) return;
   if (a_active == false)
   {
+    releasePointerCapture();
     s_eventIntern event;
     event.accepted = true;
+    event.cancel = true;
     acceptEvent(event);
   }
   wisactive = a_active;
@@ -104,14 +106,17 @@ void window::set_isvisibleWindow(bool a_visible)
   wisvisible = a_visible;
   if (wisvisible == false)
   {
+    releasePointerCapture();
     s_eventIntern event;
     event.accepted = true;
+    event.cancel = true;
     acceptEvent(event);
   }
 }
 
 window *window::set_topbar(const std::string &name, bool canBeMoved, bool canBeClosed)
 {
+  releasePointerCapture();
   if (wOwnWidgets[0] != nullptr) delete(wOwnWidgets[0]);
 
   widgetTextTitle *wTextTitle = new widgetTextTitle;
@@ -156,14 +161,14 @@ void window::set_fontSize(s_size fontSize)
 void window::set_colWidth(unsigned col, const s_size relWidth)
 {
   TRE_ASSERT(col < wlayout.m_dimension.x);
-  m_isUpdateNeededLayout |= (wlayout.m_colsWidth_User[col] == relWidth);
+  m_isUpdateNeededLayout |= (wlayout.m_colsWidth_User[col] != relWidth);
   wlayout.m_colsWidth_User[col] = relWidth;
 }
 
 void window::set_rowHeight(unsigned row, const s_size relHeight)
 {
   TRE_ASSERT(row < wlayout.m_dimension.y);
-  m_isUpdateNeededLayout |= (wlayout.m_rowsHeight_User[row] == relHeight);
+  m_isUpdateNeededLayout |= (wlayout.m_rowsHeight_User[row] != relHeight);
   wlayout.m_rowsHeight_User[row] = relHeight;
 }
 
@@ -242,6 +247,7 @@ void window::set_widget(widget * w, unsigned row, unsigned col, const unsigned s
   if (cell.m_widget != nullptr) delete(cell.m_widget);
 
   TRE_ASSERT(w->m_parentWindow == nullptr); // widget is not already added in a window.
+  TRE_ASSERT(m_captureWidget == nullptr); // no event captured yet
 
   cell.m_widget = w;
   cell.m_widget->m_parentWindow = this;
@@ -254,6 +260,9 @@ void window::set_selfwidget_Title(widgetText *w)
 {
   if (wOwnWidgets[0] != nullptr) delete(wOwnWidgets[0]);
 
+  TRE_ASSERT(w->m_parentWindow == nullptr); // widget is not already added in a window.
+  TRE_ASSERT(m_captureWidget == nullptr); // no event captured yet
+
   wOwnWidgets[0] = w;
   if (w != nullptr) wOwnWidgets[0]->m_parentWindow = this;
 
@@ -263,6 +272,9 @@ void window::set_selfwidget_Title(widgetText *w)
 void window::set_selfwidget_CloseBox(widget * w)
 {
   if (wOwnWidgets[1] != nullptr) delete(wOwnWidgets[1]);
+
+  TRE_ASSERT(w->m_parentWindow == nullptr); // widget is not already added in a window.
+  TRE_ASSERT(m_captureWidget == nullptr); // no event captured yet
 
   wOwnWidgets[1] = w;
   if (w != nullptr) wOwnWidgets[1]->m_parentWindow = this;
@@ -274,6 +286,7 @@ void window::set_selfwidget_CloseBox(widget * w)
 
 void window::clear()
 {
+  releasePointerCapture();
   wlayout.clear();
 
   for (auto *widPtr : wOwnWidgets)
@@ -307,7 +320,7 @@ void window::compute_adressPlage()
       const auto adc = cell.m_widget->get_drawElementCount();
       if (adc.m_textureSlot < baseUI::s_textureSlotsCount)
       {
-        cell.m_widget->m_adrPict.part   = m_adrPict.part + adc.m_textureSlot;
+        cell.m_widget->m_adrPict.part   = unsigned(m_adrPict.part) + adc.m_textureSlot;
         cell.m_widget->m_adrPict.offset = offsetVertexPerSlot[adc.m_textureSlot];
         offsetVertexPerSlot[adc.m_textureSlot] += adc.m_vcountPict;
       }
@@ -316,7 +329,7 @@ void window::compute_adressPlage()
         cell.m_widget->m_adrPict.part   = 0; // no pict
         cell.m_widget->m_adrPict.offset = 0u; // no pict
       }
-      cell.m_widget->m_adrText.part   = m_adrText.part;
+      cell.m_widget->m_adrText.part   = unsigned(m_adrText.part);
       cell.m_widget->m_adrText.offset = ad.m_vcountText;
       ad += adc;
     }
@@ -325,7 +338,7 @@ void window::compute_adressPlage()
       if (widPtr == nullptr) continue;
       const auto adc = widPtr->get_drawElementCount();
       TRE_ASSERT(adc.m_vcountPict == 0); // not implemented
-      widPtr->m_adrText.part   = m_adrText.part;
+      widPtr->m_adrText.part   = unsigned(m_adrText.part);
       widPtr->m_adrText.offset = ad.m_vcountText;
       ad += adc;
     }
@@ -420,7 +433,7 @@ void window::compute_data()
     auto & objsolid = get_parentUI()->getDrawModel();
     objsolid.colorizePart(m_adSolid.part, glm::vec4(0.f));
     objsolid.colorizePart(m_adrLine.part, glm::vec4(0.f));
-    objsolid.colorizePart(m_adrPict.part, glm::vec4(0.f));
+    for (std::size_t i = 0; i < baseUI::s_textureSlotsCount; ++i) objsolid.colorizePart(m_adrPict.part + i, glm::vec4(0.f));
     objsolid.colorizePart(m_adrText.part, glm::vec4(0.f));
   }
 
@@ -453,69 +466,84 @@ void window::compute_data()
 
 void window::acceptEvent(s_eventIntern &event)
 {
-  if (m_isMoved)
+  if (m_captureWidget != nullptr)
   {
-    event.accepted = true;
+    acceptEventCaptured(event);
+    return;
   }
-  else
-  {
-    acceptEventBase_focus(event);
-  }
+
+  acceptEventBase_focus(event);
 
   for (const s_layoutGrid::s_cell &c : wlayout.m_cells)
   {
     if (c.m_widget != nullptr) c.m_widget->acceptEvent(event);
   }
 
-  if (!wisactive)
+  if (!wisactive) return;
+
+  for (std::size_t i = wOwnWidgets.size(); i-- != 0; ) // specific here, so "close"-widget is receiving the event first.
   {
-    m_isMoved = false;
-    return;
+    widget *widPtr = wOwnWidgets[i];
+    if (widPtr != nullptr) widPtr->acceptEvent(event);
   }
 
-  // move
+  // Start a pointer capture: the active widget under the mouse takes the mouse-button press.
 
-  if (!m_isMoved)
+  if (event.isNewPress() && wisvisible && wisactive && !event.cancel)
   {
-    for (std::size_t i = wOwnWidgets.size(); i-- != 0; ) // specific here, so "close"-widget is receiving the event first.
+    widget *wCapture = nullptr;
+    for (const s_layoutGrid::s_cell &c : wlayout.m_cells)
     {
-      widget *widPtr = wOwnWidgets[i];
-      if (widPtr != nullptr) widPtr->acceptEvent(event);
+      widget *w = c.m_widget;
+      if (w != nullptr && w->get_isactive() && w->get_ishighlighted() && w->getIsOverPosition(event.mousePos)) { wCapture = w; break; }
     }
-  }
-
-  widget *widTopBar = wOwnWidgets[0];
-
-  if (widTopBar != nullptr)
-  {
-    if (m_isMoved)
+    for (std::size_t i = wOwnWidgets.size(); wCapture == nullptr && i-- != 0; )
     {
-      if ((event.mouseButtonIsPressed & SDL_BUTTON_LMASK) != 0)
-      {
-        const glm::vec3 deltaMouse = event.mousePos - event.mousePosPrev;
-        if (get_parentUI()->get_dimension() == 2)
-          wmat3[2] = wmatPrev.m3 * glm::vec3(deltaMouse.x, deltaMouse.y, 1.f);
-        else
-          wmat4[3] = wmatPrev.m4 * glm::vec4(deltaMouse, 1.f);
-        m_isUpdateNeededLayout = true;
-      }
-      else
-      {
-        m_isMoved = false;
-      }
+      widget *w = wOwnWidgets[i];
+      if (w != nullptr && w->get_isactive() && w->get_ishighlighted() && w->getIsOverPosition(event.mousePos)) wCapture = w;
     }
-    else
+
+    if (wCapture != nullptr)
     {
-      const bool isClickedL = (event.mouseButtonIsPressed & SDL_BUTTON_LMASK) != 0 && (event.mouseButtonPrev & SDL_BUTTON_LMASK) == 0;
-      if (isClickedL && widTopBar->get_ishighlighted())
+      m_captureWidget = wCapture;
+      event.accepted = true;
+
+      if (wCapture == wOwnWidgets[0] && event.isNewPress(SDL_BUTTON_LMASK)) // the top-bar: move the window
       {
         m_isMoved = true;
         if (get_parentUI()->get_dimension() == 2) wmatPrev.m3 = wmat3;
         else                                      wmatPrev.m4 = wmat4;
-        event.accepted = true;
       }
     }
   }
+}
+
+void window::acceptEventCaptured(s_eventIntern &event)
+{
+  TRE_ASSERT(m_captureWidget != nullptr);
+
+  event.accepted = false;
+  m_captureWidget->acceptEvent(event);
+  event.accepted = true;
+
+  if (m_isMoved)
+  {
+    if ((event.mouseButtonIsPressed & SDL_BUTTON_LMASK) != 0)
+    {
+      const glm::vec3 deltaMouse = event.mousePos - event.mousePosPrev;
+      if (get_parentUI()->get_dimension() == 2)
+        wmat3[2] = wmatPrev.m3 * glm::vec3(deltaMouse.x, deltaMouse.y, 1.f);
+      else
+        wmat4[3] = wmatPrev.m4 * glm::vec4(deltaMouse, 1.f);
+      m_isUpdateNeededLayout = true;
+    }
+    else
+    {
+      m_isMoved = false;
+    }
+  }
+
+  if (event.mouseButtonIsPressed == 0) releasePointerCapture();
 }
 
 void window::animate(float dt)

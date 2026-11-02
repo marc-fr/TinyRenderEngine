@@ -59,6 +59,11 @@ void widget::acceptEventBase_click(s_eventIntern &event)
   }
 }
 
+bool widget::hasPointerCapture() const
+{
+  return m_parentWindow != nullptr && m_parentWindow->get_pointerCapture() == this;
+}
+
 void widget::setUpdateNeededAddress() const
 {
   if (m_parentWindow) m_parentWindow->setUpdateNeededAddress();
@@ -95,7 +100,12 @@ glm::vec2 widgetText::get_zoneSizeDefault(const s_drawData &dd) const
   tInfo.m_fontPixelSize = unsigned(fsize / dd.m_pixelSize.y);
 
   textgenerator::generate(tInfo, nullptr, 0, 0, &tOut);
-  return tOut.m_maxboxsize + glm::vec2(hLine - fsize);
+  return tOut.m_maxboxsize + glm::vec2(hLine - fsize) + 2.f * resolvePadding(dd);
+}
+glm::vec2 widgetText::resolvePadding(const s_drawData &dd) const
+{
+  if (!hasFrame()) return glm::vec2(0.f);
+  return dd.resolve_sizeWH(m_parentWindow->get_colortheme().m_padding);
 }
 void widgetText::compute_data(s_drawData &dd)
 {
@@ -123,10 +133,11 @@ void widgetText::compute_data(s_drawData &dd)
   const float hLine = wheightModifier * dd.resolve_sizeH(m_parentWindow->get_lineHeight());
   const float fsize = wheightModifier * dd.resolve_sizeH(m_parentWindow->get_fontHeight());
   const float pad = 0.5f * (hLine - fsize);
+  const glm::vec2 padding = resolvePadding(dd);
 
   textgenerator::s_textInfo tInfo;
   tInfo.setupBasic(m_parentWindow->get_parentUI()->get_defaultFont(), wtext.c_str());
-  tInfo.m_zone = m_zone + glm::vec4(pad, 0.f, 0.f, -pad);
+  tInfo.m_zone = m_zone + glm::vec4(pad + padding.x, padding.y, -padding.x, -pad - padding.y);
   tInfo.m_color = colorFront;
   tInfo.setupSize(hLine, fsize);
   tInfo.m_fontPixelSize = unsigned(fsize / dd.m_pixelSize.y);
@@ -189,7 +200,7 @@ glm::vec2 widgetTextTranslatate::get_zoneSizeDefault(const s_drawData &dd) const
       textgenerator::generate(tInfo, nullptr, 0, 0, &tOut);
       ret = tOut.m_maxboxsize;
   }
-  return ret + glm::vec2(hLine - fsize);
+  return ret + glm::vec2(hLine - fsize) + 2.f * resolvePadding(dd);
 }
 void widgetTextTranslatate::compute_data(s_drawData &dd)
 {
@@ -226,7 +237,7 @@ glm::vec2 widgetTextEdit::get_zoneSizeDefault(const s_drawData &dd) const
 
   textgenerator::generate(tInfo, nullptr, 0, 0, &tOut);
 
-  return tOut.m_maxboxsize;
+  return tOut.m_maxboxsize + 2.f * resolvePadding(dd);
 }
 void widgetTextEdit::compute_data(s_drawData &dd)
 {
@@ -265,197 +276,216 @@ void widgetTextEdit::compute_data(s_drawData &dd)
 
   // draw cursor
 
-  const glm::vec4 cursorBox = glm::vec4(m_zone.x + textDim.x - 0.05f * fsize, m_zone.w - textDim.y,
-                                        m_zone.x + textDim.x + 0.05f * fsize, m_zone.w - textDim.y + fsize);
+  const glm::vec2 padding = resolvePadding(dd);
+  const glm::vec4 cursorBox = glm::vec4(m_zone.x + padding.x + textDim.x - 0.05f * fsize, m_zone.w - padding.y - textDim.y,
+                                        m_zone.x + padding.x + textDim.x + 0.05f * fsize, m_zone.w - padding.y - textDim.y + fsize);
 
   const float     cursorAlpha = (wisEditing && wcursorAnimTime <= 0.5f * wcursorAnimSpeed) ? 1.f : 0.f;
   const glm::vec4 cursorColor = resolveColorFront();
   fillRect(dd.m_bufferSolid, cursorBox, glm::vec4(cursorColor.r, cursorColor.g, cursorColor.b, cursorAlpha));
 }
+widgetTextEdit::~widgetTextEdit()
+{
+  if (wisEditing && m_parentWindow != nullptr) m_parentWindow->get_parentUI()->releaseTextInput(this);
+}
+
+void widgetTextEdit::startEditing()
+{
+  wisEditing = true;
+  wcursorAnimTime = 0.f;
+  m_parentWindow->get_parentUI()->acquireTextInput(this);
+  setUpdateNeededData(); // show the cursor
+}
+
+void widgetTextEdit::stopEditing()
+{
+  wisEditing = false;
+  m_parentWindow->get_parentUI()->releaseTextInput(this);
+  setUpdateNeededData(); // hide the cursor
+  if (wcb_modified_finished != nullptr) wcb_modified_finished(this);
+}
+
+static bool _utf8IsContinuation(char c)
+{
+  return (static_cast<unsigned char>(c) & 0xC0) == 0x80;
+}
+
+/// Only ASCII and the Latin-1 supplement (U+0080 - U+00FF, encoded with the lead-bytes 0xC2 or 0xC3) are implemented in the font.
+static bool _textInputIsSupported(const char *txt)
+{
+  for (std::size_t i = 0; txt[i] != 0; ++i)
+  {
+    if (i >= 1024) return false; // input limit
+    const unsigned char c = static_cast<unsigned char>(txt[i]);
+    if (c < 0x80) continue;
+    if ((c == 0xC2 || c == 0xC3) && _utf8IsContinuation(txt[i + 1]))
+    {
+      ++i;
+      continue;
+    }
+    return false;
+  }
+  return true;
+}
+
 void widgetTextEdit::acceptEvent(s_eventIntern &event)
 {
-  if (!wisactive) return;
-
-  if (wisEditing)
+  if (!wisactive)
   {
-    TRE_ASSERT(wishighlighted == true);
-    TRE_ASSERT(SDL_IsTextInputActive() == SDL_TRUE);
-
-    if ((event.mouseButtonIsPressed & (~event.mouseButtonPrev)) != 0) // a new button was pressed
-    {
-      acceptEventBase_focus(event);
-      wisEditing &= wishighlighted;
-    }
-    else if (event.keyDown == SDLK_ESCAPE)
-    {
-      wisEditing = false;
-      event.accepted = true;
-    }
-
-    if (!wisEditing) // stop editing
-    {
-      if (wcb_modified_finished != nullptr) wcb_modified_finished(this);
-      SDL_StopTextInput();
-    }
+    if (wisEditing) stopEditing();
+    return;
   }
-  else
+
+  if (!wisEditing)
   {
     acceptEventBase_focus(event);
-
-    wisEditing = wishighlighted && (event.mouseButtonPrev & SDL_BUTTON_LMASK) == 0 && (event.mouseButtonIsPressed & SDL_BUTTON_LMASK) != 0;
-
-    if (wisEditing) // start editing
+    if (wishighlighted && event.isNewPress(SDL_BUTTON_LMASK) && !event.cancel)
     {
-      SDL_StartTextInput();
+      startEditing();
       event.accepted = true;
     }
+    return;
+  }
+
+  // stop editing ?
+
+  if (event.cancel)
+  {
+    acceptEventBase_focus(event);
+    stopEditing();
+    return;
+  }
+  if (event.isNewPress())
+  {
+    acceptEventBase_focus(event);
+    if (!wishighlighted) // clicked elsewhere
+    {
+      stopEditing();
+      return;
+    }
+  }
+  if (event.keyDown == SDLK_ESCAPE || ((event.keyDown == SDLK_RETURN || event.keyDown == SDLK_KP_ENTER) && !wallowMultiLines))
+  {
+    event.accepted = true;
+    stopEditing();
+    return;
   }
 
   // editing ...
-  if (wisEditing)
+
+  if (wcursorPos >= int(wtext.size())) wcursorPos = -1; // can occur if the text is changed from the code.
+
+  bool isModified = false;
+
+  if (event.keyDown == SDLK_RETURN || event.keyDown == SDLK_KP_ENTER)
   {
-    if (wcursorPos >= int(wtext.size())) wcursorPos = -1; // can occur if the text is changed from the code.
-
-    if (event.keyDown == SDLK_RETURN)
+    if (wcursorPos != -1)
+      wtext.insert(wcursorPos++, "\n");
+    else
+      wtext += '\n';
+    isModified = true;
+    event.accepted = true;
+  }
+  else if (event.keyDown == SDLK_BACKSPACE) // erase the character before the cursor
+  {
+    const int posEnd = (wcursorPos == -1) ? int(wtext.size()) : wcursorPos;
+    if (posEnd > 0)
     {
-      if (wcursorPos != -1)
-        wtext.insert(wcursorPos++, "\n");
-      else
-        wtext += '\n';
-      event.accepted = true;
+      int posBegin = posEnd - 1;
+      while (posBegin > 0 && _utf8IsContinuation(wtext[posBegin])) --posBegin;
+      wtext.erase(posBegin, posEnd - posBegin);
+      if (wcursorPos != -1) wcursorPos = posBegin;
+      isModified = true;
     }
-    else if (event.keyDown == SDLK_BACKSPACE)
+    event.accepted = true;
+  }
+  else if (event.keyDown == SDLK_DELETE) // erase the character after the cursor (nothing at the end of the text)
+  {
+    if (wcursorPos != -1)
     {
-      if (!wtext.empty() && wcursorPos != 0)
-      {
-        int posLast = int(wtext.size());
-        int &posErase = (wcursorPos == -1) ? posLast : wcursorPos;
-        char cErased;
-        do
-        {
-          --posErase;
-          cErased = wtext[posErase];
-          wtext.erase(posErase, 1);
-        }
-        while (cErased < 0 && (cErased & 0x40) == 0); // non-ASCII char, handle UFT-8 encoding
-      }
-      event.accepted = true;
+      int posEnd = wcursorPos + 1;
+      while (posEnd < int(wtext.size()) && _utf8IsContinuation(wtext[posEnd])) ++posEnd;
+      wtext.erase(wcursorPos, posEnd - wcursorPos);
+      if (wcursorPos >= int(wtext.size())) wcursorPos = -1;
+      isModified = true;
     }
-    else if (event.keyDown == SDLK_DELETE)
+    event.accepted = true;
+  }
+  else if (event.keyDown == SDLK_LEFT)
+  {
+    if (wcursorPos != 0 && !wtext.empty())
     {
-      if (wcursorPos != -1)
-      {
-        wtext.erase(wcursorPos, 1);
-        while (wcursorPos < int(wtext.size()) && wtext[wcursorPos] < 0 && (wtext[wcursorPos] & 0x40) == 0) // non-ASCII char, handle UFT-8 encoding
-        {
-          wtext.erase(wcursorPos, 1);
-        }
-        if (wcursorPos >= int(wtext.size())) wcursorPos = -1;
-      }
-      else if (!wtext.empty()) // same as SDLK_BACKSPACE
-      {
-        int posErase = int(wtext.size());
-        char cErased;
-        do
-        {
-          --posErase;
-          cErased = wtext[posErase];
-          wtext.erase(posErase, 1);
-        }
-        while (cErased < 0 && (cErased & 0x40) != 0x40); // non-ASCII char, handle UFT-8 encoding
-      }
-      event.accepted = true;
+      if (wcursorPos == -1) wcursorPos = int(wtext.size());
+      --wcursorPos;
+      while (wcursorPos != 0 && _utf8IsContinuation(wtext[wcursorPos])) --wcursorPos;
     }
-    else if (event.keyDown == SDLK_LEFT)
+    event.accepted = true;
+  }
+  else if (event.keyDown == SDLK_RIGHT)
+  {
+    if (wcursorPos != -1)
     {
-      if (wcursorPos != 0 && !wtext.empty())
-      {
-        if (wcursorPos == -1) wcursorPos = int(wtext.size());
-        --wcursorPos;
-        while (wcursorPos != 0 && wtext[wcursorPos] < 0 && (wtext[wcursorPos] & 0x40) == 0) // non-ASCII char, handle UFT-8 encoding
-          --wcursorPos;
-      }
-      event.accepted = true;
+      ++wcursorPos;
+      while (wcursorPos < int(wtext.size()) && _utf8IsContinuation(wtext[wcursorPos])) ++wcursorPos;
+      if (wcursorPos >= int(wtext.size())) wcursorPos = -1;
     }
-    else if (event.keyDown == SDLK_RIGHT)
+    event.accepted = true;
+  }
+  else if (event.keyDown == SDLK_HOME)
+  {
+    if (!wtext.empty()) wcursorPos = 0;
+    event.accepted = true;
+  }
+  else if (event.keyDown == SDLK_END)
+  {
+    wcursorPos = -1;
+    event.accepted = true;
+  }
+  else if (event.keyDown != 0)
+  {
+    event.accepted = true; // other keys are catched by SDL_TEXTINPUT
+  }
+  else if (event.textInput != nullptr)
+  {
+    if (!_textInputIsSupported(event.textInput))
     {
-      if (wcursorPos != -1)
-      {
-        ++wcursorPos;
-        while (wcursorPos != int(wtext.size()) && wtext[wcursorPos] < 0 && (wtext[wcursorPos] & 0x40) == 0) // non-ASCII char, handle UFT-8 encoding
-          ++wcursorPos;
-        if (wcursorPos == int(wtext.size())) wcursorPos = -1;
-      }
-      event.accepted = true;
-    }
-    else if (event.keyDown == SDLK_HOME)
-    {
-      if (!wtext.empty()) wcursorPos = 0;
-      event.accepted = true;
-    }
-    else if (event.keyDown == SDLK_END)
-    {
-      wcursorPos = -1;
-      event.accepted = true;
-    }
-    else if (event.keyDown != 0)
-    {
-      event.accepted = true; // other keys are catched by SDL_TEXTINPUT
-    }
-    else if (event.textInput != nullptr)
-    {
-      // check encoding (ASCII, UFT-8)
-      bool isInputValid = true;
-      int i = 0;
-      for (; i < 1024 ; ++i) // input limit
-      {
-        if (event.textInput[i] == 0)
-          break;
-        else if (event.textInput[i] > 0)
-          continue;
-        else if ((event.textInput[i] & 0x40) != 0)
-        {
-          isInputValid &= ((event.textInput[i] & 0x3C) == 0); // only the latin-1 extension is implemented in the font.
-          ++i; // advance once only
-          isInputValid = (event.textInput[i] < 0) && ((event.textInput[i] & 0x40) == 0);
-          continue;
-        }
-        isInputValid = false;
-        break;
-      }
-      if (event.textInput[i] != 0 || !isInputValid)
-      {
-        TRE_LOG("widgetTextEdit: Invalid or unknown encoding of text input from SDL");
-        return;
-      }
-
-      if (wcursorPos != -1)
-      {
-        wtext.insert(wcursorPos, event.textInput);
-        wcursorPos += int(strlen(event.textInput));
-      }
-      else
-      {
-        wtext += event.textInput;
-      }
-      event.accepted = true;
+      TRE_LOG("widgetTextEdit: Invalid or unsupported encoding of text input from SDL");
+      return;
     }
 
-    if (event.accepted)
+    if (wcursorPos != -1)
     {
-      wtext = wtext.c_str();
-      if (wcb_modified_ongoing != nullptr) wcb_modified_ongoing(this);
-      setUpdateNeededAddress();
-      setUpdateNeededLayout();
-      setUpdateNeededData();
+      wtext.insert(wcursorPos, event.textInput);
+      wcursorPos += int(strlen(event.textInput));
     }
+    else
+    {
+      wtext += event.textInput;
+    }
+    isModified = true;
+    event.accepted = true;
+  }
+
+  if (isModified)
+  {
+    if (wcb_modified_ongoing != nullptr) wcb_modified_ongoing(this);
+    setUpdateNeededAddress();
+    setUpdateNeededLayout();
+  }
+  if (event.accepted)
+  {
+    wcursorAnimTime = 0.f; // show the cursor while typing
+    setUpdateNeededData();
   }
 }
 void widgetTextEdit::animate(float dt)
 {
   widget::animate(dt);
+  if (!wisEditing) return;
+  const bool isVisiblePrev = wcursorAnimTime <= 0.5f * wcursorAnimSpeed;
   wcursorAnimTime = std::fmod(wcursorAnimTime + dt, wcursorAnimSpeed);
-  setUpdateNeededData();
+  const bool isVisibleNext = wcursorAnimTime <= 0.5f * wcursorAnimSpeed;
+  if (isVisiblePrev != isVisibleNext) setUpdateNeededData();
 }
 
 // widgetPicture ==============================================================
@@ -506,7 +536,7 @@ widget::s_drawElementCount widgetBar::get_drawElementCount() const
 {
   s_drawElementCount res;
   res.m_vcountSolid = 6 * 2;
-  res.m_vcountLine = ((wwithborder==true ? 4 : 0) + 1) * 2;
+  res.m_vcountLine = ((wwithborder==true ? 4 : 0) + 2) * 2;
   res.m_vcountText = (wwithtext ? 16 * 6 : 0);
   return res;
 }
@@ -531,11 +561,21 @@ void widgetBar::compute_data(s_drawData &dd)
   if (wvaluethreshold >= wvaluemin && wvaluethreshold <= wvaluemax)
   {
     const float valxt = m_zone.x + (m_zone.z-m_zone.x) * (wvaluethreshold-wvaluemin) / (wvaluemax-wvaluemin);
-    fillLine(dd.m_bufferLine, glm::vec2(valxt,0.8f * m_zone.y + 0.2f * m_zone.w), glm::vec2(valxt,0.2f * m_zone.y + 0.8f * m_zone.w), colorLine);
+    if (wwithtext) // 2 ticks, so the marker does not cross the text
+    {
+      const float tickH = 0.18f * (m_zone.w - m_zone.y);
+      fillLine(dd.m_bufferLine, glm::vec2(valxt, m_zone.y), glm::vec2(valxt, m_zone.y + tickH), colorLine);
+      fillLine(dd.m_bufferLine, glm::vec2(valxt, m_zone.w - tickH), glm::vec2(valxt, m_zone.w), colorLine);
+    }
+    else
+    {
+      fillLine(dd.m_bufferLine, glm::vec2(valxt,0.8f * m_zone.y + 0.2f * m_zone.w), glm::vec2(valxt,0.2f * m_zone.y + 0.8f * m_zone.w), colorLine);
+      fillNull(dd.m_bufferLine, 2);
+    }
   }
   else
   {
-    fillNull(dd.m_bufferLine, 2);
+    fillNull(dd.m_bufferLine, 4);
   }
   if (wwithborder)
   {
@@ -594,34 +634,46 @@ void widgetBar::acceptEvent(s_eventIntern &event)
 {
   if (!wisactive) return;
 
-  const bool canBeEdited = wiseditable && getIsOverPosition(event.mousePosPrev) && !event.accepted;
-  const bool isPressedLeft = canBeEdited && (event.mouseButtonIsPressed & SDL_BUTTON_LMASK) != 0;
-  const bool isReleasedLeft = canBeEdited && (event.mouseButtonPrev & SDL_BUTTON_LMASK) != 0 && (event.mouseButtonIsPressed & SDL_BUTTON_LMASK) == 0;
+  acceptEventBase_focus(event);
 
-  if (isPressedLeft)
-    wishighlighted = true;
-  else
-    acceptEventBase_focus(event);
+  if (!wiseditable) return;
 
-  if (isPressedLeft || isReleasedLeft)
+  // drag: from the press on the widget (the window gives the pointer-capture after this call), until the release
+  const bool isStarting = event.isNewPress(SDL_BUTTON_LMASK) && wishighlighted && !event.cancel;
+  const bool isDragging = hasPointerCapture() && (event.mouseButtonIsPressed & SDL_BUTTON_LMASK) != 0;
+  const bool isEnding   = hasPointerCapture() && event.isRelease(SDL_BUTTON_LMASK);
+  const int  wheel     = wishighlighted ? wheelSteps(event) : 0;
+
+  if (isStarting || isDragging || isEnding)
   {
     float newvalue = wvaluemin + (event.mousePos.x - m_zone.x) / (m_zone.z - m_zone.x) * (wvaluemax - wvaluemin);
-    if (newvalue < wvaluemin) newvalue = wvaluemin;
-    if (newvalue > wvaluemax) newvalue = wvaluemax;
+    newvalue = glm::clamp(newvalue, wvaluemin, wvaluemax);
     if (wsnapInterval > 0.f) newvalue = std::roundf(newvalue / wsnapInterval) * wsnapInterval;
     set_value(newvalue);
     event.accepted = true;
-  }
 
-  if (isPressedLeft)
-  {
-    if (wcb_modified_ongoing != nullptr) wcb_modified_ongoing(this);
+    if (!isEnding)
+    {
+      if (wcb_modified_ongoing != nullptr) wcb_modified_ongoing(this);
+    }
+    else
+    {
+      if (wcb_modified_finished != nullptr) wcb_modified_finished(this);
+      else if (wcb_modified_ongoing != nullptr) wcb_modified_ongoing(this);
+    }
   }
-  if (isReleasedLeft)
+  else if (wheel != 0)
   {
-    TRE_ASSERT(!isPressedLeft);
-    if (wcb_modified_finished != nullptr) wcb_modified_finished(this);
-    else if (wcb_modified_ongoing != nullptr) wcb_modified_ongoing(this);
+    const float step = (wsnapInterval > 0.f) ? wsnapInterval : 0.05f * (wvaluemax - wvaluemin);
+    float newvalue = glm::clamp(wvalue + wheel * step, wvaluemin, wvaluemax);
+    if (wsnapInterval > 0.f) newvalue = std::roundf(newvalue / wsnapInterval) * wsnapInterval;
+    event.accepted = true;
+    if (newvalue != wvalue)
+    {
+      set_value(newvalue);
+      if (wcb_modified_finished != nullptr) wcb_modified_finished(this);
+      else if (wcb_modified_ongoing != nullptr) wcb_modified_ongoing(this);
+    }
   }
 }
 glm::vec4 widgetBar::resolveColorPlain() const
@@ -655,7 +707,7 @@ glm::vec4 widgetBar::resolveColorText() const
 widget::s_drawElementCount widgetBarZero::get_drawElementCount() const
 {
   s_drawElementCount res = widgetBar::get_drawElementCount();
-  res.m_vcountLine += 1 * 2;
+  res.m_vcountLine += 2 * 2;
   return res;
 }
 void widgetBarZero::compute_data(s_drawData &dd)
@@ -671,14 +723,23 @@ void widgetBarZero::compute_data(s_drawData &dd)
   dd.m_bufferSolid -= 6 * 2; // overwrite the widgetBar's fill-bar
   fillRect(dd.m_bufferSolid, bar, colorFront);
   // zero line
-  const glm::vec2 pt1(valx1,m_zone.y);
-  const glm::vec2 pt2(valx1,m_zone.w);
-  fillLine(dd.m_bufferLine, pt1, pt2, colorZero);
+  if (wwithtext) // 2 ticks, so the line does not cross the text
+  {
+    const float tickH = 0.18f * (m_zone.w - m_zone.y);
+    fillLine(dd.m_bufferLine, glm::vec2(valx1, m_zone.y), glm::vec2(valx1, m_zone.y + tickH), colorZero);
+    fillLine(dd.m_bufferLine, glm::vec2(valx1, m_zone.w - tickH), glm::vec2(valx1, m_zone.w), colorZero);
+  }
+  else
+  {
+    fillLine(dd.m_bufferLine, glm::vec2(valx1, m_zone.y), glm::vec2(valx1, m_zone.w), colorZero);
+    fillNull(dd.m_bufferLine, 2);
+  }
 }
 
 // widgetSlider ===============================================================
 
 static constexpr int kSliderCursorRaster = 12;
+static constexpr float kSliderCursorRatio = 0.35f; ///< cursor radius, relative to the widget's height
 
 static void _sliderGenCursor(const glm::vec2 &pos, const float radius,
                              const glm::vec4 &colorSolid, const glm::vec4 &colorLine,
@@ -734,8 +795,7 @@ void widgetSlider::compute_data(s_drawData &dd)
   const glm::vec4 colorBase = colorTheme.resolveColor(colorBaseRaw, wishighlighted ? 0.2f : 0.f) * colorMask;
   const glm::vec4 colorLine = colorTheme.resolveColor(colorTheme.m_colorOnSurface, wishighlighted ? 0.2f : 0.f) * colorMask;
 
-  const float cursorRadius = 0.35f * (m_zone.w - m_zone.y); // TODO: align 0.15*r with pixel-size
-  const float xBase = m_zone.x + cursorRadius;
+  const float cursorRadius = kSliderCursorRatio * (m_zone.w - m_zone.y); // TODO: align 0.15*r with pixel-size
   const float xVal  = m_zone.x + cursorRadius + (m_zone.z - m_zone.x - 2.f * cursorRadius) * (wvalue - wvaluemin) / (wvaluemax - wvaluemin);
   const float ycenter = 0.5f * (m_zone.y + m_zone.w);
 
@@ -747,11 +807,6 @@ void widgetSlider::compute_data(s_drawData &dd)
   const float r15 = cursorRadius * (1.f - std::tan(0.15f));
   float xVal1 = std::max(xVal - r15, zoneBack.x);
   float xVal2 = std::min(xVal + r15, zoneBack.z);
-
-  fillRect(dd.m_bufferSolid, glm::vec4(zoneBack.x, zoneBack.y, xVal1, zoneBack.w), wfillLeft ? colorBase : colorBack);
-  fillRect(dd.m_bufferSolid, glm::vec4(xVal2, zoneBack.y, zoneBack.z, zoneBack.w), colorBack);
-
-  _sliderGenCursor(glm::vec2(xVal, ycenter), cursorRadius, colorBase, colorLine, dd.m_bufferSolid, dd.m_bufferLine);
 
   if (wwithtext)
   {
@@ -804,6 +859,11 @@ void widgetSlider::compute_data(s_drawData &dd)
     textgenerator::generate(tInfo, & dd.m_model, m_adrText.part, m_adrText.offset, nullptr);
   }
 
+  fillRect(dd.m_bufferSolid, glm::vec4(zoneBack.x, zoneBack.y, xVal1, zoneBack.w), wfillLeft ? colorBase : colorBack);
+  fillRect(dd.m_bufferSolid, glm::vec4(xVal2, zoneBack.y, zoneBack.z, zoneBack.w), colorBack);
+
+  _sliderGenCursor(glm::vec2(xVal, ycenter), cursorRadius, colorBase, colorLine, dd.m_bufferSolid, dd.m_bufferLine);
+
   glm::vec4 colorBorder = colorBase;
   if (wisactive) colorBorder = transformColor(colorBase, COLORTHEME_LIGHTNESS, wishighlighted ?  0.1f : -0.1f);
   fillLine(dd.m_bufferLine, glm::vec2(zoneBack.x, zoneBack.w), glm::vec2(xVal1, zoneBack.w), colorBorder);
@@ -816,34 +876,44 @@ void widgetSlider::acceptEvent(s_eventIntern &event)
 {
   if (!wisactive) return;
 
-  const bool canBeEdited = wiseditable && getIsOverPosition(event.mousePosPrev) && !event.accepted;
-  const bool isPressedLeft = canBeEdited && (event.mouseButtonIsPressed & SDL_BUTTON_LMASK) != 0;
-  const bool isReleasedLeft = canBeEdited && (event.mouseButtonPrev & SDL_BUTTON_LMASK) != 0 && (event.mouseButtonIsPressed & SDL_BUTTON_LMASK) == 0;
+  acceptEventBase_focus(event);
 
-  if (isPressedLeft)
-    wishighlighted = true;
-  else
-    acceptEventBase_focus(event);
+  if (!wiseditable) return;
 
-  if (isPressedLeft || isReleasedLeft)
+  // drag: from the press on the widget (the window gives the pointer-capture after this call), until the release
+  const bool isStarting = event.isNewPress(SDL_BUTTON_LMASK) && wishighlighted && !event.cancel;
+  const bool isDragging = hasPointerCapture() && (event.mouseButtonIsPressed & SDL_BUTTON_LMASK) != 0;
+  const bool isEnding   = hasPointerCapture() && event.isRelease(SDL_BUTTON_LMASK);
+  const int  wheel = wishighlighted ? wheelSteps(event) : 0;
+
+  if (isStarting || isDragging || isEnding)
   {
-    const float cursorRadius = 0.4f * (m_zone.w - m_zone.y);
+    const float cursorRadius = kSliderCursorRatio * (m_zone.w - m_zone.y);
     float newvalue = wvaluemin + (event.mousePos.x - m_zone.x - cursorRadius) / (m_zone.z - m_zone.x - 2.f * cursorRadius) * (wvaluemax - wvaluemin);
-    if (newvalue < wvaluemin) newvalue = wvaluemin;
-    if (newvalue > wvaluemax) newvalue = wvaluemax;
+    newvalue = glm::clamp(newvalue, wvaluemin, wvaluemax);
     set_value(newvalue);
     event.accepted = true;
-  }
 
-  if (isPressedLeft)
-  {
-    if (wcb_modified_ongoing != nullptr) wcb_modified_ongoing(this);
+    if (!isEnding)
+    {
+      if (wcb_modified_ongoing != nullptr) wcb_modified_ongoing(this);
+    }
+    else
+    {
+      if (wcb_modified_finished != nullptr) wcb_modified_finished(this);
+      else if (wcb_modified_ongoing != nullptr) wcb_modified_ongoing(this);
+    }
   }
-  if (isReleasedLeft)
+  else if (wheel != 0)
   {
-    TRE_ASSERT(!isPressedLeft);
-    if (wcb_modified_finished != nullptr) wcb_modified_finished(this);
-    else if (wcb_modified_ongoing != nullptr) wcb_modified_ongoing(this);
+    const float newvalue = glm::clamp(wvalue + wheel * 0.05f * (wvaluemax - wvaluemin), wvaluemin, wvaluemax);
+    event.accepted = true;
+    if (newvalue != wvalue)
+    {
+      set_value(newvalue);
+      if (wcb_modified_finished != nullptr) wcb_modified_finished(this);
+      else if (wcb_modified_ongoing != nullptr) wcb_modified_ongoing(this);
+    }
   }
 }
 
@@ -877,8 +947,7 @@ void widgetSliderInt::compute_data(s_drawData &dd)
   const glm::vec4 colorFront = colorTheme.resolveColor(colorTheme.m_colorOnSurface, wishighlighted ? 0.2f : 0.f) * colorMask;
   const glm::vec4 colorLine = colorTheme.m_colorOnSurface * colorMask;
 
-  const float cursorRadius = 0.35f * (m_zone.w - m_zone.y); // TODO: align 0.15*r with pixel-size
-  const float xBase = m_zone.x + cursorRadius;
+  const float cursorRadius = kSliderCursorRatio * (m_zone.w - m_zone.y); // TODO: align 0.15*r with pixel-size
   const float xVal  = m_zone.x + cursorRadius + (m_zone.z - m_zone.x - 2.f * cursorRadius) * (wvalue - wvaluemin) / (wvaluemax - wvaluemin);
   const float ycenter = 0.5f * (m_zone.y + m_zone.w);
 
@@ -890,11 +959,6 @@ void widgetSliderInt::compute_data(s_drawData &dd)
   const float r15 = cursorRadius * (1.f - std::tan(0.15f));
   float xVal1 = std::max(xVal - r15, zoneBack.x);
   float xVal2 = std::min(xVal + r15, zoneBack.z);
-
-  fillRect(dd.m_bufferSolid, glm::vec4(zoneBack.x, zoneBack.y, xVal1, zoneBack.w), wfillLeft ? colorFront : colorBack);
-  fillRect(dd.m_bufferSolid, glm::vec4(xVal2, zoneBack.y, zoneBack.z, zoneBack.w), colorBack);
-
-  _sliderGenCursor(glm::vec2(xVal, ycenter), cursorRadius, colorBase, colorLine, dd.m_bufferSolid, dd.m_bufferLine);
 
   if (wwithtext)
   {
@@ -947,6 +1011,11 @@ void widgetSliderInt::compute_data(s_drawData &dd)
     textgenerator::generate(tInfo, & dd.m_model, m_adrText.part, m_adrText.offset, nullptr);
   }
 
+  fillRect(dd.m_bufferSolid, glm::vec4(zoneBack.x, zoneBack.y, xVal1, zoneBack.w), wfillLeft ? colorFront : colorBack);
+  fillRect(dd.m_bufferSolid, glm::vec4(xVal2, zoneBack.y, zoneBack.z, zoneBack.w), colorBack);
+
+  _sliderGenCursor(glm::vec2(xVal, ycenter), cursorRadius, colorBase, colorLine, dd.m_bufferSolid, dd.m_bufferLine);
+
   if (wwithMarkers)
   {
     const int nMarkers = wvaluemax - wvaluemin + 1;
@@ -971,34 +1040,47 @@ void widgetSliderInt::acceptEvent(s_eventIntern &event)
 {
   if (!wisactive) return;
 
-  const bool canBeEdited = wiseditable && getIsOverPosition(event.mousePosPrev) && !event.accepted;
-  const bool isPressedLeft = canBeEdited && (event.mouseButtonIsPressed & SDL_BUTTON_LMASK) != 0;
-  const bool isReleasedLeft = canBeEdited && (event.mouseButtonPrev & SDL_BUTTON_LMASK) != 0 && (event.mouseButtonIsPressed & SDL_BUTTON_LMASK) == 0;
+  acceptEventBase_focus(event);
 
-  if (isPressedLeft)
-    wishighlighted = true;
-  else
-    acceptEventBase_focus(event);
+  if (!wiseditable) return;
 
-  if (isPressedLeft || isReleasedLeft)
+  const bool isStarting = event.isNewPress(SDL_BUTTON_LMASK) && wishighlighted && !event.cancel;
+  const bool isDragging = hasPointerCapture() && (event.mouseButtonIsPressed & SDL_BUTTON_LMASK) != 0;
+  const bool isEnding   = hasPointerCapture() && event.isRelease(SDL_BUTTON_LMASK);
+  const int wheel = wishighlighted ? wheelSteps(event) : 0;
+
+  if (isStarting || isDragging || isEnding)
   {
-    const float cursorRadius = 0.4f * (m_zone.w - m_zone.y);
-    int newvalue = wvaluemin + int((event.mousePos.x - m_zone.x - cursorRadius) / (m_zone.z - m_zone.x - 2.f * cursorRadius) * (wvaluemax - wvaluemin) + 0.5f);
-    if (newvalue < wvaluemin) newvalue = wvaluemin;
-    if (newvalue > wvaluemax) newvalue = wvaluemax;
+    const float cursorRadius = kSliderCursorRatio * (m_zone.w - m_zone.y);
+    int newvalue = wvaluemin + int((event.mousePos.x - m_zone.x - cursorRadius) / (m_zone.z - m_zone.x - 2.f * cursorRadius) * float(wvaluemax - wvaluemin) + 0.5f);
+    newvalue = glm::clamp(newvalue, wvaluemin, wvaluemax);
     set_value(newvalue);
     event.accepted = true;
-  }
 
-  if (isPressedLeft)
-  {
-    if (wcb_modified_ongoing != nullptr) wcb_modified_ongoing(this);
+    if (!isEnding)
+    {
+      if (wcb_modified_ongoing != nullptr) wcb_modified_ongoing(this);
+    }
+    else
+    {
+      if (wcb_modified_finished != nullptr) wcb_modified_finished(this);
+      else if (wcb_modified_ongoing != nullptr) wcb_modified_ongoing(this);
+    }
   }
-  if (isReleasedLeft)
+  else if (wheel != 0)
   {
-    TRE_ASSERT(!isPressedLeft);
-    if (wcb_modified_finished != nullptr) wcb_modified_finished(this);
-    else if (wcb_modified_ongoing != nullptr) wcb_modified_ongoing(this);
+    const int newvalue = glm::clamp(wvalue + wheel, wvaluemin, wvaluemax);
+    event.accepted = true;
+    if (newvalue != wvalue)
+    {
+      set_value(newvalue);
+      if (wcb_modified_finished != nullptr) wcb_modified_finished(this);
+      else if (wcb_modified_ongoing != nullptr) wcb_modified_ongoing(this);
+    }
+  }
+  else if (wishighlighted && wheelSteps(event) != 0)
+  {
+    event.accepted = true; // fractional wheel motion (touch-pad): accumulated
   }
 }
 
@@ -1028,8 +1110,8 @@ void widgetBoxCheck::compute_data(s_drawData &dd)
   fillRect(dd.m_bufferSolid, m_zone, colorBG);
 
   const glm::vec2 dXY = glm::vec2(m_zone.z - m_zone.x, m_zone.w - m_zone.y);
-  static const float fExt = wmargin;
-  static const float fInt = wmargin + wthin;
+  const float fExt = wthin;
+  const float fInt = fExt + wthin;
 
   *dd.m_bufferSolid++ = glm::vec4(m_zone.x + fExt * dXY.x, m_zone.y + fExt * dXY.y, 0.f, 0.f); *dd.m_bufferSolid++ = colorCross;
   *dd.m_bufferSolid++ = glm::vec4(m_zone.z - fInt * dXY.x, m_zone.w - fExt * dXY.y, 0.f, 0.f); *dd.m_bufferSolid++ = colorCross;
@@ -1082,6 +1164,42 @@ void widgetBoxCheck::acceptEvent(s_eventIntern &event)
   }
 }
 
+// widgetSeparator ============================================================
+
+widget::s_drawElementCount widgetSeparator::get_drawElementCount() const
+{
+  s_drawElementCount res;
+  res.m_vcountSolid = 6;
+  return res;
+}
+glm::vec2 widgetSeparator::get_zoneSizeDefault(const s_drawData &dd) const
+{
+  const glm::vec2 thickness = dd.resolve_sizeWH(wthickness);
+  if (wvertical)
+    return glm::vec2(glm::max(thickness.x, wspacing * wheightModifier * dd.resolve_sizeW(m_parentWindow->get_lineHeight())), thickness.y);
+  else
+    return glm::vec2(thickness.x, glm::max(thickness.y, wspacing * wheightModifier * dd.resolve_sizeH(m_parentWindow->get_lineHeight())));
+}
+void widgetSeparator::compute_data(s_drawData &dd)
+{
+  const auto &colorTheme = m_parentWindow->get_colortheme();
+  const auto colorMask = m_parentWindow->get_colormask() * glm::vec4(1.f, 1.f, 1.f, wcolorAlpha);
+  const glm::vec4 colorLine = ((wcolor.a >= 0.f) ? wcolor : colorTheme.m_colorOnSurface * glm::vec4(1.f, 1.f, 1.f, 0.4f)) * colorMask;
+
+  const glm::vec2 thickness = dd.resolve_sizeWH(wthickness);
+  const glm::vec2 center = 0.5f * glm::vec2(m_zone.x + m_zone.z, m_zone.y + m_zone.w);
+
+  if (wvertical)
+    fillRect(dd.m_bufferSolid, glm::vec4(center.x - 0.5f * thickness.x, m_zone.y, center.x + 0.5f * thickness.x, m_zone.w), colorLine);
+  else
+    fillRect(dd.m_bufferSolid, glm::vec4(m_zone.x, center.y - 0.5f * thickness.y, m_zone.z, center.y + 0.5f * thickness.y), colorLine);
+}
+void widgetSeparator::acceptEvent(s_eventIntern &event)
+{
+  acceptEventBase_focus(event);
+  acceptEventBase_click(event);
+}
+
 // widgetLineChoice ===========================================================
 
 widget::s_drawElementCount widgetLineChoice::get_drawElementCount() const
@@ -1116,7 +1234,12 @@ glm::vec2 widgetLineChoice::get_zoneSizeDefault(const s_drawData &dd) const
 }
 void widgetLineChoice::compute_data(s_drawData &dd)
 {
-  TRE_ASSERT(!wvalues.empty());
+  if (wvalues.empty())
+  {
+    fillNull(dd.m_bufferSolid, 6);
+    return;
+  }
+  if (wselectedIndex >= wvalues.size()) wselectedIndex = unsigned(wvalues.size()) - 1;
 
   const auto &colorTheme = m_parentWindow->get_colortheme();
   const auto colorMask = m_parentWindow->get_colormask() * glm::vec4(1.f, 1.f, 1.f, wcolorAlpha);
@@ -1161,7 +1284,7 @@ void widgetLineChoice::acceptEvent(s_eventIntern &event)
 {
   acceptEventBase_focus(event);
 
-  if (!wisactive || !wishighlighted)
+  if (!wisactive || !wishighlighted || wvalues.empty())
   {
     wisHoveredLeft = false;
     wisHoveredRight = false;
@@ -1202,6 +1325,22 @@ void widgetLineChoice::acceptEvent(s_eventIntern &event)
       event.accepted = true;
       set_selectedIndex((wselectedIndex == wvalues.size() - 1) ? 0 : wselectedIndex + 1);
       if (wcb_clicked_left != nullptr) wcb_clicked_left(this);
+      if (wcb_modified_finished != nullptr) wcb_modified_finished(this);
+      else if (wcb_modified_ongoing != nullptr) wcb_modified_ongoing(this);
+    }
+  }
+
+  if (wiseditable && wheelSteps(event) != 0) // wheel: up selects the next value, down the previous one
+  {
+    event.accepted = true;
+    const int steps = wheelSteps(event);
+    const int count = int(wvalues.size());
+    int newIndex = int(wselectedIndex) + steps;
+    if (wcyclic) newIndex = ((newIndex % count) + count) % count;
+    else         newIndex = glm::clamp(newIndex, 0, count - 1);
+    if (unsigned(newIndex) != wselectedIndex)
+    {
+      set_selectedIndex(unsigned(newIndex));
       if (wcb_modified_finished != nullptr) wcb_modified_finished(this);
       else if (wcb_modified_ongoing != nullptr) wcb_modified_ongoing(this);
     }

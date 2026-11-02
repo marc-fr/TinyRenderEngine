@@ -5,6 +5,7 @@
 #include "tre_font.h"
 
 #include <atomic>
+#include <algorithm>
 
 namespace tre {
 
@@ -159,6 +160,11 @@ void baseUI::clear()
 {
   for (auto win : windowsList) delete(win);
   windowsList.clear();
+  if (m_textInputOwner != nullptr)
+  {
+    SDL_StopTextInput();
+    m_textInputOwner = nullptr;
+  }
   m_model.clearParts();
   m_textures.fill(s_textureRef());
 }
@@ -290,123 +296,42 @@ void baseUI::updateData()
   }
 }
 
-// baseUI2D implementation ========================================
+// baseUI methods : events ===================================================
 
-void baseUI2D::draw() const
-{
-  TRE_ASSERT(m_shader != nullptr);
-  TRE_ASSERT(textureWhite.m_handle != 0);
-  TRE_ASSERT(glIsEnabled(GL_BLEND)==GL_TRUE);
-  TRE_ASSERT(glIsEnabled(GL_DEPTH_TEST)==GL_FALSE); // needed ??
+static const glm::vec3 kMouseHidden = glm::vec3(1.e30f, 1.e30f, 0.f);
 
-  bool isModelBound = false;
-  std::array<bool, s_textureSlotsCount> isTextureBound;
-  isTextureBound.fill(false);
-  bool isFontBound = false;
-
-  glUseProgram(m_shader->m_drawProgram);
-
-  glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_2D, textureWhite.m_handle);
-
-  for (ui::window * curwin : windowsList)
-  {
-    if (!curwin->wisvisible) continue;
-
-    const glm::mat3 & matWin = curwin->get_mat3();
-    m_shader->setUniformMatrix(m_PV * matWin);
-
-    glUniform1i(m_shader->getUniformLocation(shader::TexDiffuse),0);
-
-    m_model.drawcall(curwin->m_adSolid.part, 1, !isModelBound);
-    isModelBound = true;
-
-    for (std::size_t tslot = 0; tslot < s_textureSlotsCount; ++tslot)
-    {
-      if (m_model.partInfo(curwin->m_adrPict.part + tslot).m_size > 0)
-      {
-        if (m_textures[tslot].m_handle == 0)
-        {
-          glUniform1i(m_shader->getUniformLocation(shader::TexDiffuse),0);
-        }
-        else
-        {
-          if (!isTextureBound[tslot])
-          {
-            glActiveTexture(GL_TEXTURE1 + GLuint(tslot));
-            glBindTexture(GL_TEXTURE_2D, m_textures[tslot].m_handle);
-            isTextureBound[tslot] = true;
-          }
-          glUniform1i(m_shader->getUniformLocation(shader::TexDiffuse), int(1 + tslot));
-        }
-        m_model.drawcall(curwin->m_adrPict.part + tslot, 1, false);
-      }
-    }
-
-    if (m_model.partInfo(curwin->m_adrText.part).m_size > 0)
-    {
-      if (m_defaultFont == nullptr)
-      {
-        glUniform1i(m_shader->getUniformLocation(shader::TexDiffuse), 0);
-      }
-      else
-      {
-        if (!isFontBound)
-        {
-          glActiveTexture(GL_TEXTURE7);
-          glBindTexture(GL_TEXTURE_2D, m_defaultFont->get_texture().m_handle);
-        }
-        glUniform1i(m_shader->getUniformLocation(shader::TexDiffuse), 7);
-      }
-      m_model.drawcall(curwin->m_adrText.part, 1, false);
-    }
-
-    glUniform1i(m_shader->getUniformLocation(shader::TexDiffuse),0);
-
-    m_model.drawcall(curwin->m_adrLine.part, 1, false, GL_LINES);
-  }
-}
-
-void baseUI2D::updateCameraInfo(const glm::mat3 &mProjView, const glm::ivec2 &screenSize)
-{
-  const bool changed = (m_PV != mProjView) || (m_viewport != glm::vec2(screenSize));
-  if (!changed)
-    return;
-
-  m_PV = mProjView;
-  m_viewport = screenSize;
-  m_PVinv = glm::inverse(m_PV);
-
-  for (ui::window *w : windowsList)
-    w->m_isUpdateNeededLayout = true;
-}
-
-bool baseUI2D::acceptEvent(const SDL_Event &event)
+bool baseUI::acceptEvent(const SDL_Event &event)
 {
   eventState.mouseButtonPrev = eventState.mouseButtonIsPressed;
   eventState.keyDown = 0;
   eventState.textInput = nullptr;
+  eventState.mouseWheel = glm::vec2(0.f);
 
   switch(event.type)
   {
   case SDL_MOUSEBUTTONDOWN:
     eventState.mouseButtonIsPressed |= SDL_BUTTON(event.button.button); // BUTTON_{L,R,M,X1,X2}MASK
-    eventState.mousePos.x = float(event.button.x);
-    eventState.mousePos.y = float(event.button.y);
-    eventState.mousePos.z = 0.f;
+    eventState.mousePos = glm::vec3(float(event.button.x), float(event.button.y), 0.f);
     eventState.mousePosPrev = eventState.mousePos;
     break;
   case SDL_MOUSEBUTTONUP:
     eventState.mouseButtonIsPressed &= ~ SDL_BUTTON(event.button.button); // BUTTON_{L,R,M,X1,X2}MASK
-    eventState.mousePos.x = float(event.button.x);
-    eventState.mousePos.y = float(event.button.y);
-    eventState.mousePos.z = 0.f;
+    eventState.mousePos = glm::vec3(float(event.button.x), float(event.button.y), 0.f);
     break;
   case SDL_MOUSEMOTION:
-    eventState.mousePos.x = float(event.button.x);
-    eventState.mousePos.y = float(event.button.y);
-    eventState.mousePos.z = 0.f;
+    eventState.mousePos = glm::vec3(float(event.motion.x), float(event.motion.y), 0.f);
     break;
+  case SDL_MOUSEWHEEL:
+  {
+    glm::ivec2 wheel = glm::ivec2(event.wheel.x, event.wheel.y);
+    if (event.wheel.direction == SDL_MOUSEWHEEL_FLIPPED) wheel = -wheel;
+#if SDL_VERSION_ATLEAST(2,26,0)
+    eventState.mousePos = glm::vec3(float(event.wheel.mouseX), float(event.wheel.mouseY), 0.f);
+#endif
+    if (wheel == glm::ivec2(0)) return false;
+    eventState.mouseWheel = wheel;
+    break;
+  }
   case SDL_KEYDOWN:
     eventState.keyDown = event.key.keysym.sym;
     break;
@@ -415,33 +340,17 @@ bool baseUI2D::acceptEvent(const SDL_Event &event)
     break;
   default:
     return false;
-    break;
   }
 
-  eventState.accepted = false;
-
-  for (ui::window * curw : windowsList)
-  {
-    // visible ?
-    if (!curw->wisvisible) continue;
-    // process
-    ui::s_eventIntern eventIntern = eventState;
-    eventIntern.mousePosPrev = glm::vec3(projectWindowPointFromScreen(eventState.mousePosPrev, curw->get_mat3()), 0.f);
-    eventIntern.mousePos     = glm::vec3(projectWindowPointFromScreen(eventState.mousePos, curw->get_mat3()), 0.f);
-
-    curw->acceptEvent(eventIntern);
-
-    eventState.accepted |= eventIntern.accepted;
-  }
-
-  return eventState.accepted;
+  return dispatchEvent();
 }
 
-bool baseUI2D::acceptEvent(glm::ivec2 mousePosition, bool mouseLEFT, bool mouseRIGHT)
+bool baseUI::acceptEvent(glm::ivec2 mousePosition, bool mouseLEFT, bool mouseRIGHT, const glm::ivec2 mouseWheel)
 {
   eventState.mouseButtonPrev = eventState.mouseButtonIsPressed;
   eventState.keyDown = 0;
   eventState.textInput = nullptr;
+  eventState.mouseWheel = mouseWheel;
 
   eventState.mousePos = glm::vec3(mousePosition, 0.f);
 
@@ -465,23 +374,195 @@ bool baseUI2D::acceptEvent(glm::ivec2 mousePosition, bool mouseLEFT, bool mouseR
     eventState.mouseButtonIsPressed &= ~SDL_BUTTON_RMASK;
   }
 
+  return dispatchEvent();
+}
+
+bool baseUI::dispatchEvent()
+{
   eventState.accepted = false;
+  eventState.cancel = false;
 
-  for (ui::window * curw : windowsList)
+  // only the window that holds it receives the event.
+
+  for (ui::window *win : windowsList)
   {
-    // visible ?
-    if (!curw->wisvisible) continue;
-    // process
+    if (win->m_captureWidget == nullptr) continue;
+    if (!win->wisvisible || !win->wisactive) // the window was hidden or disabled
+    {
+      win->releasePointerCapture();
+      continue;
+    }
     ui::s_eventIntern eventIntern = eventState;
-    eventIntern.mousePosPrev = glm::vec3(projectWindowPointFromScreen(eventState.mousePosPrev, curw->get_mat3()), 0.f);
-    eventIntern.mousePos     = glm::vec3(projectWindowPointFromScreen(eventState.mousePos, curw->get_mat3()), 0.f);
+    eventIntern.mousePos     = projectMouseIntoWindow(glm::vec2(eventState.mousePos), *win);
+    eventIntern.mousePosPrev = projectMouseIntoWindow(glm::vec2(eventState.mousePosPrev), *win);
+    win->acceptEvent(eventIntern);
+    eventState.accepted = true;
+    return true;
+  }
 
-    curw->acceptEvent(eventIntern);
+  ui::window *winUnderMouse = nullptr;
+  for (std::size_t iw = windowsList.size(); iw-- != 0; ) // reverse order: the last window is rendered last (on the top)
+  {
+    ui::window *win = windowsList[iw];
+    if (!win->wisvisible) continue;
+
+    ui::s_eventIntern eventIntern = eventState;
+    if (winUnderMouse == nullptr)
+    {
+      eventIntern.mousePos     = projectMouseIntoWindow(glm::vec2(eventState.mousePos), *win);
+      eventIntern.mousePosPrev = projectMouseIntoWindow(glm::vec2(eventState.mousePosPrev), *win);
+    }
+    else
+    {
+      eventIntern.mousePos     = kMouseHidden;
+      eventIntern.mousePosPrev = kMouseHidden;
+      eventIntern.mouseWheel   = glm::vec2(0.f);
+    }
+
+    win->acceptEvent(eventIntern);
 
     eventState.accepted |= eventIntern.accepted;
+
+    if (winUnderMouse == nullptr && win->wisvisible && win->wisactive && win->getIsOverPosition(eventIntern.mousePos))
+      winUnderMouse = win;
+  }
+
+  if (winUnderMouse != nullptr)
+  {
+    const bool isNewPress = eventState.isNewPress();
+    if (isNewPress || eventState.mouseWheel != glm::ivec2(0)) eventState.accepted = true;
+
+    if (isNewPress && winUnderMouse->get_selfwidget_Title() != nullptr && winUnderMouse != windowsList.back())
+    {
+      std::vector<ui::window*>::iterator it = std::find(windowsList.begin(), windowsList.end(), winUnderMouse);
+      std::rotate(it, it + 1, windowsList.end());
+    }
   }
 
   return eventState.accepted;
+}
+
+void baseUI::acquireTextInput(const ui::widget *w)
+{
+  m_textInputOwner = w;
+  SDL_StartTextInput();
+}
+
+void baseUI::releaseTextInput(const ui::widget *w)
+{
+  if (m_textInputOwner != w) return; // another widget has taken the text-input
+  m_textInputOwner = nullptr;
+  SDL_StopTextInput();
+}
+
+// baseUI methods : draw ======================================================
+
+void baseUI::drawWindows() const
+{
+  bool isModelBound = false;
+  std::array<bool, s_textureSlotsCount> isTextureBound;
+  isTextureBound.fill(false);
+  bool isFontBound = false;
+
+  glUseProgram(m_shader->m_drawProgram);
+
+  glActiveTexture(GL_TEXTURE0);
+  glBindTexture(GL_TEXTURE_2D, textureWhite.m_handle);
+
+  const auto locTexDiffuse = m_shader->getUniformLocation(shader::TexDiffuse);
+
+  for (ui::window * curwin : windowsList)
+  {
+    if (!curwin->wisvisible) continue;
+
+    setWindowMatrix(*curwin);
+
+    glUniform1i(locTexDiffuse, 0);
+
+    m_model.drawcall(curwin->m_adSolid.part, 1, !isModelBound);
+    isModelBound = true;
+
+    for (std::size_t tslot = 0; tslot < s_textureSlotsCount; ++tslot)
+    {
+      if (m_model.partInfo(curwin->m_adrPict.part + tslot).m_size > 0)
+      {
+        if (m_textures[tslot].m_handle == 0)
+        {
+          glUniform1i(locTexDiffuse, 0);
+        }
+        else
+        {
+          if (!isTextureBound[tslot])
+          {
+            glActiveTexture(GLenum(GL_TEXTURE1 + tslot));
+            glBindTexture(GL_TEXTURE_2D, m_textures[tslot].m_handle);
+            isTextureBound[tslot] = true;
+          }
+          glUniform1i(locTexDiffuse, int(1 + tslot));
+        }
+        m_model.drawcall(curwin->m_adrPict.part + tslot, 1, false);
+      }
+    }
+
+    if (m_model.partInfo(curwin->m_adrText.part).m_size > 0)
+    {
+      if (m_defaultFont == nullptr)
+      {
+        glUniform1i(locTexDiffuse, 0);
+      }
+      else
+      {
+        if (!isFontBound)
+        {
+          glActiveTexture(GL_TEXTURE7);
+          glBindTexture(GL_TEXTURE_2D, m_defaultFont->get_texture().m_handle);
+          isFontBound = true;
+        }
+        glUniform1i(locTexDiffuse, 7);
+      }
+      m_model.drawcall(curwin->m_adrText.part, 1, false);
+    }
+
+    glUniform1i(locTexDiffuse, 0);
+
+    m_model.drawcall(curwin->m_adrLine.part, 1, false, GL_LINES);
+  }
+}
+
+// baseUI2D implementation ========================================
+
+void baseUI2D::draw() const
+{
+  TRE_ASSERT(m_shader != nullptr);
+  TRE_ASSERT(textureWhite.m_handle != 0);
+  TRE_ASSERT(glIsEnabled(GL_BLEND)==GL_TRUE);
+  TRE_ASSERT(glIsEnabled(GL_DEPTH_TEST)==GL_FALSE); // needed ??
+
+  drawWindows();
+}
+
+void baseUI2D::setWindowMatrix(const ui::window &win) const
+{
+  m_shader->setUniformMatrix(m_PV * win.get_mat3());
+}
+
+glm::vec3 baseUI2D::projectMouseIntoWindow(const glm::vec2 &pixelCoords, const ui::window &win) const
+{
+  return glm::vec3(projectWindowPointFromScreen(pixelCoords, win.get_mat3()), 0.f);
+}
+
+void baseUI2D::updateCameraInfo(const glm::mat3 &mProjView, const glm::ivec2 &screenSize)
+{
+  const bool changed = (m_PV != mProjView) || (m_viewport != glm::vec2(screenSize));
+  if (!changed)
+    return;
+
+  m_PV = mProjView;
+  m_viewport = screenSize;
+  m_PVinv = glm::inverse(m_PV);
+
+  for (ui::window *w : windowsList)
+    w->m_isUpdateNeededLayout = true;
 }
 
 glm::vec2 baseUI2D::projectWindowPointFromScreen(const glm::vec2 &pixelCoords, const glm::mat3 &mModelWindow, bool isPosition) const
@@ -543,72 +624,18 @@ void baseUI3D::draw() const
   TRE_ASSERT(textureWhite.m_handle != 0);
   TRE_ASSERT(glIsEnabled(GL_BLEND)==GL_TRUE);
 
-  bool isModelBound = false;
-  std::array<bool, s_textureSlotsCount> isTextureBound;
-  isTextureBound.fill(false);
-  bool isFontBound = false;
+  drawWindows();
+}
 
-  glUseProgram(m_shader->m_drawProgram);
+void baseUI3D::setWindowMatrix(const ui::window &win) const
+{
+  const glm::mat4 &matWin = win.get_mat4();
+  m_shader->setUniformMatrix(m_PV * matWin, matWin);
+}
 
-  glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_2D, textureWhite.m_handle);
-
-  for (ui::window * curwin : windowsList)
-  {
-    if (!curwin->wisvisible) continue;
-
-    const glm::mat4 & matWin = curwin->get_mat4();
-    m_shader->setUniformMatrix(m_PV * matWin, matWin);
-
-    glUniform1i(m_shader->getUniformLocation(shader::TexDiffuse),0);
-
-    m_model.drawcall(curwin->m_adSolid.part, 1, !isModelBound);
-    isModelBound = true;
-
-    for (std::size_t tslot = 0; tslot < s_textureSlotsCount; ++tslot)
-    {
-      if (m_model.partInfo(curwin->m_adrPict.part + tslot).m_size > 0)
-      {
-        if (m_textures[tslot].m_handle == 0)
-        {
-          glUniform1i(m_shader->getUniformLocation(shader::TexDiffuse),0);
-        }
-        else
-        {
-          if (!isTextureBound[tslot])
-          {
-            glActiveTexture(GL_TEXTURE1 + tslot);
-            glBindTexture(GL_TEXTURE_2D, m_textures[tslot].m_handle);
-            isTextureBound[tslot] = true;
-          }
-          glUniform1i(m_shader->getUniformLocation(shader::TexDiffuse), int(1 + tslot));
-        }
-        m_model.drawcall(curwin->m_adrPict.part + tslot, 1, false);
-      }
-    }
-
-    if (m_model.partInfo(curwin->m_adrText.part).m_size > 0)
-    {
-      if (m_defaultFont == nullptr)
-      {
-        glUniform1i(m_shader->getUniformLocation(shader::TexDiffuse), 0);
-      }
-      else
-      {
-        if (!isFontBound)
-        {
-          glActiveTexture(GL_TEXTURE7);
-          glBindTexture(GL_TEXTURE_2D, m_defaultFont->get_texture().m_handle);
-        }
-        glUniform1i(m_shader->getUniformLocation(shader::TexDiffuse), 7);
-      }
-      m_model.drawcall(curwin->m_adrText.part, 1, false);
-    }
-
-    glUniform1i(m_shader->getUniformLocation(shader::TexDiffuse),0);
-
-    m_model.drawcall(curwin->m_adrLine.part, 1, false, GL_LINES);
-  }
+glm::vec3 baseUI3D::projectMouseIntoWindow(const glm::vec2 &pixelCoords, const ui::window &win) const
+{
+  return projectWindowPointFromScreen(pixelCoords, win.get_mat4());
 }
 
 void baseUI3D::updateCameraInfo(const glm::mat4 &mProj, const glm::mat4 &mView, const glm::ivec2 &screenSize)
@@ -627,109 +654,6 @@ void baseUI3D::updateCameraInfo(const glm::mat4 &mProj, const glm::mat4 &mView, 
 
   for (ui::window *w : windowsList)
     w->m_isUpdateNeededLayout = true;
-}
-
-bool baseUI3D::acceptEvent(const SDL_Event &event)
-{
-  eventState.mouseButtonPrev = eventState.mouseButtonIsPressed;
-  eventState.keyDown = 0;
-  eventState.textInput = nullptr;
-
-  switch(event.type)
-  {
-  case SDL_MOUSEBUTTONDOWN:
-    eventState.mouseButtonIsPressed |= SDL_BUTTON(event.button.button); // BUTTON_{L,R,M,X1,X2}MASK
-    eventState.mousePos.x = float(event.button.x);
-    eventState.mousePos.y = float(event.button.y);
-    eventState.mousePos.z = 0.f;
-    eventState.mousePosPrev = eventState.mousePos;
-    break;
-  case SDL_MOUSEBUTTONUP:
-    eventState.mouseButtonIsPressed &= ~SDL_BUTTON(event.button.button); // BUTTON_{L,R,M,X1,X2}MASK
-    eventState.mousePos.x = float(event.button.x);
-    eventState.mousePos.y = float(event.button.y);
-    eventState.mousePos.z = 0.f;
-    break;
-  case SDL_MOUSEMOTION:
-    eventState.mousePos.x = float(event.button.x);
-    eventState.mousePos.y = float(event.button.y);
-    eventState.mousePos.z = 0.f;
-    break;
-  case SDL_KEYDOWN:
-    eventState.keyDown = event.key.keysym.sym;
-    break;
-  case SDL_TEXTINPUT:
-    eventState.textInput = event.text.text;
-    break;
-  default:
-    return false;
-    break;
-  }
-
-  eventState.accepted = false;
-
-  for (ui::window * curw : windowsList)
-  {
-    // visible ?
-    if (!curw->wisvisible) continue;
-    // process
-    ui::s_eventIntern eventIntern = eventState;
-    eventIntern.mousePosPrev = projectWindowPointFromScreen(glm::vec2(eventState.mousePosPrev), curw->get_mat4());
-    eventIntern.mousePos     = projectWindowPointFromScreen(glm::vec2(eventState.mousePos), curw->get_mat4());
-
-    curw->acceptEvent(eventIntern);
-
-    eventState.accepted |= eventIntern.accepted;
-  }
-
-  return eventState.accepted;
-}
-
-bool baseUI3D::acceptEvent(glm::ivec2 mousePosition, bool mouseLEFT, bool mouseRIGHT)
-{
-  eventState.mouseButtonPrev = eventState.mouseButtonIsPressed;
-  eventState.keyDown = 0;
-  eventState.textInput = nullptr;
-
-  eventState.mousePos = glm::vec3(mousePosition, 0.f);
-
-  if (mouseLEFT && (eventState.mouseButtonPrev & SDL_BUTTON_LMASK) == 0)
-  {
-    eventState.mousePosPrev = eventState.mousePos;
-    eventState.mouseButtonIsPressed |= SDL_BUTTON_LMASK;
-  }
-  else if (!mouseLEFT && (eventState.mouseButtonPrev & SDL_BUTTON_LMASK) != 0)
-  {
-    eventState.mouseButtonIsPressed &= ~SDL_BUTTON_LMASK;
-  }
-
-  if (mouseRIGHT && (eventState.mouseButtonPrev & SDL_BUTTON_RMASK) == 0)
-  {
-    eventState.mousePosPrev = eventState.mousePos;
-    eventState.mouseButtonIsPressed |= SDL_BUTTON_RMASK;
-  }
-  else if (!mouseRIGHT && (eventState.mouseButtonPrev & SDL_BUTTON_RMASK) != 0)
-  {
-    eventState.mouseButtonIsPressed &= ~SDL_BUTTON_RMASK;
-  }
-
-  eventState.accepted = false;
-
-  for (ui::window * curw : windowsList)
-  {
-    // visible ?
-    if (!curw->wisvisible) continue;
-    // process
-    ui::s_eventIntern eventIntern = eventState;
-    eventIntern.mousePosPrev = projectWindowPointFromScreen(glm::vec2(eventState.mousePosPrev), curw->get_mat4());
-    eventIntern.mousePos     = projectWindowPointFromScreen(glm::vec2(eventState.mousePos), curw->get_mat4());
-
-    curw->acceptEvent(eventIntern);
-
-    eventState.accepted |= eventIntern.accepted;
-  }
-
-  return eventState.accepted;
 }
 
 glm::vec3 baseUI3D::projectWindowPointFromScreen(const glm::vec2 &pixelCoords, const glm::mat4 &mModelWindow) const

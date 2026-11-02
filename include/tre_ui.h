@@ -72,7 +72,16 @@ struct s_colorTheme
 
   float            factor = 1.f;
 
-  bool operator!=(const s_colorTheme &) const { return true; }
+  s_size m_padding = s_size(2.f, SIZE_PIXEL); ///< space between the frame of a widget and its content
+  s_size m_margin  = s_size(1.f, SIZE_PIXEL); ///< space around the widgets
+
+  bool operator==(const s_colorTheme &other) const
+  {
+    return m_colorBackground == other.m_colorBackground && m_colorSurface == other.m_colorSurface && m_colorPrimary == other.m_colorPrimary &&
+           m_colorOnSurface == other.m_colorOnSurface && m_colorOnObject == other.m_colorOnObject && factor == other.factor &&
+           m_padding == other.m_padding && m_margin == other.m_margin;
+  }
+  bool operator!=(const s_colorTheme &other) const { return !(*this == other); }
 
   glm::vec4 resolveColor(const glm::vec4 &baseColor, float modifier) const { return transformColor(baseColor, COLORTHEME_LIGHTNESS, modifier * factor); }
 };
@@ -93,8 +102,9 @@ void fillLine(glm::vec4 * __restrict &buffer, const glm::vec2 &p1, const glm::ve
 
 struct s_eventIntern
 {
-  glm::vec3 mousePos;     ///< mouse position (in the window's frame)
-  glm::vec3 mousePosPrev; ///< same as mousePos, but on last mouse button-down event
+  glm::vec3  mousePos = glm::vec3(0.f);     ///< mouse position (in the window's frame)
+  glm::vec3  mousePosPrev = glm::vec3(0.f); ///< same as mousePos, but on last mouse button-down event
+  glm::ivec2 mouseWheel = glm::ivec2(0);    ///< mouse-wheel motion
 
   unsigned mouseButtonIsPressed = 0; ///< a button is pressed. Use SDL_BUTTON_*MASK for masking.
   unsigned mouseButtonPrev = 0;
@@ -103,6 +113,10 @@ struct s_eventIntern
   const char *textInput = nullptr; ///< when using SDL_TextInput mode
 
   bool accepted = false;
+  bool cancel = false;
+
+  bool isNewPress(unsigned mask = ~0u) const { return (mouseButtonIsPressed & ~mouseButtonPrev & mask) != 0; }
+  bool isRelease(unsigned mask = ~0u) const { return (~mouseButtonIsPressed & mouseButtonPrev & mask) != 0; }
 };
 
 // Widgets ====================================================================
@@ -126,7 +140,7 @@ public:
   /// @{
   widget_DECLAREATTRIBUTE(widget,glm::vec4,color,= glm::vec4(-1.f), Data) ///< main color overwrite
   widget_DECLAREATTRIBUTE(widget,float,colorAlpha,= 1.f, Data) ///< opacity
-  widget_DECLAREATTRIBUTE(widget,bool,isactive,= false, Data) ///< When true, the widget receives events and can trigger callbacks
+  widget_DECLAREATTRIBUTE(widget,bool,isactive,= false, Layout) ///< When true, the widget receives events and can trigger callbacks
   widget_DECLAREATTRIBUTE(widget,bool,iseditable,= false, Data) ///< When true, the widget is editable from events
   widget_DECLAREATTRIBUTE(widget,bool,ishighlighted, = false, Data) ///< read & write attribute: "acceptEvent" modifies the value; user can change the value, but no callback will be triggered in this case.
   widget_DECLAREATTRIBUTE(widget,float,heightModifier,= 1.f, Layout) ///< height factor in regards with the default widget's height.
@@ -177,13 +191,14 @@ protected:
     const glm::vec2        m_pixelSize = glm::vec2(0.f); ///< resolved pixel size (in the window's UV-space)
     modelRaw2D             &m_model; // DEPRECATED.
 
-    s_drawData(modelRaw2D &model, const glm::vec2 &pixelSize) : m_model(model), m_pixelSize(pixelSize) {}
+    s_drawData(modelRaw2D &model, const glm::vec2 &pixelSize) : m_pixelSize(pixelSize), m_model(model) {}
 
     float resolve_sizeW(const s_size &size) const { return (size.unit == SIZE_PIXEL) ? size.size * m_pixelSize.x : size.size; }
     float resolve_sizeH(const s_size &size) const { return (size.unit == SIZE_PIXEL) ? size.size * m_pixelSize.y : size.size; }
     glm::vec2 resolve_sizeWH(const s_size &size) const { return (size.unit == SIZE_PIXEL) ? size.size * m_pixelSize : glm::vec2(size.size); }
   };
   virtual glm::vec2 get_zoneSizeDefault(const s_drawData &) const = 0; ///< Return the default widget size (in the window's space).
+  virtual glm::bvec2 get_zoneStretch() const { return glm::bvec2(false); } ///< Return true (per axis) when the widget fills its whole cell
   virtual void compute_data(s_drawData &) = 0; ///< fill the drawing buffers
   virtual void acceptEvent(s_eventIntern &event) { acceptEventBase_focus(event); acceptEventBase_click(event); }
   virtual void animate(float dt) { if (wcb_animate != nullptr) wcb_animate(this, dt); }
@@ -193,6 +208,7 @@ protected:
   /// @{
 public:
   bool getIsOverPosition(const glm::vec3 & position) const { return (m_zone.x <= position.x) && (m_zone.z >= position.x) && (m_zone.y <= position.y) && (m_zone.w >= position.y); } ///< Return true if the position is under the m_zone. Local space position. z is ignored.
+  bool hasPointerCapture() const;
   void setUpdateNeededAddress() const;
   void setUpdateNeededLayout() const;
   void setUpdateNeededData() const;
@@ -203,6 +219,7 @@ public:
 protected:
   void acceptEventBase_focus(s_eventIntern &event); ///< trigger focus-state
   void acceptEventBase_click(s_eventIntern &event); ///< trigger simple click-callbacks (warning: event can be modified)
+  static int wheelSteps(const s_eventIntern &event) { return event.mouseWheel.x + event.mouseWheel.y; } ///< wheel motion as a signed step count (up or right is positive)
   void set_zone(const glm::vec4 &assignedZone) { if (m_zone != assignedZone) { m_zone = assignedZone; setUpdateNeededData(); } }
   window *get_parentWindow() const { return m_parentWindow; }
 
@@ -241,10 +258,14 @@ class widgetText : public widget
   widget_DECLARECOMMUNMETHODS()
   widget_DECLAREATTRIBUTE(widgetText,std::string,text,= "", Address) ///< Text to be drawn. Note: it makes a local copy of the text (safe but copy data).
   widget_DECLAREATTRIBUTE(widgetText,bool,withborder,= false, Address) ///< True if a border will be drawn
-  widget_DECLAREATTRIBUTE(widgetText,glm::vec4,colorBackground,= glm::vec4(-1.f), Data) ///< Overwrite the background color
+  widget_DECLAREATTRIBUTE(widgetText,glm::vec4,colorBackground,= glm::vec4(-1.f), Layout) ///< Overwrite the background color
 
   glm::vec4 resolveColorFront() const;
   glm::vec4 resolveColorBack() const;
+
+protected:
+  bool hasFrame() const { return wwithborder || wisactive || wcolorBackground.a > 0.f; } ///< true when a border or a background is drawn
+  glm::vec2 resolvePadding(const s_drawData &dd) const; ///< the theme's padding when the widget has a frame, zero otherwise
 };
 
 class widgetTextTranslatate : public widgetText
@@ -287,7 +308,7 @@ class widgetTextEdit : public widgetText
 {
 public:
   widgetTextEdit() : widgetText() { wisactive = wiseditable = true; }
-  virtual ~widgetTextEdit() {}
+  virtual ~widgetTextEdit() override;
 
   virtual s_drawElementCount get_drawElementCount() const override;
   virtual glm::vec2 get_zoneSizeDefault(const s_drawData &) const override;
@@ -295,13 +316,16 @@ public:
   virtual void acceptEvent(s_eventIntern &event) override;
   virtual void animate(float dt) override;
 
-  widget_DECLAREATTRIBUTE(widgetTextEdit,bool,allowMultiLines,= false, Layout)
+  widget_DECLAREATTRIBUTE(widgetTextEdit,bool,allowMultiLines,= false, Layout) ///< When false, the "Return" key finishes the edition
   widget_DECLAREATTRIBUTE(widgetTextEdit,float,cursorAnimSpeed,= 1.f, Data)
 
 public:
   bool get_isEditing() const { return wisEditing; }
 
 private:
+  void startEditing();
+  void stopEditing();
+
   bool  wisEditing = false;
   int   wcursorPos = -1;
   float wcursorAnimTime = 0.f;
@@ -386,8 +410,19 @@ class widgetBoxCheck : public widget
   widget_DECLARECONSTRUCTORS(widgetBoxCheck)
   widget_DECLARECOMMUNMETHODS()
   widget_DECLAREATTRIBUTE(widgetBoxCheck,bool,value,= false, Data)
-  widget_DECLAREATTRIBUTE(widgetBoxCheck,float,margin,= 0.15f, Data)
   widget_DECLAREATTRIBUTE(widgetBoxCheck,float,thin,= 0.15f, Data)
+};
+
+class widgetSeparator : public widget
+{
+  widget_DECLARECONSTRUCTORS(widgetSeparator)
+  widget_DECLARECOMMUNMETHODS()
+  widget_DECLAREATTRIBUTE(widgetSeparator,bool,vertical,= false, Layout) ///< false: horizontal line (in a row), true: vertical line (in a column)
+  widget_DECLAREATTRIBUTE(widgetSeparator,s_size,thickness,= s_size(1.f, SIZE_PIXEL), Layout) ///< thickness of the line
+  widget_DECLAREATTRIBUTE(widgetSeparator,float,spacing,= 0.5f, Layout) ///< total space across the line, as a factor of the line-height
+
+protected:
+  virtual glm::bvec2 get_zoneStretch() const override { return glm::bvec2(!wvertical, wvertical); }
 };
 
 class widgetLineChoice : public widget
@@ -478,12 +513,12 @@ struct s_layoutGrid
   {
     widget     *m_widget = nullptr;
     glm::uvec2 m_span = glm::uvec2(1); ///< span (x:col, y:row)
-    unsigned       m_alignMask = ALIGN_MASK_HORIZONTAL_LEFT | ALIGN_MASK_VERTICAL_CENTERED;
+    unsigned   m_alignMask = ALIGN_MASK_HORIZONTAL_LEFT | ALIGN_MASK_VERTICAL_CENTERED;
   };
 
+  window              *m_parentWindow = nullptr;
   glm::uvec2          m_dimension = glm::uvec2(0); ///< Dimension (x:columns, y:rows)
   std::vector<s_cell> m_cells;
-  s_size              m_cellMargin = s_size::ONE_PIXEL;
 
   std::vector<s_size> m_rowsHeight_User, m_colsWidth_User; ///< Size of rows and columns (given by the user)
   std::vector<float>  m_rowsHeight, m_colsWidth; ///< Size of rows and columns (real)
@@ -505,7 +540,7 @@ struct s_layoutGrid
 class window
 {
 protected:
-  window(tre::baseUI * parent) : m_parentUI(parent) { wOwnWidgets.fill(nullptr); }
+  window(tre::baseUI * parent) : m_parentUI(parent) { wlayout.m_parentWindow = this; }
   ~window() { clear(); }
 
   /// @name global properties
@@ -530,7 +565,7 @@ public:
   window_PROPERTY(s_size, lineHeight, s_size(16, SIZE_PIXEL), m_isUpdateNeededLayout)
   window_PROPERTY(s_size, fontHeight, s_size(20, SIZE_PIXEL), m_isUpdateNeededLayout)
   window_PROPERTY(glm::vec4, colormask, glm::vec4(1.f), m_isUpdateNeededData)
-  window_PROPERTY(s_colorTheme, colortheme, s_colorTheme(), m_isUpdateNeededData)
+  window_PROPERTY(s_colorTheme, colortheme, s_colorTheme(), m_isUpdateNeededLayout)
   window_PROPERTY(unsigned, alignMask, ALIGN_MASK_LEFT_TOP, m_isUpdateNeededData)
 
   window_PROPERTY(glm::mat4, mat4, glm::mat4(1.f), m_isUpdateNeededLayout) // used for 2D-ui
@@ -546,7 +581,7 @@ public:
   void set_layoutGrid(unsigned row, unsigned col) { m_isUpdateNeededAddress = true; wlayout.set_dimension(row, col); } ///< set the layout.
   void set_colWidth(unsigned col, const s_size width); ///< set the width of a column, that overwrites the automatic size. A negative value will unset the value.
   void set_rowHeight(unsigned row, const s_size height); /// set the height of a row, that overwrites the automatic size. A negative value will unset the value.
-  void set_cellMargin(const s_size margin) { m_isUpdateNeededLayout |= (wlayout.m_cellMargin != margin); wlayout.m_cellMargin = margin; }
+  void set_cellMargin(const s_size margin) { m_isUpdateNeededLayout |= (wcolortheme.m_margin != margin); wcolortheme.m_margin = margin; } ///< set the margin around the cells.
   void set_colAlignment(unsigned col, unsigned alignMask); ///< set the alignment of the widgets in the column
   void set_rowAlignment(unsigned row, unsigned alignMask); ///< set the alignment of the widgets in the row
   void set_colSpacement(unsigned col, const s_size width, const bool atLeft = true); ///< set a space in-between two columns
@@ -561,6 +596,7 @@ public:
 public:
   const s_layoutGrid &get_layout() const { return wlayout; }
   glm::vec4 get_zone() { compute_layout(); return glm::vec4(m_zone.x, m_zone.y, m_zone.x + m_zone.z, m_zone.y + m_zone.w); } ///< Returns (xmin, ymin, xmax, ymax)
+  widget *get_pointerCapture() const { return m_captureWidget; } ///< Returns the widget that captures the pointer (or null)
   /// @}
 
   /// @name self-implementation
@@ -569,6 +605,8 @@ protected:
   void compute_adressPlage();
   void compute_data();
   void acceptEvent(s_eventIntern &event);
+  void acceptEventCaptured(s_eventIntern &event);
+  void releasePointerCapture() { m_captureWidget = nullptr; m_isMoved = false; }
   void animate(float dt);
   void clear();
   bool getIsOverPosition(const glm::vec3 & position) const;
@@ -582,9 +620,10 @@ private:
   void compute_layout(); ///< compute and set zone of widgets
   glm::vec4 m_zone = glm::vec4(0.f);
   s_layoutGrid wlayout;
-  std::array<widget*, 2> wOwnWidgets;
-  union { glm::mat3 m3; glm::mat4 m4; } wmatPrev; ///< On move, store the origin matrix
+  std::array<widget*, 2> wOwnWidgets {};
+  union { glm::mat3 m3; glm::mat4 m4; } wmatPrev {}; ///< On move, store the origin matrix
   bool m_isMoved = false;
+  widget *m_captureWidget = nullptr;
 
   struct s_objAddress
   {
@@ -625,6 +664,7 @@ public:
   window_DECLAREWIDGETHELPER(widgetSlider)
   window_DECLAREWIDGETHELPER(widgetSliderInt)
   window_DECLAREWIDGETHELPER(widgetBoxCheck)
+  window_DECLAREWIDGETHELPER(widgetSeparator)
   window_DECLAREWIDGETHELPER(widgetLineChoice)
   window_DECLAREWIDGETHELPER(widgetLineChoiceTranslate)
 
@@ -721,10 +761,27 @@ protected:
   std::vector<ui::window*> windowsList; ///< List of windows; this class has the ownership of all windows.
   /// @}
 
+  /// @name Events
+  /// @{
+public:
+  bool acceptEvent(const SDL_Event &event); ///< Process an SDL event. Returns true when the UI consumes the event.
+  bool acceptEvent(glm::ivec2 mousePosition, bool mouseLEFT, bool mouseRIGHT, const glm::ivec2 mouseWheel = glm::ivec2(0)); ///< Process a custom event. Returns true when the UI consumes the event.
+  void acquireTextInput(const ui::widget *w); ///< [intern] the widget starts a text-input (SDL_StartTextInput)
+  void releaseTextInput(const ui::widget *w); ///< [intern] the widget ends its text-input (SDL_StopTextInput, only if the widget owns the text-input)
+protected:
+  virtual glm::vec3 projectMouseIntoWindow(const glm::vec2 &pixelCoords, const ui::window &win) const = 0;
+  bool dispatchEvent();
+  const ui::widget *m_textInputOwner = nullptr;
+  /// @}
+
   /// @name GPU interface
   /// @{
 public:
   virtual void draw() const = 0; ///< Bind the shader and the resources, Emit draw-calls
+protected:
+  virtual void setWindowMatrix(const ui::window &win) const = 0;
+  void drawWindows() const;
+public:
 
   bool loadIntoGPU(); ///< Create GPU handlers and load data into GPU
   void updateIntoGPU(); ///< Update data into GPU
@@ -767,11 +824,11 @@ public:
   /// @{
 public:
   void updateCameraInfo(const glm::mat3 &mProjView, const glm::ivec2 &screenSize);
-  bool acceptEvent(const SDL_Event &event);
-  bool acceptEvent(glm::ivec2 mousePosition, bool mouseLEFT, bool mouseRIGHT);
   glm::vec2 projectWindowPointFromScreen(const glm::vec2 &pixelCoords, const glm::mat3 &mModelWindow, bool isPosition = true) const; ///< Project a screen position to the window's frame coordinate.
   glm::vec2 projectWindowPointToScreen(const glm::vec2 &windowCoords, const glm::mat3 &mModelWindow, bool isPosition = true) const; ///< Project a window's frame point to the screen position.
 protected:
+  virtual glm::vec3 projectMouseIntoWindow(const glm::vec2 &pixelCoords, const ui::window &win) const override;
+  virtual void setWindowMatrix(const ui::window &win) const override;
   glm::mat3 m_PV;
   glm::vec2 m_viewport;
   glm::mat3 m_PVinv;
@@ -798,13 +855,13 @@ public:
   /// @name Events
 public:
   void updateCameraInfo(const glm::mat4 &mProj, const glm::mat4 &mView, const glm::ivec2 &screenSize);
-  bool acceptEvent(const SDL_Event &event);
-  bool acceptEvent(glm::ivec2 mousePosition, bool mouseLEFT, bool mouseRIGHT);
   glm::vec3 projectWindowPointFromScreen(const glm::vec2 &pixelCoords, const glm::mat4 &mModelWindow) const; ///< Project a screen position to the window's frame coordinate.
   glm::vec2 projectWindowPointToScreen(const glm::vec3 &windowCoords, const glm::mat4 &mModelWindow) const; ///< Project a window's frame point to the screen position.
   const glm::mat4 &get_matPV() const { return m_PV; } ///< Getter for the Proj-View matrix (Prefer to use project** methods)
   const glm::vec2 &get_viewport() const { return m_viewport; } ///< Getter for the Proj-View matrix (Prefer to use project** methods)
 protected:
+  virtual glm::vec3 projectMouseIntoWindow(const glm::vec2 &pixelCoords, const ui::window &win) const override;
+  virtual void setWindowMatrix(const ui::window &win) const override;
   glm::mat4 m_PV;
   glm::vec2 m_viewport;
   glm::vec3 m_cameraPosition;

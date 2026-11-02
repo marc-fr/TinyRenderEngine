@@ -32,6 +32,7 @@ glm::vec2 s_layoutGrid::computeWidgetZones(const widget::s_drawData &dd, const g
 {
   if (m_dimension.x==0 || m_dimension.y==0) return glm::vec2(0.f);
 
+  TRE_ASSERT(m_parentWindow != nullptr);
   TRE_ASSERT(m_dimension.x == m_colsWidth_User.size() && m_dimension.x == m_colsWidth.size());
   TRE_ASSERT(m_dimension.y == m_rowsHeight_User.size() && m_dimension.y == m_rowsHeight.size());
 
@@ -131,7 +132,7 @@ glm::vec2 s_layoutGrid::computeWidgetZones(const widget::s_drawData &dd, const g
 
   std::vector<float> colsPos(m_dimension.x + 1), rowsPos(m_dimension.y + 1); // TODO: keep those vectors (avoid allocation/deallocation)
 
-  const glm::vec2 cellMargin = dd.resolve_sizeWH(m_cellMargin);
+  const glm::vec2 cellMargin = dd.resolve_sizeWH(m_parentWindow->get_colortheme().m_margin);
 
   {
     colsPos[0] = colsSpace[0];
@@ -160,7 +161,10 @@ glm::vec2 s_layoutGrid::computeWidgetZones(const widget::s_drawData &dd, const g
       glm::vec2 ptLB(colsPos[ix]  + 0.5f * cellMargin.x, rowsPos[iyN] + 0.5f * cellMargin.y + rowsSpace[iyN]);
       glm::vec2 ptRT(colsPos[ixN] - 0.5f * cellMargin.x - colsSpace[ixN], rowsPos[iy]  - 0.5f * cellMargin.y);
 
-      const glm::vec2 wSize = glm::min(cell.m_widget->get_zoneSizeDefault(dd), ptRT - ptLB);
+      const glm::bvec2 wStretch = cell.m_widget->get_zoneStretch();
+      glm::vec2 wSize = glm::min(cell.m_widget->get_zoneSizeDefault(dd), ptRT - ptLB);
+      if (wStretch.x) wSize.x = ptRT.x - ptLB.x; // fill the cell
+      if (wStretch.y) wSize.y = ptRT.y - ptLB.y; // fill the cell
 
       if (ptRT.x - ptLB.x > wSize.x)
       {
@@ -210,6 +214,8 @@ void s_layoutGrid::clear()
   m_colsWidth_User.clear();
   m_rowsHeight.clear();
   m_colsWidth.clear();
+  m_rowsInbetweenSpace.clear();
+  m_colsInbetweenSpace.clear();
   m_dimension = glm::uvec2(0);
 }
 
