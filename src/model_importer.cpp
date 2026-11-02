@@ -1,9 +1,13 @@
 
 #include "tre_model_importer.h"
 
+#include "tre_model_tools.h"
+
 #include <map>
 #include <fstream>
 #include <charconv>
+#include <cstdlib>
+#include <cstring>
 
 namespace tre {
 
@@ -14,16 +18,6 @@ template <typename _T>
 void _readNumber(const std::string &str, _T &ret)
 {
   std::from_chars(str.data(), str.c_str() + str.length(), ret);
-}
-
-// ----------------------------------------------------------------------------
-
-static void _readFloat3(const std::string &str, float &f0, float &f1, float &f2)
-{
-  char *strPtr = nullptr;
-  f0 = strtof(str.c_str(), &strPtr);
-  f1 = strtof(strPtr, &strPtr);
-  f2 = strtof(strPtr, &strPtr);
 }
 
 // ----------------------------------------------------------------------------
@@ -49,313 +43,342 @@ static void _numberList_to_Vector(const std::string &str, std::vector<std::size_
   }
 }
 
+// ----------------------------------------------------------------------------
+
+/// Read up to "maxCount" floats, separated by blanks. Returns the number of floats read.
+static unsigned _readFloats(const char *str, float *out, unsigned maxCount)
+{
+  unsigned count = 0;
+  for (; count < maxCount; ++count)
+  {
+    char *next = nullptr;
+    out[count] = std::strtof(str, &next);
+    if (next == str) break;
+    str = next;
+  }
+  return count;
+}
+
+// ----------------------------------------------------------------------------
+
+template <typename _Container>
+static bool _readFile(const std::string &filename, _Container &out)
+{
+  std::ifstream ins(filename, std::ios_base::binary | std::ios_base::ate);
+  if (!ins) return false;
+  const std::streamoff size = ins.tellg();
+  if (size < 0) return false;
+  out.resize(std::size_t(size));
+  ins.seekg(0);
+  return bool(ins.read(reinterpret_cast<char*>(out.data()), std::streamsize(size)));
+}
+
 // == OBJ =====================================================================
+
+/// Split a line into its keyword and its arguments
+static bool _objSplitLine(std::string &line, std::string &key, const char *&args)
+{
+  const std::size_t cut = line.find_first_of("#\r"); // comment, or the CR of CRLF
+  if (cut != std::string::npos) line.resize(cut);
+  const std::size_t begin = line.find_first_not_of(" \t");
+  if (begin == std::string::npos) return false;
+  key.assign(line, begin, line.find_first_of(" \t", begin) - begin); // ok with npos
+  args = line.c_str() + begin + key.size();
+  return true;
+}
+
+// ----------------------------------------------------------------------------
+
+static std::string _objReadName(const char *args)
+{
+  const std::string name(args);
+  const std::size_t b = name.find_first_not_of(" \t");
+  if (b == std::string::npos) return std::string();
+  return name.substr(b, name.find_last_not_of(" \t") + 1 - b);
+}
+
+// ----------------------------------------------------------------------------
+
+/// Read an index (1-based, or negative: relative to the end of the list read so far), and convert it into a 0-based index.
+static bool _objReadIndex(const char *&cur, std::size_t listSize, int &out)
+{
+  char       *next = nullptr;
+  const long raw = std::strtol(cur, &next, 10);
+  if (next == cur) return false;
+  cur = next;
+  const long ind = (raw < 0) ? long(listSize) + raw : raw - 1;
+  if (ind < 0 || ind >= long(listSize)) return false;
+  out = int(ind);
+  return true;
+}
+
+// ----------------------------------------------------------------------------
+
+static bool _objLoadMTL(const std::string &filename, std::vector<glm::vec4> &matColors, std::map<std::string, std::size_t> &matIds)
+{
+  std::ifstream rawMTL(filename);
+  if (!rawMTL) return false;
+  std::string line, key;
+  const char  *args = nullptr;
+  while (std::getline(rawMTL, line))
+  {
+    if (!_objSplitLine(line, key, args)) continue;
+    if (key == "newmtl")
+    {
+      matIds[_objReadName(args)] = matColors.size();
+      matColors.emplace_back(1.f);
+    }
+    else if (matColors.empty())
+    {
+      continue;
+    }
+    else if (key == "Kd")
+    {
+      _readFloats(args, glm::value_ptr(matColors.back()), 3);
+    }
+    else if (key == "d")
+    {
+      _readFloats(args, &matColors.back().a, 1);
+    }
+  }
+  return true;
+}
+
+// ----------------------------------------------------------------------------
 
 bool modelImporter::addFromWavefront(modelIndexed &outModel, const std::string &objfile, const std::string &mtlfile)
 {
-  // Get files handle
-  std::ifstream rawOBJ;
-  rawOBJ.open(objfile.c_str());
+  std::ifstream rawOBJ(objfile);
   if (!rawOBJ)
   {
     TRE_LOG("Failed to load wavefront file " << objfile);
     return false;
   }
-  std::ifstream rawMTL;
-  if (!mtlfile.empty())
+
+  outModel.reserveVertex(outModel.layout().m_vertexCount);
+  const s_modelDataLayout &outLayout = outModel.layout();
+  if (outLayout.m_positions.m_size != 3)
   {
-    rawMTL.open((mtlfile.c_str()));
-    if (!rawMTL)
-    {
-      TRE_LOG("Warning: ignore material because it failed to load wavefront file " << mtlfile);
-    }
+    TRE_LOG("Error in addFromWavefront: the model must have 3D positions.");
+    return false;
   }
-  std::string line;
+  const bool needNormals = (outLayout.m_normals.m_size == 3);
+  const bool needUVs     = (outLayout.m_uvs.m_size == 2);
+  const bool needColors  = (outLayout.m_colors.m_size == 4);
 
-  // Read colors
-  std::map<std::string, glm::vec4> colorMap;
-  if (rawMTL)
+  struct s_corner
   {
-    std::string curMat;
-    while (std::getline(rawMTL, line))
-    {
-      if      (line.substr(0,7) == "newmtl ")
-      {
-        curMat = line.substr(7);
-      }
-      else if (line.substr(0,3) == "Kd ")
-      {
-        float cx, cy, cz;
-        sscanf(line.substr(3).data(),"%f %f %f",&cx,&cy,&cz);
-        colorMap[curMat] = glm::vec4(cx, cy, cz, 1.f);
-      }
-    }
-  }
-  rawMTL.close();
-
-  // First pass: count
-
+    int m_pos = -1; // 0-based indices in the read lists (-1: none)
+    int m_uv  = -1;
+    int m_nor = -1;
+    int m_mat = -1;
+    bool operator<(const s_corner &other) const { return std::memcmp(this, &other, sizeof(s_corner)) < 0; } // any strict order is fine for the de-duplication
+  };
   struct s_partRead
   {
-    std::size_t m_nvertices = 0;
-    std::size_t m_nnormals = 0;
-    std::size_t m_nuvs = 0;
-    std::size_t m_ntri = 0;
-    std::string m_name;
-    glm::vec4   m_matColor = glm::vec4(0.f);
-
-    std::size_t m_partId = std::size_t(-1);
-    std::size_t m_vertexOffset = std::size_t(-1);
+    std::string           m_name;
+    std::vector<s_corner> m_corners; // 3 corners per triangle (read data)
+    std::vector<s_corner> m_vertices; // post-treated data
+    std::vector<GLuint>   m_indices;  // post-treated data
+    bool                  m_hasAllNormals = true;
   };
-  std::vector<s_partRead> partRead;
+
+  std::vector<glm::vec3>             positionsRead, normalsRead;
+  std::vector<glm::vec2>             uvsRead;
+  std::vector<s_partRead>            partRead;
+  std::vector<glm::vec4>             matColors;
+  std::map<std::string, std::size_t> matIds;
+
+  // Read the materials
+
+  const bool loadMTLFromOBJ = needColors && mtlfile.empty(); // else, "mtllib" is ignored
+  if (needColors && !mtlfile.empty() && !_objLoadMTL(mtlfile, matColors, matIds))
+  {
+    TRE_LOG("Warning: ignore materials because it failed to load the material file " << mtlfile);
+  }
+
+  // Read the OBJ file
+
+  std::string           line, key;
+  const char            *args = nullptr;
+  std::size_t           lineNumber = 0;
+  int                   currentMat = -1;
+  std::vector<s_corner> polygon;
 
   while (std::getline(rawOBJ, line))
   {
-    if      (line.substr(0,2) == "o " || line.substr(0,2) == "g ")
+    ++lineNumber;
+    if (!_objSplitLine(line, key, args)) continue;
+
+    if (key == "v")
     {
-      partRead.emplace_back();
-      partRead.back().m_name = line.substr(2);
+      glm::vec3 pos;
+      if (_readFloats(args, glm::value_ptr(pos), 3) != 3)
+      {
+        TRE_LOG("Error in addFromWavefront: invalid vertex at " << objfile << ":" << lineNumber);
+        return false;
+      }
+      positionsRead.push_back(pos);
     }
-    else if (line.substr(0,2) == "v " ) ++ partRead.back().m_nvertices;
-    else if (line.substr(0,3) == "vn ") ++ partRead.back().m_nnormals;
-    else if (line.substr(0,3) == "vt ") ++ partRead.back().m_nuvs;
-    else if (line.substr(0,2) == "f " ) ++ partRead.back().m_ntri;
-    else if (!colorMap.empty() && line.substr(0,7) == "usemtl ")
+    else if (key == "vn")
     {
-      partRead.back().m_matColor = colorMap[line.substr(7)];
+      glm::vec3 nor;
+      if (_readFloats(args, glm::value_ptr(nor), 3) != 3)
+      {
+        TRE_LOG("Error in addFromWavefront: invalid normal at " << objfile << ":" << lineNumber);
+        return false;
+      }
+      normalsRead.push_back(nor);
     }
-  }
-  rawOBJ.clear();
-  rawOBJ.seekg(0,std::ios::beg);
-
-  // Allocations and checks
-
-  std::size_t totalVertexIn = 0;
-  std::size_t totalNormalIn = 0;
-  std::size_t totalUVIn = 0;
-  std::size_t totalTriIn = 0;
-
-  for (s_partRead &p : partRead)
-  {
-    totalVertexIn += p.m_nvertices;
-    totalNormalIn += p.m_nnormals;
-    totalUVIn += p.m_nuvs;
-    totalTriIn += p.m_ntri;
-  }
-
-  if (partRead.empty() || totalTriIn == 0 || totalVertexIn == 0)
-  {
-    TRE_LOG("No part parsed in wavefront file " << objfile);
-    rawOBJ.close();
-    return false;
-  }
-
-  const s_modelDataLayout &outLayout = outModel.layout();
-
-  // Second pass: read data and write index/vertex data
-  std::vector<std::size_t> vertexKey;
-  std::vector<glm::vec3> positionsRead, normalsRead;
-  std::vector<glm::vec2> uvsRead;
-  vertexKey.reserve(totalVertexIn);
-  positionsRead.reserve(totalVertexIn);
-  normalsRead.reserve(totalNormalIn);
-  uvsRead.reserve(totalUVIn);
-  outModel.reserveVertex(totalVertexIn + 2 * totalTriIn * (totalNormalIn != 0) /* pre-allocate to handle sharp edges */);
-  std::size_t iPartRead = std::size_t(-1);
-  std::size_t iIndex = 0;
-  std::size_t vertexOffsetIn = 0;
-  std::size_t vertexAddPart = 0;
-  while (std::getline(rawOBJ,line))
-  {
-    if (line.substr(0,2) == "o " || line.substr(0,2) == "g ")
+    else if (key == "vt")
     {
-      ++iPartRead;
-
-      s_partRead &p = partRead[iPartRead];
-      p.m_partId = outModel.createPart(p.m_ntri * 3, p.m_nvertices, p.m_vertexOffset);
-      outModel.renamePart(p.m_partId, p.m_name);
-
-      iIndex = 0;
-      vertexOffsetIn = positionsRead.size();
-      vertexAddPart = 0;
+      glm::vec2 uv = glm::vec2(0.f);
+      if (_readFloats(args, glm::value_ptr(uv), 2) == 0)
+      {
+        TRE_LOG("Error in addFromWavefront: invalid uv at " << objfile << ":" << lineNumber);
+        return false;
+      }
+      uvsRead.emplace_back(uv.x, 1.f - uv.y); // OpenGL uv coordinate-system.
     }
-    else if (line.substr(0,2) == "v ")
+    else if (key == "f")
     {
-      float x,y,z;
-      sscanf(line.substr(2).data(),"%f %f %f",&x,&y,&z);
-      positionsRead.emplace_back(x, y, z);
-      vertexKey.push_back(0u);
+      // corners: "v", "v/vt", "v//vn" or "v/vt/vn"
+      polygon.clear();
+      const char *cur = args;
+      while (*(cur + std::strspn(cur, " \t")) != 0)
+      {
+        s_corner c;
+        c.m_mat = currentMat;
+        bool     valid = _objReadIndex(cur, positionsRead.size(), c.m_pos);
+        if (valid && *cur == '/')
+        {
+          ++cur;
+          if (*cur != '/') valid = _objReadIndex(cur, uvsRead.size(), c.m_uv);
+          if (valid && *cur == '/') { ++cur; valid = _objReadIndex(cur, normalsRead.size(), c.m_nor); }
+        }
+        if (!valid)
+        {
+          TRE_LOG("Error in addFromWavefront: invalid face at " << objfile << ":" << lineNumber);
+          return false;
+        }
+        polygon.push_back(c);
+      }
+      if (polygon.size() < 3)
+      {
+        TRE_LOG("Error in addFromWavefront: face with less than 3 vertices at " << objfile << ":" << lineNumber);
+        return false;
+      }
+      if (partRead.empty()) // faces before any "o" or "g"
+      {
+        partRead.emplace_back();
+        partRead.back().m_name = "default";
+      }
+      std::vector<s_corner> &corners = partRead.back().m_corners;
+      for (std::size_t k = 1; k + 1 < polygon.size(); ++k) // fan
+      {
+        corners.push_back(polygon[0]);
+        corners.push_back(polygon[k]);
+        corners.push_back(polygon[k + 1]);
+      }
     }
-    else if (totalNormalIn != 0 && line.substr(0,3) == "vn ")
+    else if (key == "o" || key == "g")
     {
-      float x,y,z;
-      sscanf(line.substr(3).data(),"%f %f %f",&x,&y,&z);
-      normalsRead.emplace_back(x, y, z);
+      if (partRead.empty() || !partRead.back().m_corners.empty()) partRead.emplace_back();
+      partRead.back().m_name = _objReadName(args);
     }
-    else if (totalUVIn != 0 && line.substr(0,3) == "vt ")
+    else if (key == "usemtl")
     {
-      float x,y;
-      sscanf(line.substr(3).data(),"%f %f",&x,&y);
-      uvsRead.emplace_back(x, 1.f - y); // OpenGL uv coordinate-system.
+      const auto it = matIds.find(_objReadName(args));
+      currentMat = (it != matIds.end()) ? int(it->second) : -1;
     }
-    else if (line.substr(0,2) == "f ")
+    else if (key == "mtllib" && loadMTLFromOBJ)
     {
-      std::array<int, 9> readBuffer;
-      unsigned readCount = 0;
-      for (std::size_t is = 2, iprev = 2, stop = line.size(); is < stop; ++is)
-      {
-        if (line[is] == '/' || line[is] == ' ' || is + 1 == stop)
-        {
-          if (is + 1 == stop) is = stop;
-          TRE_ASSERT(readCount < 9);
-          readBuffer[readCount++] = (iprev != is) ? std::stoi(line.substr(iprev, is - iprev)) : 0;
-          iprev = is + 1;
-        }
-      }
-      TRE_ASSERT(readCount % 3 == 0);
-      //
-      int pi = 0, pj = 0, pk = 0;
-      int ni = 0, nj = 0, nk = 0;
-      int ti = 0, tj = 0, tk = 0;
-      if (readCount == 3)
-      {
-        pi = readBuffer[0];
-        pj = readBuffer[1];
-        pk = readBuffer[2];
-      }
-      else if (readCount == 6)
-      {
-        pi = readBuffer[0]; ti = readBuffer[1];
-        pj = readBuffer[2]; tj = readBuffer[3];
-        pk = readBuffer[4]; tk = readBuffer[5];
-      }
-      else // (readCount == 9)
-      {
-        pi = readBuffer[0]; ti = readBuffer[1]; ni = readBuffer[2];
-        pj = readBuffer[3]; tj = readBuffer[4]; nj = readBuffer[5];
-        pk = readBuffer[6]; tk = readBuffer[7]; nk = readBuffer[8];
-      }
-      TRE_ASSERT(pi !=0 && pj != 0 && pk != 0);
-
-      // A same vertex "position" could be used multiple times. So we need to duplicate it if the "normal" or "uv" differ.
-
-      const unsigned ki = (pi & 0xFFFF) | ((ni & 0xFFF) << 16) | ((ti & 0xF) << 28);
-      const unsigned kj = (pj & 0xFFFF) | ((nj & 0xFFF) << 16) | ((tj & 0xF) << 28);
-      const unsigned kk = (pk & 0xFFFF) | ((nk & 0xFFF) << 16) | ((tk & 0xF) << 28);
-
-      pi = (pi < 0) ? unsigned(totalVertexIn) + pi : pi - 1;
-      pj = (pj < 0) ? unsigned(totalVertexIn) + pj : pj - 1;
-      pk = (pk < 0) ? unsigned(totalVertexIn) + pk : pk - 1;
-
-      ni = (ni < 0) ? unsigned(totalNormalIn) + ni  : ni - 1;
-      nj = (nj < 0) ? unsigned(totalNormalIn) + nj  : nj - 1;
-      nk = (nk < 0) ? unsigned(totalNormalIn) + nk  : nk - 1;
-
-      ti = (ti < 0) ? unsigned(totalUVIn) + ti      : ti - 1;
-      tj = (tj < 0) ? unsigned(totalUVIn) + tj      : tj - 1;
-      tk = (tk < 0) ? unsigned(totalUVIn) + tk      : tk - 1;
-
-      const s_partRead &curPartRead = partRead[iPartRead];
-      const s_partInfo &curPartInfo = outModel.partInfo(curPartRead.m_partId);
-
-      std::size_t i = curPartRead.m_vertexOffset + (pi - vertexOffsetIn);
-      std::size_t j = curPartRead.m_vertexOffset + (pj - vertexOffsetIn);
-      std::size_t k = curPartRead.m_vertexOffset + (pk - vertexOffsetIn);
-
-      if (vertexKey[pi] != ki)
-      {
-        if (vertexKey[pi] != 0) // duplicate
-        {
-          i = curPartRead.m_vertexOffset + curPartRead.m_nvertices + vertexAddPart;
-          ++vertexAddPart;
-          outModel.reserveVertex(((i + 1) / 256 + 1) * 256);
-        }
-        else
-        {
-          vertexKey[pi] = ki;
-        }
-        outLayout.m_positions.get<glm::vec3>(i) = positionsRead[pi];
-        if (outLayout.m_normals.m_size == 3) outLayout.m_normals.get<glm::vec3>(i) = (totalNormalIn != 0 && ni != -1) ? normalsRead[ni] : glm::vec3(0.f);
-        if (outLayout.m_uvs.m_size == 2) outLayout.m_uvs.get<glm::vec2>(i) = (totalUVIn != 0 && ti != -1) ? uvsRead[ti] : glm::vec2(0.f);
-
-        const_cast<s_partInfo&>(curPartInfo).m_bbox.addPointInBox(positionsRead[pi]);
-      }
-
-      if (vertexKey[pj] != kj)
-      {
-        if (vertexKey[pj] != 0) // duplicate
-        {
-          j = curPartRead.m_vertexOffset + curPartRead.m_nvertices + vertexAddPart;
-          ++vertexAddPart;
-          outModel.reserveVertex(((j + 1) / 256 + 1) * 256);
-        }
-        else
-        {
-          vertexKey[pj] = kj;
-        }
-        outLayout.m_positions.get<glm::vec3>(j) = positionsRead[pj];
-        if (outLayout.m_normals.m_size == 3) outLayout.m_normals.get<glm::vec3>(j) = (totalNormalIn != 0 && nj != -1) ? normalsRead[nj] : glm::vec3(0.f);
-        if (outLayout.m_uvs.m_size == 2) outLayout.m_uvs.get<glm::vec2>(j) = (totalUVIn != 0 && tj != -1) ? uvsRead[tj] : glm::vec2(0.f);
-
-        const_cast<s_partInfo&>(curPartInfo).m_bbox.addPointInBox(positionsRead[pj]);
-      }
-
-      if (vertexKey[pk] != kk)
-      {
-        if (vertexKey[pk] != 0) // duplicate
-        {
-          k = curPartRead.m_vertexOffset + curPartRead.m_nvertices + vertexAddPart;
-          ++vertexAddPart;
-          outModel.reserveVertex(((k + 1) / 256 + 1) * 256);
-        }
-        else
-        {
-          vertexKey[pk] = kk;
-        }
-        outLayout.m_positions.get<glm::vec3>(k) = positionsRead[pk];
-        if (outLayout.m_normals.m_size == 3) outLayout.m_normals.get<glm::vec3>(k) = (totalNormalIn != 0 && nk != -1) ? normalsRead[nk] : glm::vec3(0.f);
-        if (outLayout.m_uvs.m_size == 2) outLayout.m_uvs.get<glm::vec2>(k) = (totalUVIn != 0 && tk != -1) ? uvsRead[tk] : glm::vec2(0.f);
-
-        const_cast<s_partInfo&>(curPartInfo).m_bbox.addPointInBox(positionsRead[pk]);
-      }
-
-      TRE_ASSERT(iIndex + 2 < curPartInfo.m_size);
-
-      outLayout.m_index[curPartInfo.m_offset + iIndex + 0] = GLuint(i);
-      outLayout.m_index[curPartInfo.m_offset + iIndex + 1] = GLuint(j);
-      outLayout.m_index[curPartInfo.m_offset + iIndex + 2] = GLuint(k);
-
-      iIndex += 3;
+      const std::size_t lastSlash = objfile.find_last_of("/\\");
+      const std::string mtlpath = (lastSlash != std::string::npos ? objfile.substr(0, lastSlash + 1) : std::string()) + _objReadName(args);
+      if (!_objLoadMTL(mtlpath, matColors, matIds)) TRE_LOG("Warning: ignore materials because it failed to load the material file " << mtlpath);
     }
   }
   rawOBJ.close();
 
-  // Print some checks
-  TRE_ASSERT(outLayout.m_positions.m_size == 3); // only 3D mesh
-  const bool hasMatColor = !colorMap.empty() && (outLayout.m_colors.m_size == 4);
-  if (outLayout.m_normals.m_size == 3 && totalNormalIn == 0)
+  // Build the parts: a vertex is a unique (position, uv, normal, material), keeping only the attributes the model has.
+
+  std::size_t totalVertices  = 0;
+  std::size_t totalTriangles = 0;
+  std::size_t partCount      = 0;
+  for (s_partRead &p : partRead)
   {
-    TRE_LOG("Warning in model::loadfromWavefront: the model asks for normals, but the file does not contain normal data. The reader will fill normals with zeros."); // TODO: compute the normal (oriented triangle assumed)
-  }
-  if (outLayout.m_uvs.m_size == 2 && totalUVIn == 0)
-  {
-    TRE_LOG("Warning in model::loadfromWavefront: the model asks for uvs, but the file does not contain uv data. The reader will fill uvs with zeros.");
-  }
-  if (outLayout.m_colors.m_size == 4 && !hasMatColor)
-  {
-    TRE_LOG("Warning in model::loadfromWavefront: the model asks for colors, but the file does not contain color data. The reader will fill colors with zeros.");
+    if (p.m_corners.empty()) continue;
+    std::map<s_corner, GLuint> vertexMap;
+    p.m_indices.reserve(p.m_corners.size());
+    for (const s_corner &c : p.m_corners)
+    {
+      s_corner vkey = c;
+      if (!needUVs) vkey.m_uv = -1;
+      if (!needNormals) vkey.m_nor = -1;
+      if (!needColors) vkey.m_mat = -1;
+      p.m_hasAllNormals &= (c.m_nor >= 0);
+      const auto it = vertexMap.emplace(vkey, GLuint(p.m_vertices.size())).first;
+      if (it->second == p.m_vertices.size()) p.m_vertices.push_back(vkey); // new vertex
+      p.m_indices.push_back(it->second);
+    }
+    totalVertices  += p.m_vertices.size();
+    totalTriangles += p.m_indices.size() / 3;
+    ++partCount;
   }
 
-  // Apply color
-  if (hasMatColor)
+  if (partCount == 0)
   {
-    for (s_partRead &p : partRead)
-      outModel.colorizePart(p.m_partId, p.m_matColor);
+    TRE_LOG("No face parsed in wavefront file " << objfile);
+    return false;
   }
 
-  // End
-  TRE_LOG("Load " << objfile << " (new parts=" << partRead.size() <<
-          ", vertices+=" << positionsRead.size() << ", triangles+=" << totalTriIn << ")" <<
+  // Write into the model
+
+  if (outModel.partCount() == 0) outModel.reserveVertex(totalVertices); // single allocation
+
+  bool computedNormals = false;
+  for (const s_partRead &p : partRead)
+  {
+    if (p.m_corners.empty()) continue;
+
+    std::size_t       firstVertex = 0;
+    const std::size_t partId = outModel.createPart(p.m_indices.size(), p.m_vertices.size(), firstVertex);
+    outModel.renamePart(partId, p.m_name);
+
+    for (std::size_t iv = 0; iv < p.m_vertices.size(); ++iv)
+    {
+      const s_corner    &v = p.m_vertices[iv];
+      const std::size_t dst = firstVertex + iv;
+      outLayout.m_positions.get<glm::vec3>(dst) = positionsRead[v.m_pos];
+      if (needNormals) outLayout.m_normals.get<glm::vec3>(dst) = (v.m_nor >= 0) ? normalsRead[v.m_nor] : glm::vec3(0.f);
+      if (needUVs)     outLayout.m_uvs.get<glm::vec2>(dst) = (v.m_uv >= 0) ? uvsRead[v.m_uv] : glm::vec2(0.f);
+      if (needColors)  outLayout.m_colors.get<glm::vec4>(dst) = (v.m_mat >= 0) ? matColors[v.m_mat] : glm::vec4(1.f);
+    }
+
+    const s_partInfo &pInfo = outModel.partInfo(partId);
+    for (std::size_t ii = 0; ii < p.m_indices.size(); ++ii)
+      outLayout.m_index[pInfo.m_offset + ii] = GLuint(firstVertex + p.m_indices[ii]);
+
+    outModel.computeBBoxPart(partId);
+
+    if (needNormals && !p.m_hasAllNormals)
+    {
+      modelTools::computeOutNormal(outLayout, outModel.partInfo(partId), true); // smooth, counter-clockwise faces
+      computedNormals = true;
+    }
+  }
+
+  // Report
+
+  if (computedNormals)
+    TRE_LOG("Info: the wavefront file " << objfile << " has faces without normals, they are computed.");
+  if (needUVs && uvsRead.empty())
+    TRE_LOG("Warning: the model asks for uvs, but the wavefront file " << objfile << " has none. The uvs are filled with zeros.");
+  if (needColors && matColors.empty())
+    TRE_LOG("Warning: the model asks for colors, but the wavefront file " << objfile << " has no material. The colors are filled with white.");
+
+  TRE_LOG("Load " << objfile << " (new parts=" << partCount <<
+          ", vertices+=" << totalVertices << ", triangles+=" << totalTriangles << ")" <<
           ", model total (vertices=" << outLayout.m_vertexCount << ")");
   return true;
 }
@@ -364,848 +387,642 @@ bool modelImporter::addFromWavefront(modelIndexed &outModel, const std::string &
 
 namespace json {
 
-#define _JSON_DEBUG 0
-#if (_JSON_DEBUG == 1)
-#define _JSON_LOG(_msg) TRE_LOG("JSON: " << _msg);
-#else
-#define _JSON_LOG(_msg)
-#endif
-
-static bool isNumber(char c)
-{
-  return (c >= '0' && c <= '9') || (c == '-') || (c == '.');
-}
-
-static bool readString(std::ifstream &ins, std::string &out)
-{
-  while (true)
-  {
-    char cread;
-    ins.read(&cread, 1);
-    if (ins.fail()) return false;
-    if (cread == '"') return true;
-    out.push_back(cread);
-  }
-}
-
-static bool readNumberStr(std::ifstream &ins, std::string &out)
-{
-  while (true)
-  {
-    char cread;
-    ins.read(&cread, 1);
-    if (ins.fail()) return false;
-    if (cread == ']') return false;
-    if (cread == ' ' || cread == ',' || cread == '\n') return true;
-    if (cread == '}') { ins.seekg(-1, std::ios_base::cur); return true; }
-    out.push_back(cread);
-  }
-}
-
-static bool readNumberList(std::ifstream &ins, std::string &out)
-{
-  char clast = 0;
-  while (true)
-  {
-    char cread = 0;
-    ins.read(&cread, 1);
-    if (ins.fail()) return false;
-    if (cread == ']') return true;
-    if (cread < '+' || cread == ',' || cread > 'z') cread = ' ';
-    if (!(cread == ' ' && clast == ' ')) out.push_back(cread);
-    clast = cread;
-  }
-}
-
-static bool readStringList(std::ifstream &ins, std::string &out)
-{
-  while (true)
-  {
-    char cread = 0;
-    ins.read(&cread, 1);
-    if (ins.fail()) return false;
-    if (cread == ']') return true;
-    if (cread == '"')
-    {
-      out.push_back('"');
-      if (!readString(ins, out)) return false;
-      out.push_back('"');
-    }
-  }
-}
-
-struct s_node;
-bool readFileBlock(std::ifstream &ins, std::vector<s_node> &out);
-
 struct s_node
 {
   std::string         m_key;
   std::string         m_valueStr;
   std::vector<s_node> m_list;
 
-  bool readNodeValue(std::ifstream &ins)
+  const s_node *find(const char *key) const
   {
-    // get the type: either a list, a singleton, a string, a number, a boolean
-    int valueType = 0;
-    while (true)
-    {
-      char cread = 0;
-      ins.read(&cread, 1);
-      if (ins.fail()) return false;
-      if (cread == ' ' || cread == '\n') continue;
-      if      (cread == '[') { valueType = 1; break; }
-      else if (cread == '{') { valueType = 2; ins.seekg(-1, std::ios_base::cur); break; }
-      else if (cread == '"') { valueType = 3; break; }
-      else if (isNumber(cread)) { valueType = 4; ins.seekg(-1, std::ios_base::cur); break; }
-      else if (cread == 't' || cread == 'T' || cread == 'f' || cread == 'F') { valueType = 5; ins.seekg(-1, std::ios_base::cur); break; }
-      else if (cread == ',' || cread == '}' || cread == '{' || cread == ':' || cread == ']') // invalid
-      {
-        _JSON_LOG("invalid value of node \"" << m_key << "\"");
-        return false;
-      }
-    }
+    for (const s_node &n : m_list) { if (n.m_key == key) return &n; }
+    return nullptr;
+  }
 
-    switch (valueType)
-    {
-      case 1: // open a list
-      {
-        char cread = 0;
-        while (true)
-        {
-          ins.read(&cread, 1);
-          if (ins.fail()) return false;
-          if (cread == '{' || cread == '"' || isNumber(cread)) break;
-        }
-        ins.seekg(-1, std::ios_base::cur);
-        if (cread == '{')
-        {
-          _JSON_LOG("open a list of nodes");
-          while (true) // list of scopes
-          {
-            m_list.emplace_back();
-            m_list.back().m_key = "list-element";
-            if (!readFileBlock(ins, m_list.back().m_list)) return false;
-            bool closeList = false;
-            while (true)
-            {
-              ins.read(&cread, 1);
-              if (ins.fail()) return false;
-              if (cread == ']') { closeList = true; break; }
-              if (cread == ',') { break; }
-            }
-            if (closeList)
-            {
-              _JSON_LOG("close a list of nodes");
-              return true;
-            }
-          }
-        }
-        else if (cread == '"')
-        {
-          _JSON_LOG("open a list of strings");
-          return readStringList(ins, m_valueStr);
-        }
-        else
-        {
-          _JSON_LOG("open a list of numbers");
-          return readNumberList(ins, m_valueStr);
-        }
-      }
-      break;
-      case 2: // open a singleton -> the list is flatten
-      {
-        _JSON_LOG("open a singleton");
-        return readFileBlock(ins, m_list); // it will check for the scope.
-      }
-      break;
-      case 3: // read a string
-      {
-        _JSON_LOG("will read a value string");
-        return readString(ins, m_valueStr);
-      }
-      break;
-      case 4: // read a number
-      {
-        _JSON_LOG("will read a number");
-        return readNumberStr(ins, m_valueStr);
-      }
-      break;
-      case 5:
-      {
-        _JSON_LOG("will read a boolean");
-        char cread = 0;
-        ins.read(&cread, 1);
-        if (ins.fail()) return false;
-        const bool isTrue = cread == 't' || cread == 'T';
-        ins.read(&cread, 1); // r a
-        ins.read(&cread, 1); // u l
-        ins.read(&cread, 1); // e s
-        if (!isTrue) ins.read(&cread, 1); // . e
-        if (cread != 'e' && cread != 'E') return false;
-        m_valueStr = isTrue ? "true" : "false";
-        return true;
-      }
-      break;
-      default:
-        TRE_FATAL("not reached");
-        return false;
-    }
+  /// Integer value of a member, or "defaultValue" if the member does not exist.
+  template <typename _T> _T get(const char *key, _T defaultValue) const
+  {
+    const s_node *n = find(key);
+    if (n != nullptr) _readNumber(n->m_valueStr, defaultValue);
+    return defaultValue;
   }
 };
 
-bool readFileBlock(std::ifstream &ins, std::vector<s_node> &out)
+// ----------------------------------------------------------------------------
+
+struct s_parser
 {
-  // the block must start with a scope opening '{'
-  while (true)
+  const char *m_cur;
+  const char *m_end;
+  unsigned   m_depth = 0;
+
+  static const unsigned s_maxDepth = 64;
+
+  static bool isBlank(char c) { return c == ' ' || c == '\n' || c == '\r' || c == '\t'; }
+
+  bool next(char c)
   {
-    char cread;
-    ins.read(&cread, 1);
-    if (ins.fail()) return false;
-    if (cread == '{') break;
-    if (cread >= 'a') { _JSON_LOG("bad opening of a block (" << cread << ")"); return false; }
+    while (m_cur < m_end && isBlank(*m_cur)) ++m_cur; // skip the blanks
+    if (m_cur == m_end || *m_cur != c) return false;
+    ++m_cur;
+    return true;
   }
-  _JSON_LOG("block opened");
-  out.reserve(8); // a bit less of tiny allocations
-  // get the next token
-  while (true)
+
+  bool readString(std::string &out)
   {
-    char cread;
-    ins.read(&cread, 1);
-    if (ins.fail()) return false;
-    if (cread == '"') // new node
+    while (m_cur < m_end)
     {
-      out.emplace_back();
-      readString(ins, out.back().m_key);
-      _JSON_LOG("read new node \"" << out.back().m_key << "\"");
-      while (true)
-      {
-        ins.read(&cread, 1);
-        if (ins.fail()) return false;
-        if (cread == ':') break;
-      }
-      if (!out.back().readNodeValue(ins)) return false;
+      const char *b = m_cur;
+      while (m_cur < m_end && *m_cur != '"' && *m_cur != '\\') ++m_cur;
+      out.append(b, m_cur);
+      if (m_cur == m_end) return false;
+      if (*m_cur++ == '"') return true;
+      if (m_cur == m_end) return false;
+      const char c = *m_cur++; // escaped character
+      if      (c == 'n') out.push_back('\n');
+      else if (c == 't') out.push_back('\t');
+      else if (c == 'r') out.push_back('\r');
+      else if (c == 'b') out.push_back('\b');
+      else if (c == 'f') out.push_back('\f');
+      else if (c == 'u') { if (m_end - m_cur < 4) return false; m_cur += 4; out.push_back('?'); } // not decoded
+      else               out.push_back(c); // '"', '\\', '/'
     }
-    else if (cread == '}') // closing the scope
+    return false;
+  }
+
+  bool readValue(s_node &node, bool &isScalar)
+  {
+    isScalar = true;
+    if (next('"')) return readString(node.m_valueStr);
+    isScalar = false;
+    if (m_cur < m_end && *m_cur == '{') return readObject(node.m_list);
+    if (next('['))
     {
-      _JSON_LOG("block closed");
+      if (++m_depth > s_maxDepth) return false;
+      if (!next(']'))
+      {
+        do
+        {
+          s_node elem;
+          bool   elemIsScalar = false;
+          if (!readValue(elem, elemIsScalar)) return false;
+          if (elemIsScalar)
+          {
+            if (!node.m_valueStr.empty()) node.m_valueStr.push_back(' ');
+            node.m_valueStr += elem.m_valueStr;
+          }
+          else
+          {
+            elem.m_key = "list-element";
+            node.m_list.push_back(std::move(elem));
+          }
+        }
+        while (next(','));
+        if (!next(']')) return false;
+      }
+      --m_depth;
       return true;
     }
+    // number, true, false, null
+    isScalar = true;
+    const char *b = m_cur;
+    while (m_cur < m_end && !isBlank(*m_cur) && *m_cur != ',' && *m_cur != ']' && *m_cur != '}') ++m_cur;
+    node.m_valueStr.assign(b, m_cur);
+    return m_cur != b;
   }
-}
+
+  bool readObject(std::vector<s_node> &out)
+  {
+    if (!next('{') || ++m_depth > s_maxDepth) return false;
+    if (!next('}'))
+    {
+      do
+      {
+        out.emplace_back();
+        bool isScalar = false;
+        if (!next('"') || !readString(out.back().m_key) || !next(':') || !readValue(out.back(), isScalar)) return false;
+      }
+      while (next(','));
+      if (!next('}')) return false;
+    }
+    --m_depth;
+    return true;
+  }
+};
 
 } // json
 
 // ----------------------------------------------------------------------------
 
-static void _GLTF_readAccessor(const json::s_node &na, std::size_t &bufferViewId, std::size_t &count, bool &isHalfPrecision, const char *expectedType)
+/// Decode base64 data
+static bool _decodeBase64(const char *in, const char *end, std::vector<uint8_t> &out)
 {
-  TRE_ASSERT(na.m_key.compare("list-element") == 0);
-  for (const json::s_node &nn : na.m_list)
+  out.clear();
+  out.reserve(std::size_t(end - in) / 4 * 3 + 3);
+  uint32_t acc  = 0;
+  unsigned bits = 0;
+  for (; in < end && *in != '='; ++in)
   {
-    if      (nn.m_key.compare("bufferView") == 0) _readNumber(nn.m_valueStr, bufferViewId);
-    else if (nn.m_key.compare("count") == 0) _readNumber(nn.m_valueStr, count);
-    else if (nn.m_key.compare("type") == 0)
+    const char c = *in;
+    uint32_t   v = 0;
+    if      (c >= 'A' && c <= 'Z') v = uint32_t(c - 'A');
+    else if (c >= 'a' && c <= 'z') v = uint32_t(c - 'a' + 26);
+    else if (c >= '0' && c <= '9') v = uint32_t(c - '0' + 52);
+    else if (c == '+')             v = 62;
+    else if (c == '/')             v = 63;
+    else                           return false;
+    acc = (acc << 6) | v;
+    bits += 6;
+    if (bits >= 8)
     {
-      if (nn.m_valueStr.compare(expectedType) != 0) { TRE_LOG("model::loadfromGLTF: un-expected type \"" << nn.m_valueStr << "\" of a " << expectedType << " buffer"); }
+      bits -= 8;
+      out.push_back(uint8_t(acc >> bits));
     }
-    else if (nn.m_key.compare("componentType") == 0)
+  }
+  return true;
+}
+
+// ----------------------------------------------------------------------------
+
+/// Decode the percent-encoded characters of an URI
+static std::string _decodeURI(const std::string &uri)
+{
+  std::string out;
+  for (std::size_t i = 0; i < uri.size(); ++i)
+  {
+    unsigned hex = 0;
+    if (uri[i] == '%' && i + 2 < uri.size() && std::from_chars(uri.data() + i + 1, uri.data() + i + 3, hex, 16).ptr == uri.data() + i + 3)
     {
-      std::size_t ctype = 0;
-      _readNumber(nn.m_valueStr, ctype);
-      isHalfPrecision = (ctype == 5123);
+      out.push_back(char(hex));
+      i += 2;
+    }
+    else
+    {
+      out.push_back(uri[i]);
     }
   }
+  return out;
 }
 
-static void _GLTF_readBufferView(const json::s_node &nbf, std::size_t &bufferId, std::size_t &byteOffset, const std::size_t &expectedByteLength)
+// ----------------------------------------------------------------------------
+
+static uint32_t _readU32(const char *data)
 {
-  TRE_ASSERT(nbf.m_key.compare("list-element") == 0);
-  for (const json::s_node &nn : nbf.m_list)
+  uint32_t v;
+  std::memcpy(&v, data, sizeof(v));
+  return v;
+}
+
+// ----------------------------------------------------------------------------
+
+static bool _GLTF_appendNode(const json::s_node &nodes, const std::vector<std::vector<std::size_t>> &meshParts, std::size_t nodeId,
+                             std::size_t &remainingNodes, modelImporter::s_modelHierarchy &out)
+{
+  if (nodeId >= nodes.m_list.size() || remainingNodes == 0) return false;
+  --remainingNodes;
+  const json::s_node &node = nodes.m_list[nodeId];
+
+  // transform
+  const json::s_node *matrix = node.find("matrix");
+  if (matrix != nullptr)
   {
-    if      (nn.m_key.compare("buffer") == 0) _readNumber(nn.m_valueStr, bufferId);
-    else if (nn.m_key.compare("byteOffset") == 0) _readNumber(nn.m_valueStr, byteOffset);
-    else if (nn.m_key.compare("byteLength") == 0)
+    if (_readFloats(matrix->m_valueStr.c_str(), glm::value_ptr(out.m_transform), 16) != 16) return false; // column-major, as glm.
+  }
+  else
+  {
+    glm::vec3 t = glm::vec3(0.f);
+    glm::vec3 s = glm::vec3(1.f);
+    float     r[4] = { 0.f, 0.f, 0.f, 1.f }; // x, y, z, w
+    const json::s_node *nt = node.find("translation");
+    const json::s_node *nr = node.find("rotation");
+    const json::s_node *ns = node.find("scale");
+    if (nt != nullptr && _readFloats(nt->m_valueStr.c_str(), glm::value_ptr(t), 3) != 3) return false;
+    if (nr != nullptr && _readFloats(nr->m_valueStr.c_str(), r, 4) != 4) return false;
+    if (ns != nullptr && _readFloats(ns->m_valueStr.c_str(), glm::value_ptr(s), 3) != 3) return false;
+    glm::quat q;
+    q.x = r[0]; q.y = r[1]; q.z = r[2]; q.w = r[3];
+    out.m_transform = glm::mat4_cast(q); // T * R * S
+    out.m_transform[0] *= s.x;
+    out.m_transform[1] *= s.y;
+    out.m_transform[2] *= s.z;
+    out.m_transform[3] = glm::vec4(t, 1.f);
+  }
+
+  // parts: the first primitive of the mesh is on the node, the next ones are children (with identity transform)
+  out.m_partId = std::size_t(-1);
+  const std::size_t meshId = node.get<std::size_t>("mesh", std::size_t(-1));
+  if (meshId != std::size_t(-1))
+  {
+    if (meshId >= meshParts.size()) return false;
+    for (std::size_t partId : meshParts[meshId])
     {
-      std::size_t rbl = 0;
-      _readNumber(nn.m_valueStr, rbl);
-      if (rbl != expectedByteLength) { TRE_LOG("model::loadfromGLTF: un-expected byte-length (" << rbl << ") for a buffer (expected: " << expectedByteLength << ")"); } }
+      if (out.m_partId == std::size_t(-1)) { out.m_partId = partId; continue; }
+      out.m_childs.emplace_back();
+      out.m_childs.back().m_transform = glm::mat4(1.f);
+      out.m_childs.back().m_partId = partId;
+    }
   }
+
+  // children
+  const json::s_node      *children = node.find("children");
+  std::vector<std::size_t> childIds;
+  if (children != nullptr) _numberList_to_Vector(children->m_valueStr, childIds);
+  for (std::size_t cid : childIds)
+  {
+    out.m_childs.emplace_back();
+    if (!_GLTF_appendNode(nodes, meshParts, cid, remainingNodes, out.m_childs.back())) return false;
+  }
+  return true;
 }
 
-static uint8_t _decode_base64_char(const char c)
-{
-  if (c >= 97 /*a*/) return c - 97 + 26;
-  if (c >= 65 /*A*/) return c - 65;
-  if (c >= 48 /*0*/) return c - 48 + 52;
-  if (c == 43 /*+*/) return 62;
-  TRE_ASSERT(c == 47 /*/*/);
-  return 63;
-}
-
-static void _decode_base64(std::vector<uint8_t> &out, const std::string &inEncoded, std::size_t inOffset = 0)
-{
-  const std::size_t cStop = inEncoded.size();
-  const std::size_t cStop3 = (cStop > 4) ? cStop - 4 : 0;
-  std::size_t       cp = inOffset;
-  uint8_t           * __restrict dstBuffer = out.data();
-  const uint8_t     * __restrict dstStop = out.data() + out.size();
-  for (; cp < cStop3; cp += 4)
-  {
-    const uint8_t c0 = _decode_base64_char(inEncoded[cp]    );
-    const uint8_t c1 = _decode_base64_char(inEncoded[cp + 1]);
-    const uint8_t c2 = _decode_base64_char(inEncoded[cp + 2]);
-    const uint8_t c3 = _decode_base64_char(inEncoded[cp + 3]);
-    TRE_ASSERT(c0 < 64 && c1 < 64 && c2 < 64);
-    const uint8_t d0 = (c0       ) << 2 | (c1 & 0x30) >> 4;
-    const uint8_t d1 = (c1 & 0x0F) << 4 | (c2 & 0x3C) >> 2;
-    const uint8_t d2 = (c2       ) << 6 | (c3       )     ;
-    *dstBuffer++ = d0;
-    *dstBuffer++ = d1;
-    *dstBuffer++ = d2;
-    TRE_ASSERT(dstBuffer <= dstStop);
-  }
-  if (cp < cStop)
-  {
-    const uint8_t c0 =                _decode_base64_char(inEncoded[cp++]) ;
-    const uint8_t c1 = (cp < cStop) ? _decode_base64_char(inEncoded[cp++]) : 0;
-    const uint8_t c2 = (cp < cStop) ? _decode_base64_char(inEncoded[cp++]) : 0;
-    const uint8_t c3 = (cp < cStop) ? _decode_base64_char(inEncoded[cp++]) : 0;
-    TRE_ASSERT(c0 < 64 && c1 < 64 && c2 < 64);
-    const uint8_t d0 = (c0       ) << 2 | (c1 & 0x30) >> 4;
-    const uint8_t d1 = (c1 & 0x0F) << 4 | (c2 & 0x3C) >> 2;
-    const uint8_t d2 = (c2       ) << 6 | (c3       )     ;
-    *dstBuffer++ = d0;
-    *dstBuffer++ = d1;
-    *dstBuffer++ = d2;
-    TRE_ASSERT(dstBuffer <= dstStop);
-  }
-  for (; dstBuffer < dstStop; ++dstBuffer) *dstBuffer = 0;
-}
+// ----------------------------------------------------------------------------
 
 bool modelImporter::addFromGLTF(modelIndexed &outModel, s_modelHierarchy &outHierarchy, const std::string &gltffile, const bool isBinary)
 {
-  // dirname
-  const std::size_t lastSlash = gltffile.rfind('/');
-  const std::string dirname = (lastSlash != std::string::npos) ? gltffile.substr(0, lastSlash) + "/" : "";
+  outModel.reserveVertex(outModel.layout().m_vertexCount);
+  const s_modelDataLayout &outLayout = outModel.layout();
+  if (outLayout.m_positions.m_size != 3)
+  {
+    TRE_LOG("Error in addFromGLTF: the model must have 3D positions.");
+    return false;
+  }
+  const bool needNormals = (outLayout.m_normals.m_size == 3);
+  const bool needUVs     = (outLayout.m_uvs.m_size == 2);
+  const bool needColors  = (outLayout.m_colors.m_size == 4);
+  const bool needSkins   = (outLayout.m_skins.m_size == 2);
 
-  // Get files handle
-  std::ifstream readerGLTF;
-  readerGLTF.open(gltffile.c_str(), std::ios_base::binary);
-  if (!readerGLTF)
+  struct s_view
+  {
+    const uint8_t *m_data           = nullptr; ///< nullptr: no data
+    std::size_t    m_count          = 0;
+    std::size_t    m_stride         = 0; ///< in bytes
+    unsigned       m_componentType  = 0; ///< 5120: i8, 5121: u8, 5122: i16, 5123: u16, 5125: u32, 5126: float
+    unsigned       m_componentCount = 0; ///< 1: SCALAR, 2: VEC2, 3: VEC3, 4: VEC4
+    bool           m_normalized     = false;
+
+    bool hasCount(std::size_t count) const { return m_data == nullptr || m_count == count; }
+
+    /// Read (up to "maxCount") components of an element, as floats. Normalized integers are converted into [0,1] or [-1,1].
+    void readFloats(std::size_t i, float *out, unsigned maxCount) const
+    {
+      if (m_data == nullptr) return;
+      const uint8_t *src = m_data + i * m_stride;
+      for (unsigned c = 0; c < m_componentCount && c < maxCount; ++c)
+      {
+        switch (m_componentType)
+        {
+          case 5120: { int8_t   v; std::memcpy(&v, src + c,     sizeof(v)); out[c] = m_normalized ? glm::max(v / 127.f, -1.f)   : float(v); } break;
+          case 5121: { uint8_t  v; std::memcpy(&v, src + c,     sizeof(v)); out[c] = m_normalized ? v / 255.f                   : float(v); } break;
+          case 5122: { int16_t  v; std::memcpy(&v, src + 2 * c, sizeof(v)); out[c] = m_normalized ? glm::max(v / 32767.f, -1.f) : float(v); } break;
+          case 5123: { uint16_t v; std::memcpy(&v, src + 2 * c, sizeof(v)); out[c] = m_normalized ? v / 65535.f                 : float(v); } break;
+          case 5125: { uint32_t v; std::memcpy(&v, src + 4 * c, sizeof(v)); out[c] = float(v); } break;
+          default:   std::memcpy(out + c, src + 4 * c, sizeof(float)); break; // 5126
+        }
+      }
+    }
+
+    /// Read an unsigned integer scalar (indices).
+    uint32_t readUInt(std::size_t i) const
+    {
+      const uint8_t *src = m_data + i * m_stride;
+      if (m_componentType == 5121) return *src;
+      if (m_componentType == 5123) return *reinterpret_cast<const uint16_t*>(src);
+      return *reinterpret_cast<const uint16_t*>(src);
+    }
+  };
+
+  /// The GLTF content
+  struct s_file
+  {
+    json::s_node                      m_root;
+    const json::s_node                *m_accessors   = nullptr;
+    const json::s_node                *m_bufferViews = nullptr;
+    std::vector<std::vector<uint8_t>> m_buffers;
+
+    bool getView(std::size_t accessorId, s_view &out) const
+    {
+      if (accessorId >= m_accessors->m_list.size()) return false;
+      const json::s_node &acc  = m_accessors->m_list[accessorId];
+      const json::s_node *type = acc.find("type");
+      if (type == nullptr || acc.find("sparse") != nullptr) return false;
+      if      (type->m_valueStr == "SCALAR") out.m_componentCount = 1;
+      else if (type->m_valueStr == "VEC2")   out.m_componentCount = 2;
+      else if (type->m_valueStr == "VEC3")   out.m_componentCount = 3;
+      else if (type->m_valueStr == "VEC4")   out.m_componentCount = 4;
+      else                                   return false;
+      out.m_componentType = acc.get<unsigned>("componentType", 0);
+      std::size_t componentSize = 0;
+      if      (out.m_componentType == 5120 || out.m_componentType == 5121) componentSize = 1;
+      else if (out.m_componentType == 5122 || out.m_componentType == 5123) componentSize = 2;
+      else if (out.m_componentType == 5125 || out.m_componentType == 5126) componentSize = 4;
+      else                                                                 return false;
+      const json::s_node *normalized = acc.find("normalized");
+      out.m_normalized = (normalized != nullptr && normalized->m_valueStr == "true");
+      out.m_count = acc.get<std::size_t>("count", 0);
+      const std::size_t accOffset = acc.get<std::size_t>("byteOffset", 0);
+
+      const std::size_t viewId = acc.get<std::size_t>("bufferView", std::size_t(-1));
+      if (viewId >= m_bufferViews->m_list.size()) return false;
+      const json::s_node &view       = m_bufferViews->m_list[viewId];
+      const std::size_t  bufferId    = view.get<std::size_t>("buffer", std::size_t(-1));
+      const std::size_t  viewOffset  = view.get<std::size_t>("byteOffset", 0);
+      const std::size_t  viewLength  = view.get<std::size_t>("byteLength", 0);
+      const std::size_t  elementSize = componentSize * out.m_componentCount;
+      out.m_stride = view.get<std::size_t>("byteStride", elementSize);
+
+      // check the bounds (written to avoid overflows)
+      if (bufferId >= m_buffers.size()) return false;
+      const std::size_t bufferSize = m_buffers[bufferId].size();
+      if (viewLength > bufferSize || viewOffset > bufferSize - viewLength) return false;
+      if (out.m_count == 0 || out.m_count > viewLength || out.m_stride < elementSize || out.m_stride > 256 || accOffset > viewLength) return false;
+      if ((out.m_count - 1) * out.m_stride + elementSize > viewLength - accOffset) return false;
+
+      out.m_data = m_buffers[bufferId].data() + viewOffset + accOffset;
+      return true;
+    }
+
+    /// Get the data of an optional attribute. Returns false if the attribute exists but it is invalid.
+    bool getAttribute(const json::s_node &attributes, const char *name, unsigned componentsMin, unsigned componentsMax, s_view &out) const
+    {
+      if (attributes.find(name) == nullptr) return true;
+      return getView(attributes.get<std::size_t>(name, std::size_t(-1)), out) && out.m_componentCount >= componentsMin && out.m_componentCount <= componentsMax;
+    }
+  };
+
+  /// A primitive, that becomes a part
+  struct s_primitive
+  {
+    std::string m_name;
+    s_view      m_pos, m_normal, m_uv, m_color, m_index;
+    glm::vec4   m_baseColor   = glm::vec4(1.f);
+    std::size_t m_vertexCount = 0;
+    std::size_t m_indexCount  = 0;
+    bool        m_flatNormals = false; ///< normals to compute: the vertices are not shared between triangles
+  };
+
+  // Read the file, and the chunks of a binary file
+
+  std::string fileData;
+  if (!_readFile(gltffile, fileData))
   {
     TRE_LOG("Failed to load GLTF file " << gltffile);
     return false;
   }
 
-  std::size_t glbNextBlock = 0;
+  std::size_t jsonBegin = 0, jsonEnd = fileData.size();
+  std::size_t binBegin = 0, binEnd = 0; // GLB-stored buffer (binEnd = 0: none)
   if (isBinary)
   {
-    // read header.
-    uint32_t hType = 0, version = 0, dummy = 0, jbSize = 0, jbCode = 0;
-    readerGLTF.read(reinterpret_cast<char*>(&hType), sizeof(uint32_t));
-    readerGLTF.read(reinterpret_cast<char*>(&version), sizeof(uint32_t));
-    readerGLTF.read(reinterpret_cast<char*>(&dummy), sizeof(uint32_t));
-    readerGLTF.read(reinterpret_cast<char*>(&jbSize), sizeof(uint32_t));
-    readerGLTF.read(reinterpret_cast<char*>(&jbCode), sizeof(uint32_t));
-    if (hType != 0x46546C67 /* glTF */ || version != 2 || jbCode != 0x4E4F534A /* JSON */)
+    const char *d = fileData.data();
+    if (fileData.size() < 20 || _readU32(d) != 0x46546C67 /* glTF */ || _readU32(d + 4) != 2 ||
+        _readU32(d + 16) != 0x4E4F534A /* JSON */ || _readU32(d + 12) > fileData.size() - 20)
     {
       TRE_LOG("Invalid header of a binary GLTF file " << gltffile);
-      readerGLTF.close();
       return false;
     }
-    glbNextBlock = 12 + 8 + jbSize;
+    jsonBegin = 20;
+    jsonEnd   = 20 + _readU32(d + 12);
+    if (jsonEnd + 8 <= fileData.size() && _readU32(d + jsonEnd + 4) == 0x004E4942 /* BIN */)
+    {
+      binBegin = jsonEnd + 8;
+      binEnd   = binBegin + _readU32(d + jsonEnd);
+      if (binEnd > fileData.size())
+      {
+        TRE_LOG("Invalid binary chunk of a binary GLTF file " << gltffile);
+        return false;
+      }
+    }
   }
 
-  std::vector<json::s_node> readJsonNodes;
-  if (!json::readFileBlock(readerGLTF, readJsonNodes))
+  s_file         file;
+  json::s_parser parser = { fileData.data() + jsonBegin, fileData.data() + jsonEnd };
+  if (!parser.readObject(file.m_root.m_list))
   {
-    readerGLTF.close();
-    TRE_LOG("Failed to parse GLTF file (json format)");
+    TRE_LOG("Failed to parse GLTF file (json format) " << gltffile);
     return false;
   }
 
-  json::s_node *readScenes = nullptr;
-  json::s_node *readNodes = nullptr;
-  json::s_node *readSkins = nullptr;
-  json::s_node *readMeshes = nullptr;
-  json::s_node *readAccessors = nullptr;
-  json::s_node *readBufferViews = nullptr;
-  json::s_node *readBuffers = nullptr;
+  const json::s_node *readScenes    = file.m_root.find("scenes");
+  const json::s_node *readNodes     = file.m_root.find("nodes");
+  const json::s_node *readMeshes    = file.m_root.find("meshes");
+  const json::s_node *readMaterials = file.m_root.find("materials");
+  const json::s_node *readBuffers   = file.m_root.find("buffers");
+  file.m_accessors                  = file.m_root.find("accessors");
+  file.m_bufferViews                = file.m_root.find("bufferViews");
 
-  for (json::s_node &n : readJsonNodes)
+  if (readMeshes == nullptr || file.m_accessors == nullptr || file.m_bufferViews == nullptr || readBuffers == nullptr)
   {
-    if      (n.m_key.compare("scenes")      == 0) readScenes = &n;
-    else if (n.m_key.compare("nodes")       == 0) readNodes = &n;
-    else if (n.m_key.compare("skins")       == 0) readSkins = &n;
-    else if (n.m_key.compare("meshes")      == 0) readMeshes = &n;
-    else if (n.m_key.compare("accessors")   == 0) readAccessors = &n;
-    else if (n.m_key.compare("bufferViews") == 0) readBufferViews = &n;
-    else if (n.m_key.compare("buffers")     == 0) readBuffers = &n;
-  }
-
-  if (readMeshes == nullptr || readAccessors == nullptr || readBufferViews == nullptr || readBuffers == nullptr)
-  {
-    TRE_LOG("model::loadfromGLTF: missing at least one of the mandatory lists (meshes, accessors, bufferViews, buffers)");
+    TRE_LOG("model::loadfromGLTF: missing at least one of the mandatory lists (meshes, accessors, bufferViews, buffers) in " << gltffile);
     return false;
   }
 
-  // read and check parts
-  struct s_partRead
+  // Load the buffers
+
+  const std::size_t lastSlash = gltffile.find_last_of("/\\");
+  const std::string dirname   = (lastSlash != std::string::npos) ? gltffile.substr(0, lastSlash + 1) : std::string();
+
+  for (const json::s_node &nb : readBuffers->m_list)
   {
-    std::size_t m_meshId = -1; // idx in the GLTF mesh array
-    std::size_t m_partId = -1; // idx in the output model
-    std::size_t m_indexCount = 0;
-    std::size_t m_vertexCount = 0;
-    std::size_t m_bufferViewId_pos = -1;
-    std::size_t m_bufferViewId_normal = -1;
-    std::size_t m_bufferViewId_uv = -1;
-    std::size_t m_bufferViewId_color = -1;
-    std::size_t m_bufferViewId_joint = -1; // for skin meshes
-    std::size_t m_bufferViewId_weight = -1; // for skin meshes
-    std::size_t m_bufferViewId_index = -1;
-    std::string m_name;
-    bool        m_indiceHalf = false; // U16:true, U32:false
-    std::size_t m_materialIdx = -1; // read, but not used
-  };
-  std::vector<s_partRead> partRead;
-  for (std::size_t in = 0, stop = readMeshes->m_list.size(); in < stop; ++in)
-  {
-    const json::s_node &n = readMeshes->m_list[in];
-    TRE_ASSERT(n.m_key.compare("list-element") == 0);
-    // read the mesh
-    std::string partName;
-    const json::s_node *primitives = nullptr;
-    for (const json::s_node &nn : n.m_list)
+    file.m_buffers.emplace_back();
+    std::vector<uint8_t> &data   = file.m_buffers.back();
+    const json::s_node   *uri    = nb.find("uri");
+    bool                 loaded = false;
+    if (uri == nullptr) // GLB-stored buffer (only the first buffer)
     {
-      if (nn.m_key.compare("name") == 0)
-      {
-        partName = nn.m_valueStr;
-      }
-      else if (nn.m_key.compare("primitives") == 0)
-      {
-        if (primitives != nullptr) { TRE_LOG("model::loadfromGLTF: mesh to multiple \"primitives\". No supported."); continue; }
-        primitives = &nn;
-      }
-      else
-      {
-        TRE_LOG("model::loadfromGLTF: unkown mesh property \"" <<  nn.m_key << "\"");
-      }
+      loaded = (binEnd != 0 && file.m_buffers.size() == 1);
+      if (loaded) data.assign(fileData.begin() + binBegin, fileData.begin() + binEnd);
     }
-    if (partName.empty())
+    else if (uri->m_valueStr.compare(0, 5, "data:") == 0) // embedded
     {
-      TRE_LOG("model::loadfromGLTF: mesh without name");
-      partName = "no-name-" + std::to_string(partRead.size()-1);
+      const std::size_t sep = uri->m_valueStr.find(";base64,");
+      loaded = (sep != std::string::npos) && _decodeBase64(uri->m_valueStr.data() + sep + 8, uri->m_valueStr.data() + uri->m_valueStr.size(), data);
     }
-    if (primitives == nullptr || primitives->m_list.empty())
+    else // external file
     {
-      TRE_LOG("model::loadfromGLTF: mesh \"" << partName << "\" has no primitive. Skip.");
-      continue;
+      loaded = _readFile(dirname + _decodeURI(uri->m_valueStr), data);
     }
-    // get the primitives
-    for (const json::s_node &prim : primitives->m_list)
+    if (!loaded || data.size() < nb.get<std::size_t>("byteLength", 0))
     {
-      partRead.emplace_back();
-      s_partRead &curPartRead = partRead.back();
-      curPartRead.m_meshId = in;
-      if (primitives->m_list.size() == 1) curPartRead.m_name = partName;
-      else                                curPartRead.m_name = partName + "-" + std::to_string(partRead.size()-1);
-      TRE_ASSERT(prim.m_key.compare("list-element") == 0);
-      for (const json::s_node &np : prim.m_list)
-      {
-        if (np.m_key.compare("attributes") == 0)
-        {
-          for (const json::s_node &na : np.m_list)
-          {
-            if      (na.m_key.compare("POSITION") == 0) _readNumber(na.m_valueStr, curPartRead.m_bufferViewId_pos); // for now, it stores the accessor id.
-            else if (na.m_key.compare("NORMAL") == 0) _readNumber(na.m_valueStr, curPartRead.m_bufferViewId_normal); // for now, it stores the accessor id.
-            else if (na.m_key.compare("TEXCOORD_0") == 0) _readNumber(na.m_valueStr, curPartRead.m_bufferViewId_uv); // for now, it stores the accessor id.
-            else if (na.m_key.compare("COLOR_0") == 0) _readNumber(na.m_valueStr, curPartRead.m_bufferViewId_color); // for now, it stores the accessor id.
-            else if (na.m_key.compare("JOINTS_0") == 0)_readNumber(na.m_valueStr, curPartRead.m_bufferViewId_joint); // for now, it stores the accessor id.
-            else if (na.m_key.compare("WEIGHTS_0") == 0) _readNumber(na.m_valueStr, curPartRead.m_bufferViewId_weight); // for now, it stores the accessor id.
-            else    { TRE_LOG("model::loadfromGLTF: unkown attribute \"" << na.m_key << "\" in part \"" << curPartRead.m_name << "\""); }
-          }
-        }
-        else if (np.m_key.compare("indices") == 0)
-        {
-          _readNumber(np.m_valueStr, curPartRead.m_bufferViewId_index); // for now, it stores the accessor id.
-        }
-        else if (np.m_key.compare("material") == 0)
-        {
-          _readNumber(np.m_valueStr, curPartRead.m_materialIdx);
-        }
-        else if (np.m_key.compare("modes") == 0)
-        {
-          std::size_t m = 0;
-          _readNumber(np.m_valueStr, m);
-          if (m != 4) // GL_TRIANGLES
-          {
-            TRE_LOG("model::loadfromGLTF: the primitives mode is not TRIANGLES(4): " <<  m << ". The part \"" << curPartRead.m_name << "\" may not be rendered correctly.");
-          }
-        }
-        else
-        {
-          TRE_LOG("model::loadfromGLTF: unkown primitives \"" <<  np.m_key << "\" in part \"" << curPartRead.m_name << "\"");
-        }
-      }
+      TRE_LOG("model::loadfromGLTF: failed to load the buffer " << file.m_buffers.size() - 1 << " of " << gltffile);
+      return false;
     }
   }
 
-  for (auto &curPartRead : partRead)
-  {
-    std::size_t partVertex = 0;
-    std::size_t partIndex = 0;
-    // get buffersView from their accessors
-    // -> position
-    if (curPartRead.m_bufferViewId_pos < readAccessors->m_list.size())
-    {
-      const json::s_node &na = readAccessors->m_list[curPartRead.m_bufferViewId_pos];
-      curPartRead.m_bufferViewId_pos = std::size_t(-1); // reset
-      bool dummy = false;
-      _GLTF_readAccessor(na, curPartRead.m_bufferViewId_pos, partVertex, dummy, "VEC3");
-    }
-    // -> normal
-    if (curPartRead.m_bufferViewId_normal < readAccessors->m_list.size())
-    {
-      const json::s_node &na = readAccessors->m_list[curPartRead.m_bufferViewId_normal];
-      curPartRead.m_bufferViewId_normal = std::size_t(-1); // reset
-      std::size_t c = 0;
-      bool dummy = false;
-      _GLTF_readAccessor(na, curPartRead.m_bufferViewId_normal, c, dummy, "VEC3");
-    }
-    // -> uv
-    if (curPartRead.m_bufferViewId_uv < readAccessors->m_list.size())
-    {
-      const json::s_node &na = readAccessors->m_list[curPartRead.m_bufferViewId_uv];
-      curPartRead.m_bufferViewId_uv = std::size_t(-1); // reset
-      std::size_t c = 0;
-      bool dummy = false;
-      _GLTF_readAccessor(na, curPartRead.m_bufferViewId_uv, c, dummy, "VEC2");
-    }
-    // -> color
-    if (curPartRead.m_bufferViewId_color < readAccessors->m_list.size())
-    {
-      const json::s_node &na = readAccessors->m_list[curPartRead.m_bufferViewId_color];
-      curPartRead.m_bufferViewId_color = std::size_t(-1); // reset
-      std::size_t c = 0;
-      bool dummy = false;
-      _GLTF_readAccessor(na, curPartRead.m_bufferViewId_color, c, dummy, "VEC4");
-    }
-    // -> joint
-    if (curPartRead.m_bufferViewId_joint < readAccessors->m_list.size())
-    {
-      const json::s_node &na = readAccessors->m_list[curPartRead.m_bufferViewId_joint];
-      curPartRead.m_bufferViewId_joint = std::size_t(-1); // reset
-      std::size_t c = 0;
-      bool dummy = false;
-      _GLTF_readAccessor(na, curPartRead.m_bufferViewId_joint, c, dummy, "VEC4");
-    }
-    // -> weight
-    if (curPartRead.m_bufferViewId_weight < readAccessors->m_list.size())
-    {
-      const json::s_node &na = readAccessors->m_list[curPartRead.m_bufferViewId_weight];
-      curPartRead.m_bufferViewId_weight = std::size_t(-1); // reset
-      std::size_t c = 0;
-      bool dummy = false;
-      _GLTF_readAccessor(na, curPartRead.m_bufferViewId_weight, c, dummy, "VEC4");
-    }
-    // -> index
-    if (curPartRead.m_bufferViewId_index < readAccessors->m_list.size())
-    {
-      const json::s_node &na = readAccessors->m_list[curPartRead.m_bufferViewId_index];
-      curPartRead.m_bufferViewId_index = std::size_t(-1); // reset
-      _GLTF_readAccessor(na, curPartRead.m_bufferViewId_index, partIndex, curPartRead.m_indiceHalf, "SCALAR");
-    }
+  // Read and check the primitives. The parts will be created in this order, so their ids are known.
 
-    if (partIndex == 0 || partVertex == 0)
+  const std::size_t                     firstPartId = outModel.partCount();
+  std::vector<s_primitive>              primitives;
+  std::vector<std::vector<std::size_t>> meshParts(readMeshes->m_list.size()); // part-ids per mesh
+  std::size_t                           totalVertices = 0, totalTriangles = 0;
+  bool                                  missingUVs = false;
+
+  for (std::size_t im = 0; im < readMeshes->m_list.size(); ++im)
+  {
+    const json::s_node &mesh      = readMeshes->m_list[im];
+    const json::s_node *meshName  = mesh.find("name");
+    const json::s_node *meshPrims = mesh.find("primitives");
+    if (meshPrims == nullptr || meshPrims->m_list.empty())
     {
-      TRE_LOG("model::loadfromGLTF: invalid part \"" << curPartRead.m_name << "\" with partIndex = " << partIndex << " and partVertex = " << partVertex << " in mesh.");
+      TRE_LOG("model::loadfromGLTF: the mesh " << im << " has no primitive in " << gltffile);
       return false;
     }
 
-    curPartRead.m_indexCount = partIndex;
-    curPartRead.m_vertexCount = partVertex;
-  }
+    for (std::size_t ip = 0; ip < meshPrims->m_list.size(); ++ip)
+    {
+      const json::s_node &prim = meshPrims->m_list[ip];
+      s_primitive        p;
+      p.m_name = (meshName != nullptr && !meshName->m_valueStr.empty()) ? meshName->m_valueStr : "mesh-" + std::to_string(im);
+      if (meshPrims->m_list.size() > 1) p.m_name += "-" + std::to_string(ip);
 
-  // read and check buffers
-  struct s_buffer
-  {
-    std::vector<uint8_t> m_rawData;
-  };
-  std::vector<s_buffer> readBuffersResolved;
-  for (const json::s_node &n : readBuffers->m_list)
-  {
-    TRE_ASSERT(n.m_key.compare("list-element") == 0);
-    readBuffersResolved.emplace_back();
-    s_buffer &currentBuffer = readBuffersResolved.back();
-    bool hasURIData = false;
-    // read the buffer
-    for (const json::s_node &nn : n.m_list)
-    {
-      if (nn.m_key.compare("byteLength") == 0)
+      if (prim.get<unsigned>("mode", 4) != 4) // TRIANGLES
       {
-        std::size_t blen = 0;
-        _readNumber(nn.m_valueStr,blen);
-        currentBuffer.m_rawData.resize(blen + 4); // encoding can introduce padding.
+        TRE_LOG("model::loadfromGLTF: the primitive \"" << p.m_name << "\" is not made of triangles. Skipped.");
+        continue;
       }
-      else if (nn.m_key.compare("uri") == 0)
+
+      // attributes
+      const json::s_node *attributes = prim.find("attributes");
+      bool valid = attributes != nullptr &&
+                   file.getAttribute(*attributes, "POSITION",   3, 3, p.m_pos) && p.m_pos.m_data != nullptr &&
+                   file.getAttribute(*attributes, "NORMAL",     3, 3, p.m_normal) &&
+                   file.getAttribute(*attributes, "TEXCOORD_0", 2, 2, p.m_uv) &&
+                   file.getAttribute(*attributes, "COLOR_0",    3, 4, p.m_color);
+      const std::size_t posCount = p.m_pos.m_count;
+      valid = valid && p.m_normal.hasCount(posCount) && p.m_uv.hasCount(posCount) && p.m_color.hasCount(posCount);
+
+      // indices
+      if (valid && prim.find("indices") != nullptr)
       {
-        hasURIData = true;
-        const std::size_t sepPos = nn.m_valueStr.find(",");
-        if (sepPos != std::string::npos && (nn.m_valueStr.substr(0, 16).compare("data:application") == 0))
-        {
-          _decode_base64(currentBuffer.m_rawData, nn.m_valueStr, sepPos + 1u);
-        }
-        else
-        {
-          const std::string fullpath = dirname + nn.m_valueStr;
-          std::ifstream readerBuffer;
-          readerBuffer.open(fullpath.c_str(), std::ios::basic_ios::binary);
-          if (readerBuffer)
-          {
-            readerBuffer.read(reinterpret_cast<char*>(currentBuffer.m_rawData.data()), currentBuffer.m_rawData.size());
-            readerBuffer.close();
-          }
-          else
-          {
-            currentBuffer.m_rawData.clear();
-            TRE_LOG("Failed to load GLTF buffer file " << fullpath);
-          }
-        }
+        valid = file.getView(prim.get<std::size_t>("indices", std::size_t(-1)), p.m_index) && p.m_index.m_componentCount == 1;
+        valid = valid && (p.m_index.m_componentType == 5121 || p.m_index.m_componentType == 5123 || p.m_index.m_componentType == 5125);
+        for (std::size_t i = 0; valid && i < p.m_index.m_count; ++i) valid = (p.m_index.readUInt(i) < posCount);
       }
-      else
+      p.m_indexCount = (p.m_index.m_data != nullptr) ? p.m_index.m_count : posCount;
+      valid = valid && (p.m_indexCount % 3 == 0);
+
+      // material
+      const std::size_t matId = prim.get<std::size_t>("material", std::size_t(-1));
+      if (valid && matId != std::size_t(-1))
       {
-        TRE_LOG("model::loadfromGLTF: unkown buffer property \"" <<  nn.m_key << "\"");
+        valid = (readMaterials != nullptr && matId < readMaterials->m_list.size());
+        const json::s_node *pbr    = valid ? readMaterials->m_list[matId].find("pbrMetallicRoughness") : nullptr;
+        const json::s_node *factor = (pbr != nullptr) ? pbr->find("baseColorFactor") : nullptr;
+        if (factor != nullptr) valid = (_readFloats(factor->m_valueStr.c_str(), glm::value_ptr(p.m_baseColor), 4) == 4);
       }
-    }
-    if (isBinary && !hasURIData)
-    {
-      readerGLTF.seekg(glbNextBlock, std::ios_base::beg);
-      // read BIN chunk ...
-      uint32_t jbSize = 0, jbCode = 0;
-      readerGLTF.read(reinterpret_cast<char*>(&jbSize), sizeof(uint32_t));
-      readerGLTF.read(reinterpret_cast<char*>(&jbCode), sizeof(uint32_t));
-      if (jbCode != 0x004E4942 /* BIN */ || jbSize == 0)
+
+      if (!valid)
       {
-        TRE_LOG("Invalid chunck for the buffer " <<  readBuffersResolved.size()-1 << " of a binary GLTF file " << gltffile);
-        currentBuffer.m_rawData.clear();
+        TRE_LOG("model::loadfromGLTF: invalid or unsupported primitive \"" << p.m_name << "\" in " << gltffile);
+        return false;
       }
-      else
-      {
-        glbNextBlock += 8 + jbSize;
-        readerGLTF.read(reinterpret_cast<char*>(currentBuffer.m_rawData.data()), std::min(currentBuffer.m_rawData.size(), std::size_t(jbSize)));
-      }
+
+      p.m_flatNormals = needNormals && p.m_normal.m_data == nullptr && p.m_index.m_data != nullptr; // un-share the vertices
+      p.m_vertexCount = p.m_flatNormals ? p.m_indexCount : posCount;
+      missingUVs |= (needUVs && p.m_uv.m_data == nullptr);
+      totalVertices  += p.m_vertexCount;
+      totalTriangles += p.m_indexCount / 3;
+
+      meshParts[im].push_back(firstPartId + primitives.size());
+      primitives.push_back(p);
     }
   }
 
-  readerGLTF.close();
-
-  // fill data ...
-
-  const s_modelDataLayout &outLayout = outModel.layout();
-
-  for (s_partRead &curPartRead : partRead)
+  if (primitives.empty())
   {
-    std::size_t vertexOffset = 0;
-    curPartRead.m_partId = outModel.createPart(curPartRead.m_indexCount, curPartRead.m_vertexCount, vertexOffset);
-    outModel.renamePart(curPartRead.m_partId, curPartRead.m_name);
+    TRE_LOG("model::loadfromGLTF: no triangle primitive in " << gltffile);
+    return false;
+  }
 
-    const s_partInfo &curPartInfo = outModel.partInfo(curPartRead.m_partId);
+  // Read and check the hierarchy of the default scene
 
-    const glm::vec3 *bufferPos = nullptr;
-    const glm::vec3 *bufferNor = nullptr;
-    const glm::vec2 *bufferUV = nullptr;
-    const glm::vec4 *bufferColor = nullptr;
-    const uint32_t  *bufferJoint32_x4 = nullptr;
-    const uint16_t  *bufferJoint16_x4 = nullptr;
-    const glm::vec4 *bufferWeight = nullptr;
-    const uint32_t  *bufferInd32 = nullptr;
-    const uint16_t  *bufferInd16 = nullptr;
-
-    if (curPartRead.m_bufferViewId_pos < readBufferViews->m_list.size())
+  std::vector<s_modelHierarchy> rootNodes;
+  if (readScenes != nullptr && !readScenes->m_list.empty())
+  {
+    const std::size_t        sceneId = file.m_root.get<std::size_t>("scene", 0);
+    const json::s_node       noNodes;
+    const json::s_node       &nodes = (readNodes != nullptr) ? *readNodes : noNodes;
+    std::size_t              remainingNodes = nodes.m_list.size();
+    std::vector<std::size_t> rootIds;
+    const json::s_node       *sceneNodes = (sceneId < readScenes->m_list.size()) ? readScenes->m_list[sceneId].find("nodes") : nullptr;
+    if (sceneNodes != nullptr) _numberList_to_Vector(sceneNodes->m_valueStr, rootIds);
+    bool valid = (sceneId < readScenes->m_list.size());
+    for (std::size_t nid : rootIds)
     {
-      std::size_t bufIdx = 0, bufOffset = 0;
-      _GLTF_readBufferView(readBufferViews->m_list[curPartRead.m_bufferViewId_pos], bufIdx, bufOffset, curPartRead.m_vertexCount * 3 * sizeof(float));
-      TRE_ASSERT(bufOffset < readBuffersResolved[bufIdx].m_rawData.size());
-      bufferPos =  reinterpret_cast<const glm::vec3*>(& readBuffersResolved[bufIdx].m_rawData[bufOffset]);
+      rootNodes.emplace_back();
+      valid = valid && _GLTF_appendNode(nodes, meshParts, nid, remainingNodes, rootNodes.back());
     }
-    if (bufferPos == nullptr)
+    if (!valid)
     {
-      TRE_LOG("model::loadfromGLTF: no position-buffer found for mesh \"" << curPartInfo.m_name << "\". Abort.");
+      TRE_LOG("model::loadfromGLTF: invalid scene or nodes in " << gltffile);
       return false;
     }
-
-    if (curPartRead.m_bufferViewId_normal < readBufferViews->m_list.size())
-    {
-      std::size_t bufIdx = 0, bufOffset = 0;
-      _GLTF_readBufferView(readBufferViews->m_list[curPartRead.m_bufferViewId_normal], bufIdx, bufOffset, curPartRead.m_vertexCount * 3 * sizeof(float));
-      TRE_ASSERT(bufOffset < readBuffersResolved[bufIdx].m_rawData.size());
-      bufferNor =  reinterpret_cast<const glm::vec3*>(& readBuffersResolved[bufIdx].m_rawData[bufOffset]);
-    }
-    if (bufferNor == nullptr && outLayout.m_normals.hasData())
-    {
-      TRE_LOG("model::loadfromGLTF: no normal-buffer found for mesh \"" << curPartInfo.m_name << "\" but the model has normal-data. Zeros will be written."); // TODO: compute the normal (oriented triangle assumed)
-    }
-
-    if (curPartRead.m_bufferViewId_uv < readBufferViews->m_list.size())
-    {
-      std::size_t bufIdx = 0, bufOffset = 0;
-      _GLTF_readBufferView(readBufferViews->m_list[curPartRead.m_bufferViewId_uv], bufIdx, bufOffset, curPartRead.m_vertexCount * 2 * sizeof(float));
-      TRE_ASSERT(bufOffset < readBuffersResolved[bufIdx].m_rawData.size());
-      bufferUV =  reinterpret_cast<const glm::vec2*>(& readBuffersResolved[bufIdx].m_rawData[bufOffset]);
-    }
-    if (bufferUV == nullptr && outLayout.m_uvs.hasData())
-    {
-      TRE_LOG("model::loadfromGLTF: no uv-buffer found for mesh \"" << curPartInfo.m_name << "\" but the model has uv-data. Zeros will be written.");
-    }
-
-    if (curPartRead.m_bufferViewId_color < readBufferViews->m_list.size())
-    {
-      std::size_t bufIdx = 0, bufOffset = 0;
-      _GLTF_readBufferView(readBufferViews->m_list[curPartRead.m_bufferViewId_color], bufIdx, bufOffset, curPartRead.m_vertexCount * 4 * sizeof(float));
-      TRE_ASSERT(bufOffset < readBuffersResolved[bufIdx].m_rawData.size());
-      bufferColor = reinterpret_cast<const glm::vec4*>(& readBuffersResolved[bufIdx].m_rawData[bufOffset]);
-    }
-    if (bufferColor == nullptr && outLayout.m_colors.hasData())
-    {
-      TRE_LOG("model::loadfromGLTF: no color-buffer found for mesh \"" << curPartInfo.m_name << "\" but the model has color-data. Zeros will be written.");
-    }
-
-    if (curPartRead.m_bufferViewId_index < readBufferViews->m_list.size())
-    {
-      std::size_t bufIdx = 0, bufOffset = 0;
-      _GLTF_readBufferView(readBufferViews->m_list[curPartRead.m_bufferViewId_index], bufIdx, bufOffset, curPartInfo.m_size * (curPartRead.m_indiceHalf ? 2 : 4));
-      if (bufOffset < readBuffersResolved[bufIdx].m_rawData.size())
-      {
-        if (curPartRead.m_indiceHalf) bufferInd16 =  reinterpret_cast<const uint16_t*>(& readBuffersResolved[bufIdx].m_rawData[bufOffset]);
-        else                          bufferInd32 =  reinterpret_cast<const uint32_t*>(& readBuffersResolved[bufIdx].m_rawData[bufOffset]);
-      }
-    }
-    if (bufferInd32 == nullptr && bufferInd16 == nullptr)
-    {
-      TRE_LOG("model::loadfromGLTF: no index-buffer found for mesh \"" << curPartInfo.m_name << "\". Abort.");
-      return false;
-    }
-
-    // fill vertex-data
-    for (std::size_t iv = 0; iv < curPartRead.m_vertexCount; ++iv)
-    {
-      const glm::vec3 pos = *bufferPos++;
-      outLayout.m_positions.get<glm::vec3>(vertexOffset + iv) = pos;
-
-      const_cast<s_partInfo&>(curPartInfo).m_bbox.addPointInBox(pos);
-
-      if (outLayout.m_normals.hasData())
-        outLayout.m_normals.get<glm::vec3>(vertexOffset + iv) = bufferNor != nullptr ? *bufferNor++ : glm::vec3(0.f);
-
-      if (outLayout.m_uvs.hasData())
-        outLayout.m_uvs.get<glm::vec2>(vertexOffset + iv) = bufferUV != nullptr ? *bufferUV++ : glm::vec2(0.f);
-
-      if (outLayout.m_colors.hasData())
-        outLayout.m_colors.get<glm::vec4>(vertexOffset + iv) = bufferColor != nullptr ? *bufferColor++ : glm::vec4(0.f);
-
-      if (outLayout.m_skins.hasData())
-        outLayout.m_skins.get<glm::vec2>(vertexOffset + iv) = glm::vec2(0.f); // TODO
-    }
-
-    // fill index-data
-    if (bufferInd32 != nullptr)
-    {
-      for (std::size_t ii = 0; ii < curPartInfo.m_size; ++ii)
-        outLayout.m_index[curPartInfo.m_offset + ii] = vertexOffset + *bufferInd32++;
-    }
-    else // if (bufferInd16 != nullptr)
-    {
-      for (std::size_t ii = 0; ii < curPartInfo.m_size; ++ii)
-        outLayout.m_index[curPartInfo.m_offset + ii] = vertexOffset + (uint32_t(*bufferInd16++) & 0x0000FFFF);
-    }
   }
 
-  // read model hierarchy
-  if (readScenes != nullptr && readNodes != nullptr)
+  // Write into the model
+
+  if (outModel.partCount() == 0) outModel.reserveVertex(totalVertices); // single allocation
+
+  for (std::size_t ip = 0; ip < primitives.size(); ++ip)
   {
-    struct s_nodeRead
-    {
-      std::size_t              m_meshId;
-      glm::mat4                m_tr;
-      std::vector<std::size_t> m_children;
+    const s_primitive &p = primitives[ip];
 
-      static void appendNodeToHierarchy(const std::vector<s_nodeRead> &nr, const std::vector<s_partRead> &pr, std::size_t nid, s_modelHierarchy &out) // recursive
-      {
-        const s_nodeRead &nri = nr[nid];
-        out.m_partId = -1;
-        if (nri.m_meshId != -1)
-        {
-          for (const s_partRead &prl : pr)
-          {
-            if (prl.m_meshId == nri.m_meshId)
-            {
-              out.m_partId = prl.m_partId;
-              break; // TODO: we can have multiple entries ...
-            }
-          }
-        }
-        out.m_transform = nri.m_tr;
-        for (std::size_t cid : nri.m_children)
-        {
-          TRE_ASSERT(cid < nr.size());
-          out.m_childs.emplace_back();
-          appendNodeToHierarchy(nr, pr, cid, out.m_childs.back());
-        }
-      }
-    };
-    std::vector<s_nodeRead> nodeRead;
+    std::size_t       firstVertex = 0;
+    const std::size_t partId = outModel.createPart(p.m_indexCount, p.m_vertexCount, firstVertex);
+    TRE_ASSERT(partId == firstPartId + ip);
+    outModel.renamePart(partId, p.m_name);
 
-    for (const json::s_node &nn : readNodes->m_list)
+    for (std::size_t iv = 0; iv < p.m_vertexCount; ++iv)
     {
-      TRE_ASSERT(nn.m_key.compare("list-element") == 0);
-      std::size_t meshId = -1;
-      std::size_t sinkId = -1;
-      std::vector<std::size_t> children;
-      glm::vec3 tr = glm::vec3(0.f);
-      glm::quat rot = glm::quat(1.f, 0.f, 0.f, 0.f);
-      for (const json::s_node &nns : nn.m_list)
+      const std::size_t src = p.m_flatNormals ? p.m_index.readUInt(iv) : iv;
+      const std::size_t dst = firstVertex + iv;
+      p.m_pos.readFloats(src, glm::value_ptr(outLayout.m_positions.get<glm::vec3>(dst)), 3);
+      if (needNormals)
       {
-        if      (nns.m_key.compare("mesh") == 0) _readNumber(nns.m_valueStr, meshId);
-        else if (nns.m_key.compare("skin") == 0) _readNumber(nns.m_valueStr, sinkId);
-        else if (nns.m_key.compare("translation") == 0) sscanf(nns.m_valueStr.data(),"%f %f %f",&tr.x, &tr.y, &tr.z);
-        else if (nns.m_key.compare("rotation") == 0) sscanf(nns.m_valueStr.data(),"%f %f %f %f",&rot.x, &rot.y, &rot.z,&rot.w);
-        else if (nns.m_key.compare("children") == 0) _numberList_to_Vector(nns.m_valueStr, children);
+        glm::vec3 &n = outLayout.m_normals.get<glm::vec3>(dst);
+        n = glm::vec3(0.f);
+        p.m_normal.readFloats(src, glm::value_ptr(n), 3);
       }
-      nodeRead.emplace_back();
-      s_nodeRead &curNode = nodeRead.back();
-      curNode.m_tr = glm::mat4_cast(rot);
-      curNode.m_tr[3] = glm::vec4(tr, 1.f);
-      curNode.m_children = children;
-      curNode.m_meshId = meshId; // might be invalid (-1)
+      if (needUVs)
+      {
+        glm::vec2 &uv = outLayout.m_uvs.get<glm::vec2>(dst);
+        uv = glm::vec2(0.f);
+        p.m_uv.readFloats(src, glm::value_ptr(uv), 2);
+      }
+      if (needColors)
+      {
+        glm::vec4 c = glm::vec4(1.f);
+        p.m_color.readFloats(src, glm::value_ptr(c), 4);
+        outLayout.m_colors.get<glm::vec4>(dst) = c * p.m_baseColor;
+      }
+      if (needSkins)
+        outLayout.m_skins.get<glm::vec2>(dst) = glm::vec2(0.f); // TODO
     }
 
-    for (const json::s_node &n : readScenes->m_list)
+    const s_partInfo &pInfo = outModel.partInfo(partId);
+    for (std::size_t ii = 0; ii < p.m_indexCount; ++ii)
     {
-      TRE_ASSERT(n.m_key.compare("list-element") == 0);
-
-      // read the scene
-      std::vector<std::size_t> sceneRootNodes;
-      for (const json::s_node &nn : n.m_list)
-      {
-        if (nn.m_key.compare("nodes") == 0) _numberList_to_Vector(nn.m_valueStr, sceneRootNodes);
-      }
-
-      for (std::size_t nid : sceneRootNodes)
-      {
-        TRE_ASSERT(nid < nodeRead.size());
-        outHierarchy.m_childs.emplace_back();
-        s_nodeRead::appendNodeToHierarchy(nodeRead, partRead, nid, outHierarchy.m_childs.back());
-      }
+      const std::size_t ind = (p.m_index.m_data != nullptr && !p.m_flatNormals) ? p.m_index.readUInt(ii) : ii;
+      outLayout.m_index[pInfo.m_offset + ii] = GLuint(firstVertex + ind);
     }
+
+    outModel.computeBBoxPart(partId);
+
+    if (needNormals && p.m_normal.m_data == nullptr)
+      modelTools::computeOutNormal(outLayout, outModel.partInfo(partId), true); // flat (vertices are not shared), counter-clockwise faces
   }
 
-  outHierarchy.m_partId = std::size_t(-1);   // the root has no part-id,
-  outHierarchy.m_transform = glm::mat4(1.f); // neither transform
+  for (s_modelHierarchy &h : rootNodes) outHierarchy.m_childs.push_back(std::move(h));
+  outHierarchy.m_partId    = std::size_t(-1); // the root has no part-id,
+  outHierarchy.m_transform = glm::mat4(1.f);  // neither transform
 
-  // End
-  TRE_LOG("Load " << gltffile << " (new parts=" << partRead.size() << ")" <<
-          ", model total (vertices=" << outLayout.m_vertexCount << ", triangles=" << (outLayout.m_indexCount) / 3 << ")");
+  // Report
 
+  if (missingUVs)
+    TRE_LOG("Warning: the model asks for uvs, but some primitives of the GLTF file " << gltffile << " have none. The uvs are filled with zeros.");
+
+  TRE_LOG("Load " << gltffile << " (new parts=" << primitives.size() <<
+          ", vertices+=" << totalVertices << ", triangles+=" << totalTriangles << ")" <<
+          ", model total (vertices=" << outLayout.m_vertexCount << ")");
   return true;
 }
 

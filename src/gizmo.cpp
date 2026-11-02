@@ -121,6 +121,7 @@ bool gizmo::acceptEvent(const SDL_Event &event)
       SetMode(GMODE_SCALING);
       eventAccepted = true;
     }
+    break;
   case SDL_MOUSEBUTTONDOWN:
     if (event.button.button == SDL_BUTTON_LEFT)
     {

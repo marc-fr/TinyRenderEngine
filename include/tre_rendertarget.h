@@ -27,6 +27,7 @@ public:
   static const int RT_SAMPLABLE       = RT_COLOR_SAMPLABLE | RT_DEPTH_SAMPLABLE;
 
   renderTarget(const int flags) : m_flags(flags) {}
+  //renderTarget(const renderTarget &) = delete;
   ~renderTarget() { TRE_ASSERT(m_drawFBO == 0); }
 
   bool load(const int pwidth, const int pheigth);

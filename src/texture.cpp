@@ -267,7 +267,7 @@ bool texture::loadArray(const span<SDL_Surface*> &surfaces, int modemask, const 
 
 bool texture::loadCube(const std::array<SDL_Surface *, 6> &cubeFaces, int modemask, const bool freeSurface)
 {
-  const bool isValid = ((cubeFaces[0] != nullptr) & (cubeFaces[1] != nullptr) & (cubeFaces[1] != nullptr) &
+  const bool isValid = ((cubeFaces[0] != nullptr) & (cubeFaces[1] != nullptr) & (cubeFaces[2] != nullptr) &
                         (cubeFaces[3] != nullptr) & (cubeFaces[4] != nullptr) & (cubeFaces[5] != nullptr));
 
   if (!isValid)
@@ -966,7 +966,7 @@ bool texture::writeArray(std::ostream& outbuffer, const span<SDL_Surface*> &surf
 
 bool texture::writeCube(std::ostream &outbuffer, const std::array<SDL_Surface *, 6> &cubeFaces, int modemask, const bool freeSurface)
 {
-  const bool isValid = ((cubeFaces[0] != nullptr) & (cubeFaces[1] != nullptr) & (cubeFaces[1] != nullptr) &
+  const bool isValid = ((cubeFaces[0] != nullptr) & (cubeFaces[1] != nullptr) & (cubeFaces[2] != nullptr) &
                         (cubeFaces[3] != nullptr) & (cubeFaces[4] != nullptr) & (cubeFaces[5] != nullptr));
 
   int components = isValid ? cubeFaces[0]->format->BytesPerPixel : 4 /*whatever*/;

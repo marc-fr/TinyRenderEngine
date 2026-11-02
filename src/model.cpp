@@ -2397,7 +2397,7 @@ void modelStaticIndexed3D::resizeVertex(std::size_t count)
   std::size_t dataOffset = 0;
 
 #define SETLAYOUT(_flag, _vdata) \
-  if (m_flags & _flag) \
+  if (m_flags & (_flag)) \
   { \
     _vdata.m_stride = _vdata.m_size; \
     _vdata.m_data = m_VBuffer.data() + dataOffset; \
@@ -2591,7 +2591,7 @@ void modelSemiDynamic3D::resizeVertex(std::size_t count)
   std::size_t dataOffset = 0;
 
 #define SETLAYOUT(_flag, _vdata) \
-  if (m_flagsDynamic & _flag) \
+  if (m_flagsDynamic & (_flag)) \
   { \
     _vdata.m_stride = sumSize; \
     _vdata.m_data = m_VBufferDyn.data() + dataOffset; \
@@ -2771,7 +2771,7 @@ void modelInstanced::resizeInstance(std::size_t count)
   std::size_t dataOffset = 0;
 
 #define SETLAYOUT(_flag, _vdata) \
-  if (m_flagsInstanced & _flag) \
+  if (m_flagsInstanced & (_flag)) \
   { \
     _vdata.m_stride = sumSize; \
     _vdata.m_data = m_InstBuffer.data() + dataOffset; \

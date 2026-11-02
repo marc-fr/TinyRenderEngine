@@ -155,13 +155,13 @@ public:
                             const glm::vec2 & centerB, const float radiusB);
 
   /// Check intersection of a convex polygon [ptsA...] and a convex polygon [ptsB...]  => no contact info
-  static bool poly_poly(const std::vector<glm::vec2> ptsA,
-                        const std::vector<glm::vec2> ptsB);
+  static bool poly_poly(const std::vector<glm::vec2> &ptsA,
+                        const std::vector<glm::vec2> &ptsB);
 
   /// Check intersection of a convex polygon [ptsA...] and a convex polygon [ptsB...]
   static bool poly_poly(s_contact2D & cntPolyA,
-                        const std::vector<glm::vec2> ptsA,
-                        const std::vector<glm::vec2> ptsB);
+                        const std::vector<glm::vec2> &ptsA,
+                        const std::vector<glm::vec2> &ptsB);
 
   /// @}
 
@@ -191,7 +191,7 @@ public:
   /// Check if the ray (origin, direction) hits the convexe polygon (pts...). Returns true when the ray hits the surface.
   static bool raytrace_poly(s_contact2D &hitInfo,
                             const glm::vec2 & origin, const glm::vec2 & direction,
-                            const std::vector<glm::vec2> pts);
+                            const std::vector<glm::vec2> &pts);
 
  /// @}
 };

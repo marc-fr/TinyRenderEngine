@@ -42,7 +42,7 @@ inline static float tri_area(const glm::vec2 &ptA, const glm::vec2 &ptB, const g
 // ----------------------------------------------------------------------------
 
 /// Compute the barycenter of the convex polygon {pts...}. Also compute the aera.
-static void poly_barycenter(const std::vector<glm::vec2> pts, glm::vec2 &center, float &aera)
+static void poly_barycenter(const std::vector<glm::vec2> &pts, glm::vec2 &center, float &aera)
 {
   center = glm::vec2(0.f);
   aera = 0.f;
@@ -351,9 +351,8 @@ bool s_contact2D::cross_yline_line(glm::vec2 &crossPt,
 
   const glm::vec2 vAB = ptB - ptA;
   const glm::vec2 vA0 = glm::vec2(0.f, y0 - ptA.y);
-
-  crossPt = glm::vec2(ptA.x + vAB.x * vA0.y / vAB.y, y0);
-
+  const float a = std::abs(vAB.y) < 1.e-6f ? 0.5f : vA0.y / vAB.y;
+  crossPt = glm::vec2(ptA.x + vAB.x * a, y0);
   return true;
 }
 
@@ -882,8 +881,8 @@ bool s_contact2D::circle_circle(s_contact2D &cntCircleA,
 
 // ----------------------------------------------------------------------------
 
-bool s_contact2D::poly_poly(const std::vector<glm::vec2> ptsA,
-                            const std::vector<glm::vec2> ptsB)
+bool s_contact2D::poly_poly(const std::vector<glm::vec2> &ptsA,
+                            const std::vector<glm::vec2> &ptsB)
 {
   const std::size_t NptsA = ptsA.size();
   const std::size_t NptsB = ptsB.size();
@@ -920,8 +919,8 @@ bool s_contact2D::poly_poly(const std::vector<glm::vec2> ptsA,
 // ----------------------------------------------------------------------------
 
 bool s_contact2D::poly_poly(s_contact2D &cntPolyA,
-                            const std::vector<glm::vec2> ptsA,
-                            const std::vector<glm::vec2> ptsB)
+                            const std::vector<glm::vec2> &ptsA,
+                            const std::vector<glm::vec2> &ptsB)
 {
   const std::size_t NptsA = ptsA.size();
   const std::size_t NptsB = ptsB.size();
@@ -1223,7 +1222,7 @@ bool s_contact2D::raytrace_circle(s_contact2D &hitInfo,
 
 bool s_contact2D::raytrace_poly(s_contact2D &hitInfo,
                                 const glm::vec2 &origin, const glm::vec2 &direction,
-                                const std::vector<glm::vec2> pts)
+                                const std::vector<glm::vec2> &pts)
 {
   TRE_ASSERT(fabsf(glm::length(direction) - 1.f) <= 1.e-6f);
 
