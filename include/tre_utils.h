@@ -345,6 +345,9 @@ struct s_boundbox
   void addPointInBox(const glm::vec3 &pt) { m_min = glm::min(m_min, pt); m_max = glm::max(m_max, pt); }
   void addPointInBox(float px, float py, float pz = 0.f) { addPointInBox(glm::vec3(px,py,pz)); }
 
+  void addPointInBox(const glm::vec3 &pt, const glm::vec3 &size) { m_min = glm::min(m_min, pt - size); m_max = glm::max(m_max, pt + size); }
+  void addPointInBox(const glm::vec3 &pt, const float      size) { m_min = glm::min(m_min, pt - size); m_max = glm::max(m_max, pt + size); }
+
   inline bool valid() const { return glm::all(glm::lessThanEqual(m_min, m_max)); }
   inline glm::vec3 center() const { return 0.5f * (m_min + m_max); }
   inline glm::vec3 extend() const { return m_max - m_min; }
