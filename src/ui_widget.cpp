@@ -26,7 +26,7 @@ void widget::acceptEventBase_focus(s_eventIntern &event)
   const bool isOverCurr = getIsOverPosition(event.mousePos);
   const bool isOverPrev = getIsOverPosition(event.mousePosPrev);
   const bool isPressed  = event.mouseButtonIsPressed != 0;
-  const bool isFocused = (isOverCurr && !isPressed) || (isOverPrev && isPressed);
+  const bool isFocused = (isOverCurr) || (isOverPrev && isPressed);
 
   if (wishighlighted == true && isFocused == false)
   {
@@ -37,7 +37,7 @@ void widget::acceptEventBase_focus(s_eventIntern &event)
     if (wcb_gain_focus != nullptr) wcb_gain_focus(this);
   }
   set_ishighlighted(isFocused);
-  event.accepted |= isFocused; // note: discard events for other widgets (for ex, another window behind). TODO: acceptedWeak / acceptedStrong
+  event.accepted |= isFocused; // note: discard events for other widgets (TODO better)
 }
 
 void widget::acceptEventBase_click(s_eventIntern &event)
@@ -57,11 +57,6 @@ void widget::acceptEventBase_click(s_eventIntern &event)
     event.accepted = true;
     if (wcb_clicked_right != nullptr) wcb_clicked_right(this);
   }
-}
-
-bool widget::hasPointerCapture() const
-{
-  return m_parentWindow != nullptr && m_parentWindow->get_pointerCapture() == this;
 }
 
 void widget::setUpdateNeededAddress() const
@@ -339,7 +334,7 @@ void widgetTextEdit::acceptEvent(s_eventIntern &event)
   if (!wisEditing)
   {
     acceptEventBase_focus(event);
-    if (wishighlighted && event.isNewPress(SDL_BUTTON_LMASK) && !event.cancel)
+    if (wishighlighted && event.isNewPress(SDL_BUTTON_LMASK))
     {
       startEditing();
       event.accepted = true;
@@ -349,12 +344,6 @@ void widgetTextEdit::acceptEvent(s_eventIntern &event)
 
   // stop editing ?
 
-  if (event.cancel)
-  {
-    acceptEventBase_focus(event);
-    stopEditing();
-    return;
-  }
   if (event.isNewPress())
   {
     acceptEventBase_focus(event);
@@ -638,10 +627,9 @@ void widgetBar::acceptEvent(s_eventIntern &event)
 
   if (!wiseditable) return;
 
-  // drag: from the press on the widget (the window gives the pointer-capture after this call), until the release
-  const bool isStarting = event.isNewPress(SDL_BUTTON_LMASK) && wishighlighted && !event.cancel;
-  const bool isDragging = hasPointerCapture() && (event.mouseButtonIsPressed & SDL_BUTTON_LMASK) != 0;
-  const bool isEnding   = hasPointerCapture() && event.isRelease(SDL_BUTTON_LMASK);
+  const bool isStarting = event.isNewPress(SDL_BUTTON_LMASK) && wishighlighted;
+  const bool isDragging = wishighlighted && (event.mouseButtonIsPressed & SDL_BUTTON_LMASK) != 0;
+  const bool isEnding   = wishighlighted && event.isRelease(SDL_BUTTON_LMASK);
   const int  wheel     = wishighlighted ? wheelSteps(event) : 0;
 
   if (isStarting || isDragging || isEnding)
@@ -880,10 +868,9 @@ void widgetSlider::acceptEvent(s_eventIntern &event)
 
   if (!wiseditable) return;
 
-  // drag: from the press on the widget (the window gives the pointer-capture after this call), until the release
-  const bool isStarting = event.isNewPress(SDL_BUTTON_LMASK) && wishighlighted && !event.cancel;
-  const bool isDragging = hasPointerCapture() && (event.mouseButtonIsPressed & SDL_BUTTON_LMASK) != 0;
-  const bool isEnding   = hasPointerCapture() && event.isRelease(SDL_BUTTON_LMASK);
+  const bool isStarting = event.isNewPress(SDL_BUTTON_LMASK) && wishighlighted;
+  const bool isDragging = wishighlighted && (event.mouseButtonIsPressed & SDL_BUTTON_LMASK) != 0;
+  const bool isEnding   = wishighlighted && event.isRelease(SDL_BUTTON_LMASK);
   const int  wheel = wishighlighted ? wheelSteps(event) : 0;
 
   if (isStarting || isDragging || isEnding)
@@ -1044,9 +1031,9 @@ void widgetSliderInt::acceptEvent(s_eventIntern &event)
 
   if (!wiseditable) return;
 
-  const bool isStarting = event.isNewPress(SDL_BUTTON_LMASK) && wishighlighted && !event.cancel;
-  const bool isDragging = hasPointerCapture() && (event.mouseButtonIsPressed & SDL_BUTTON_LMASK) != 0;
-  const bool isEnding   = hasPointerCapture() && event.isRelease(SDL_BUTTON_LMASK);
+  const bool isStarting = event.isNewPress(SDL_BUTTON_LMASK) && wishighlighted;
+  const bool isDragging = wishighlighted && (event.mouseButtonIsPressed & SDL_BUTTON_LMASK) != 0;
+  const bool isEnding   = wishighlighted && event.isRelease(SDL_BUTTON_LMASK);
   const int wheel = wishighlighted ? wheelSteps(event) : 0;
 
   if (isStarting || isDragging || isEnding)

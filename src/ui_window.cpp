@@ -91,10 +91,8 @@ void window::set_isactiveWindow(bool a_active)
   if (a_active == wisactive) return;
   if (a_active == false)
   {
-    releasePointerCapture();
     s_eventIntern event;
     event.accepted = true;
-    event.cancel = true;
     acceptEvent(event);
   }
   wisactive = a_active;
@@ -106,17 +104,14 @@ void window::set_isvisibleWindow(bool a_visible)
   wisvisible = a_visible;
   if (wisvisible == false)
   {
-    releasePointerCapture();
     s_eventIntern event;
     event.accepted = true;
-    event.cancel = true;
     acceptEvent(event);
   }
 }
 
 window *window::set_topbar(const std::string &name, bool canBeMoved, bool canBeClosed)
 {
-  releasePointerCapture();
   if (wOwnWidgets[0] != nullptr) delete(wOwnWidgets[0]);
 
   widgetTextTitle *wTextTitle = new widgetTextTitle;
@@ -247,7 +242,6 @@ void window::set_widget(widget * w, unsigned row, unsigned col, const unsigned s
   if (cell.m_widget != nullptr) delete(cell.m_widget);
 
   TRE_ASSERT(w->m_parentWindow == nullptr); // widget is not already added in a window.
-  TRE_ASSERT(m_captureWidget == nullptr); // no event captured yet
 
   cell.m_widget = w;
   cell.m_widget->m_parentWindow = this;
@@ -261,7 +255,6 @@ void window::set_selfwidget_Title(widgetText *w)
   if (wOwnWidgets[0] != nullptr) delete(wOwnWidgets[0]);
 
   TRE_ASSERT(w->m_parentWindow == nullptr); // widget is not already added in a window.
-  TRE_ASSERT(m_captureWidget == nullptr); // no event captured yet
 
   wOwnWidgets[0] = w;
   if (w != nullptr) wOwnWidgets[0]->m_parentWindow = this;
@@ -274,7 +267,6 @@ void window::set_selfwidget_CloseBox(widget * w)
   if (wOwnWidgets[1] != nullptr) delete(wOwnWidgets[1]);
 
   TRE_ASSERT(w->m_parentWindow == nullptr); // widget is not already added in a window.
-  TRE_ASSERT(m_captureWidget == nullptr); // no event captured yet
 
   wOwnWidgets[1] = w;
   if (w != nullptr) wOwnWidgets[1]->m_parentWindow = this;
@@ -286,7 +278,6 @@ void window::set_selfwidget_CloseBox(widget * w)
 
 void window::clear()
 {
-  releasePointerCapture();
   wlayout.clear();
 
   for (auto *widPtr : wOwnWidgets)
@@ -466,20 +457,36 @@ void window::compute_data()
 
 void window::acceptEvent(s_eventIntern &event)
 {
-  if (m_captureWidget != nullptr)
+  if (!wisactive || event.accepted)
   {
-    acceptEventCaptured(event);
+    if (wisactive && whasFocus == true)
+    {
+      if (wcb_loss_focus != nullptr) wcb_loss_focus(this);
+    }
+    whasFocus = false;
     return;
   }
 
-  acceptEventBase_focus(event);
+  const bool isOverCurr = getIsOverPosition(event.mousePos);
+  const bool isOverPrev = getIsOverPosition(event.mousePosPrev);
+  const bool isPressed  = event.mouseButtonIsPressed != 0;
+  const bool isFocused = (isOverCurr) || (isOverPrev && isPressed);
+
+  if (whasFocus == true && isFocused == false)
+  {
+    if (wcb_loss_focus != nullptr) wcb_loss_focus(this);
+  }
+  if (whasFocus == false && isFocused == true)
+  {
+    if (wcb_gain_focus != nullptr) wcb_gain_focus(this);
+  }
+
+  whasFocus = isFocused;
 
   for (const s_layoutGrid::s_cell &c : wlayout.m_cells)
   {
     if (c.m_widget != nullptr) c.m_widget->acceptEvent(event);
   }
-
-  if (!wisactive) return;
 
   for (std::size_t i = wOwnWidgets.size(); i-- != 0; ) // specific here, so "close"-widget is receiving the event first.
   {
@@ -487,63 +494,26 @@ void window::acceptEvent(s_eventIntern &event)
     if (widPtr != nullptr) widPtr->acceptEvent(event);
   }
 
-  // Start a pointer capture: the active widget under the mouse takes the mouse-button press.
-
-  if (event.isNewPress() && wisvisible && wisactive && !event.cancel)
-  {
-    widget *wCapture = nullptr;
-    for (const s_layoutGrid::s_cell &c : wlayout.m_cells)
-    {
-      widget *w = c.m_widget;
-      if (w != nullptr && w->get_isactive() && w->get_ishighlighted() && w->getIsOverPosition(event.mousePos)) { wCapture = w; break; }
-    }
-    for (std::size_t i = wOwnWidgets.size(); wCapture == nullptr && i-- != 0; )
-    {
-      widget *w = wOwnWidgets[i];
-      if (w != nullptr && w->get_isactive() && w->get_ishighlighted() && w->getIsOverPosition(event.mousePos)) wCapture = w;
-    }
-
-    if (wCapture != nullptr)
-    {
-      m_captureWidget = wCapture;
-      event.accepted = true;
-
-      if (wCapture == wOwnWidgets[0] && event.isNewPress(SDL_BUTTON_LMASK)) // the top-bar: move the window
-      {
-        m_isMoved = true;
-        if (get_parentUI()->get_dimension() == 2) wmatPrev.m3 = wmat3;
-        else                                      wmatPrev.m4 = wmat4;
-      }
-    }
-  }
-}
-
-void window::acceptEventCaptured(s_eventIntern &event)
-{
-  TRE_ASSERT(m_captureWidget != nullptr);
-
-  event.accepted = false;
-  m_captureWidget->acceptEvent(event);
-  event.accepted = true;
-
   if (m_isMoved)
   {
     if ((event.mouseButtonIsPressed & SDL_BUTTON_LMASK) != 0)
     {
       const glm::vec3 deltaMouse = event.mousePos - event.mousePosPrev;
-      if (get_parentUI()->get_dimension() == 2)
-        wmat3[2] = wmatPrev.m3 * glm::vec3(deltaMouse.x, deltaMouse.y, 1.f);
-      else
-        wmat4[3] = wmatPrev.m4 * glm::vec4(deltaMouse, 1.f);
-      m_isUpdateNeededLayout = true;
+      if (get_parentUI()->get_dimension() == 2)  wmat3[2] = wmatPrev.m3 * glm::vec3(deltaMouse.x, deltaMouse.y, 1.f);
+      else                                       wmat4[3] = wmatPrev.m4 * glm::vec4(deltaMouse, 1.f);
+       m_isUpdateNeededLayout = true;
     }
     else
     {
       m_isMoved = false;
     }
   }
-
-  if (event.mouseButtonIsPressed == 0) releasePointerCapture();
+  if (wOwnWidgets[0] != nullptr && wOwnWidgets[0]->get_ishighlighted() && event.isNewPress(SDL_BUTTON_LMASK)) // the top-bar: move the window
+  {
+    m_isMoved = true;
+    if (get_parentUI()->get_dimension() == 2) wmatPrev.m3 = wmat3;
+    else                                      wmatPrev.m4 = wmat4;
+  }
 }
 
 void window::animate(float dt)
@@ -559,34 +529,6 @@ bool window::getIsOverPosition(const glm::vec3 &position) const
 {
   return (m_zone.x <= position.x) && (m_zone.x + m_zone.z >= position.x) &&
          (m_zone.y <= position.y) && (m_zone.y + m_zone.w >= position.y);
-}
-
-void window::acceptEventBase_focus(s_eventIntern &event)
-{
-  if (!wisactive || event.accepted)
-  {
-    if (wisactive && whasFocus == true)
-    {
-      if (wcb_loss_focus != nullptr) wcb_loss_focus(this);
-    }
-    whasFocus = false;
-    return;
-  }
-
-  const bool isOverCurr = getIsOverPosition(event.mousePos);
-  const bool isOverPrev = getIsOverPosition(event.mousePosPrev);
-  const bool isPressed  = event.mouseButtonIsPressed != 0;
-  const bool isFocused = (isOverCurr && !isPressed) || (isOverPrev && isPressed);
-
-  if (whasFocus == true && isFocused == false)
-  {
-    if (wcb_loss_focus != nullptr) wcb_loss_focus(this);
-  }
-  if (whasFocus == false && isFocused == true)
-  {
-    if (wcb_gain_focus != nullptr) wcb_gain_focus(this);
-  }
-  whasFocus = isFocused;
 }
 
 } // namespace ui

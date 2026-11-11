@@ -113,7 +113,6 @@ struct s_eventIntern
   const char *textInput = nullptr; ///< when using SDL_TextInput mode
 
   bool accepted = false;
-  bool cancel = false;
 
   bool isNewPress(unsigned mask = ~0u) const { return (mouseButtonIsPressed & ~mouseButtonPrev & mask) != 0; }
   bool isRelease(unsigned mask = ~0u) const { return (~mouseButtonIsPressed & mouseButtonPrev & mask) != 0; }
@@ -149,8 +148,8 @@ public:
   /// @name callbacks
   /// @{
 public:
-  std::function<void(widget *)> wcb_gain_focus = nullptr; ///< Triggered when the widget gain focus. No need to set hasfocus = true (done internally).
-  std::function<void(widget *)> wcb_loss_focus = nullptr; ///< Triggered when the widget gain focus. No need to set hasfocus = false (done internally).
+  std::function<void(widget *)> wcb_gain_focus = nullptr; ///< Triggered when the widget gains focus.
+  std::function<void(widget *)> wcb_loss_focus = nullptr; ///< Triggered when the widget loses focus.
 
   std::function<void(widget *)> wcb_modified_ongoing = nullptr; ///< Triggered on every modifications
   std::function<void(widget *)> wcb_modified_finished = nullptr; ///< Triggered only at the last modification
@@ -208,7 +207,6 @@ protected:
   /// @{
 public:
   bool getIsOverPosition(const glm::vec3 & position) const { return (m_zone.x <= position.x) && (m_zone.z >= position.x) && (m_zone.y <= position.y) && (m_zone.w >= position.y); } ///< Return true if the position is under the m_zone. Local space position. z is ignored.
-  bool hasPointerCapture() const;
   void setUpdateNeededAddress() const;
   void setUpdateNeededLayout() const;
   void setUpdateNeededData() const;
@@ -561,7 +559,7 @@ public:
     atype w##aname = ainit;
 
   window_PROPERTY(bool,isvisible, true, m_isUpdateNeededDummy);
-  window_PROPERTY(bool,isactive, true, m_isUpdateNeededDummy);
+  window_PROPERTY(bool,isactive, true, m_isUpdateNeededDummy); ///< When true, the window (and its widgets) receives events and can trigger callbacks
   window_PROPERTY(s_size, lineHeight, s_size(16, SIZE_PIXEL), m_isUpdateNeededLayout)
   window_PROPERTY(s_size, fontHeight, s_size(20, SIZE_PIXEL), m_isUpdateNeededLayout)
   window_PROPERTY(glm::vec4, colormask, glm::vec4(1.f), m_isUpdateNeededData)
@@ -596,7 +594,6 @@ public:
 public:
   const s_layoutGrid &get_layout() const { return wlayout; }
   glm::vec4 get_zone() { compute_layout(); return glm::vec4(m_zone.x, m_zone.y, m_zone.x + m_zone.z, m_zone.y + m_zone.w); } ///< Returns (xmin, ymin, xmax, ymax)
-  widget *get_pointerCapture() const { return m_captureWidget; } ///< Returns the widget that captures the pointer (or null)
   /// @}
 
   /// @name self-implementation
@@ -605,12 +602,9 @@ protected:
   void compute_adressPlage();
   void compute_data();
   void acceptEvent(s_eventIntern &event);
-  void acceptEventCaptured(s_eventIntern &event);
-  void releasePointerCapture() { m_captureWidget = nullptr; m_isMoved = false; }
   void animate(float dt);
   void clear();
   bool getIsOverPosition(const glm::vec3 & position) const;
-  void acceptEventBase_focus(s_eventIntern &event);
 public:
   void setUpdateNeededAddress() { m_isUpdateNeededAddress = true; } ///< object's Address update is needed (nbr of vertice changed, ...)
   void setUpdateNeededLayout() { m_isUpdateNeededLayout = true; } ///< layout update is needed (widget gets resized, ..., typically when get_zoneSizeDefault() will return a new different value)
@@ -623,7 +617,6 @@ private:
   std::array<widget*, 2> wOwnWidgets {};
   union { glm::mat3 m3; glm::mat4 m4; } wmatPrev {}; ///< On move, store the origin matrix
   bool m_isMoved = false;
-  widget *m_captureWidget = nullptr;
 
   struct s_objAddress
   {
@@ -680,8 +673,8 @@ public:
   /// @name callbacks
   /// @{
 public:
-  std::function<void(window *)> wcb_gain_focus = nullptr; ///< Triggered when the widget gain focus. No need to set hasfocus = true (done internally).
-  std::function<void(window *)> wcb_loss_focus = nullptr; ///< Triggered when the widget gain focus. No need to set hasfocus = false (done internally).
+  std::function<void(window *)> wcb_gain_focus = nullptr; ///< Triggered when the window gains focus.
+  std::function<void(window *)> wcb_loss_focus = nullptr; ///< Triggered when the window loses focus.
   std::function<void(window *, float)> wcb_animate = nullptr; ///< Called when the root "animate" method is called.
   /// @}
 

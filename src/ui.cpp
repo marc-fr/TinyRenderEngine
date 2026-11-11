@@ -5,7 +5,6 @@
 #include "tre_font.h"
 
 #include <atomic>
-#include <algorithm>
 
 namespace tre {
 
@@ -380,31 +379,12 @@ bool baseUI::acceptEvent(glm::ivec2 mousePosition, bool mouseLEFT, bool mouseRIG
 bool baseUI::dispatchEvent()
 {
   eventState.accepted = false;
-  eventState.cancel = false;
-
-  // only the window that holds it receives the event.
-
-  for (ui::window *win : windowsList)
-  {
-    if (win->m_captureWidget == nullptr) continue;
-    if (!win->wisvisible || !win->wisactive) // the window was hidden or disabled
-    {
-      win->releasePointerCapture();
-      continue;
-    }
-    ui::s_eventIntern eventIntern = eventState;
-    eventIntern.mousePos     = projectMouseIntoWindow(glm::vec2(eventState.mousePos), *win);
-    eventIntern.mousePosPrev = projectMouseIntoWindow(glm::vec2(eventState.mousePosPrev), *win);
-    win->acceptEvent(eventIntern);
-    eventState.accepted = true;
-    return true;
-  }
 
   ui::window *winUnderMouse = nullptr;
   for (std::size_t iw = windowsList.size(); iw-- != 0; ) // reverse order: the last window is rendered last (on the top)
   {
     ui::window *win = windowsList[iw];
-    if (!win->wisvisible) continue;
+    if (!win->wisvisible || !win->wisactive) continue;
 
     ui::s_eventIntern eventIntern = eventState;
     if (winUnderMouse == nullptr)
@@ -423,20 +403,7 @@ bool baseUI::dispatchEvent()
 
     eventState.accepted |= eventIntern.accepted;
 
-    if (winUnderMouse == nullptr && win->wisvisible && win->wisactive && win->getIsOverPosition(eventIntern.mousePos))
-      winUnderMouse = win;
-  }
-
-  if (winUnderMouse != nullptr)
-  {
-    const bool isNewPress = eventState.isNewPress();
-    if (isNewPress || eventState.mouseWheel != glm::ivec2(0)) eventState.accepted = true;
-
-    if (isNewPress && winUnderMouse->get_selfwidget_Title() != nullptr && winUnderMouse != windowsList.back())
-    {
-      std::vector<ui::window*>::iterator it = std::find(windowsList.begin(), windowsList.end(), winUnderMouse);
-      std::rotate(it, it + 1, windowsList.end());
-    }
+    if (winUnderMouse == nullptr && win->getIsOverPosition(eventIntern.mousePos)) winUnderMouse = win;
   }
 
   return eventState.accepted;
