@@ -329,7 +329,7 @@ void renderTarget::resolve(renderTarget &targetFBO) const
 
 // ============================================================================
 
-void renderTarget_ShadowMap::computeUBO_forMap(shader::s_UBOdata_sunLight & uboLight, unsigned shadowIndex, float biasFactor /* = 1.f */, float nearOffset /* = 0.f */)
+void renderTarget_ShadowMap::computeUBO_forMap(shader::s_UBOdata_sunLight & uboLight, unsigned shadowIndex, float biasFactor /* = 1.f */, float nearOffset /* = 0.f */, unsigned occluderGroup /* = 0 */)
 {
   TRE_ASSERT(m_w>=m_h); // just a matter of implementation
   TRE_ASSERT(glm::length(uboLight.direction)>0.001f);
@@ -394,7 +394,7 @@ void renderTarget_ShadowMap::computeUBO_forMap(shader::s_UBOdata_sunLight & uboL
   tre::compute3DOrthoProjection(m_mProj, 1.1f, 1.1f, -1.1f + nearOffset * scaleZ, 1.1f);
 
   uboLight.mPV[shadowIndex] = m_mProj * m_mView;
-  uboLight.mapInvDimension[shadowIndex] = glm::vec4(1.f / m_w, 1.f / m_h, biasFactor, 0.f);
+  uboLight.mapInvDimension[shadowIndex] = glm::vec4(1.f / m_w, 1.f / m_h, biasFactor, float(occluderGroup));
   uboLight.mapBoxUVNF[shadowIndex] = glm::vec4(viewExtend.x, viewExtend.y, sceneProj.m_min.z, sceneProj.m_max.z);
 }
 

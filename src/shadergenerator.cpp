@@ -69,6 +69,8 @@ void shaderGenerator::createShaderFunctions_Light(std::string &outstring)
   /// credits: https://graphicrants.blogspot.com/2013/08/specular-brdf-reference.html
   ///          https://google.github.io/filament/Filament.md.html
 
+  outstring.reserve(outstring.size() + 8192);
+
   outstring +=
     "vec3 _FresnelSchlick(vec3 F0, float cosTheta)\n"
     "{\n"
@@ -190,58 +192,83 @@ void shaderGenerator::createShaderFunctions_Light(std::string &outstring)
 
 void shaderGenerator::createShaderFunctions_Shadow(std::string &outstring)
 {
-  outstring.reserve(outstring.size() + 4096);
+  outstring.reserve(outstring.size() + 8192);
 
+  outstring += "float ShadowOcclusion_sun(float tanTheta, vec3 rawN)\n"
+               "{\n"
+               "  float islighted_sun = 1.f;\n";
+
+  // pass 1: projection, resolution and coverage of each map
+  for (unsigned iS = 0; iS < m_shadowSun_count; ++iS)
   {
-    outstring += "float ShadowOcclusion_sun(float tanTheta, vec3 rawN)\n"
-                 "{\n"
-                 "  // Note: the shadow maps share the same source light, so each map is exclusive (occlusion is taken from the best map)\n"
-                 "  float islighted_sun = 1.f;\n"
-                 "  float bestRes = 1.e30f;\n";
-
-    for (unsigned iS = 0; iS < m_shadowSun_count; ++iS)
-    {
-      const std::string str_iS = std::to_string(iS);
-      outstring += "  if (" + str_iS + " < usunlight.nShadow)\n"
-                   "  {\n"
-                   "    vec2  dxy = usunlight.mapBoxUVNF[" + str_iS + "].xy * usunlight.mapInvDimension[" + str_iS + "].xy;\n"
-                   "    float currRes = max(dxy.x, dxy.y);\n"
-                   "    float dz = 1.5f * currRes * clamp(tanTheta, 1.e-2f, 1.e2f);\n"
-                   "    float bias = usunlight.mapInvDimension[" + str_iS + "].z * dz / (usunlight.mapBoxUVNF[" + str_iS + "].w - usunlight.mapBoxUVNF[" + str_iS + "].z);\n"
-                   "    vec4  projInMap = usunlight.mPV[" + str_iS + "] * vec4(pixelPosition,1.f);\n"
-                   "    vec3  uvw = 0.5f + 0.5f * projInMap.xyz / projInMap.w;\n"
-                   "    if (uvw.x >= 0.f && uvw.x < 1.f && uvw.y >= 0.f && uvw.y < 1.f && currRes < bestRes)\n"
-                   "    {\n"
-                   "      float texDepth0 = texture(TexShadowSun" + str_iS + ",uvw.xy).r;\n"
-                   "      bestRes = currRes;\n"
-                   "      if (texDepth0 == 1.f) islighted_sun = 1.f;\n"
-                   "      else {\n"
-                   "        float islighted_sun_local = 0.f;\n"
-                   "        if (texDepth0 - uvw.z > -bias) { islighted_sun_local += 0.4f; }\n"
-                   "        vec3 dxP = vec3(dxy.x, 0.f, 0.f) - dxy.x * rawN.x * rawN;\n"
-                   "        projInMap = usunlight.mPV[" + str_iS + "] * vec4(pixelPosition - dxP,1.f);\n"
-                   "        uvw = 0.5f + 0.5f * projInMap.xyz / projInMap.w;\n"
-                   "        if (texture(TexShadowSun" + str_iS + ",uvw.xy).r - uvw.z > -bias) { islighted_sun_local += 0.15f; }\n"
-                   "        projInMap = usunlight.mPV[" + str_iS + "] * vec4(pixelPosition + dxP,1.f);\n"
-                   "        uvw = 0.5f + 0.5f * projInMap.xyz / projInMap.w;\n"
-                   "        if (texture(TexShadowSun" + str_iS + ",uvw.xy).r - uvw.z > -bias) { islighted_sun_local += 0.15f; }\n"
-                   "        vec3 dyP = vec3(0.f, dxy.y, 0.f) - dxy.y * rawN.y * rawN;\n"
-                   "        projInMap = usunlight.mPV[" + str_iS + "] * vec4(pixelPosition - dyP,1.f);\n"
-                   "        uvw = 0.5f + 0.5f * projInMap.xyz / projInMap.w;\n"
-                   "        if (texture(TexShadowSun" + str_iS + ",uvw.xy).r - uvw.z > -bias) { islighted_sun_local += 0.15f; }\n"
-                   "        projInMap = usunlight.mPV[" + str_iS + "] * vec4(pixelPosition + dyP,1.f);\n"
-                   "        uvw = 0.5f + 0.5f * projInMap.xyz / projInMap.w;\n"
-                   "        if (texture(TexShadowSun" + str_iS + ",uvw.xy).r - uvw.z > -bias) { islighted_sun_local += 0.15f; }\n"
-                   "        islighted_sun = islighted_sun_local;\n"
-                   "      }\n"
-                   "    }\n"
-                   "  }\n";
-    }
-
-    outstring += "  return islighted_sun;\n"
-                 "}\n";
-
+    const std::string i = std::to_string(iS);
+    outstring += "  vec3  uvw" + i + " = vec3(0.f);\n"
+                 "  vec2  dxy" + i + " = vec2(0.f);\n"
+                 "  float res" + i + " = 1.e30f;\n"
+                 "  bool  covXY" + i + " = false;  // the pixel is in the map's (u,v) range\n"
+                 "  bool  covXYZ" + i + " = false; // the pixel is in the map's (u,v,depth) range\n"
+                 "  if (" + i + " < usunlight.nShadow)\n"
+                 "  {\n"
+                 "    vec4 projInMap = usunlight.mPV[" + i + "] * vec4(pixelPosition,1.f);\n"
+                 "    uvw" + i + " = 0.5f + 0.5f * projInMap.xyz / projInMap.w;\n"
+                 "    dxy" + i + " = usunlight.mapBoxUVNF[" + i + "].xy * usunlight.mapInvDimension[" + i + "].xy;\n"
+                 "    res" + i + " = max(dxy" + i + ".x, dxy" + i + ".y);\n"
+                 "    covXY" + i + " = (uvw" + i + ".x >= 0.f && uvw" + i + ".x < 1.f && uvw" + i + ".y >= 0.f && uvw" + i + ".y < 1.f);\n"
+                 "    covXYZ" + i + " = covXY" + i + " && (uvw" + i + ".z >= 0.f && uvw" + i + ".z <= 1.f);\n"
+                 "  }\n";
   }
+
+  // pass 2: a map is used if it covers the pixel and if no finer map of the same group fully covers it
+  for (unsigned iS = 0; iS < m_shadowSun_count; ++iS)
+  {
+    const std::string i = std::to_string(iS);
+    outstring += "  bool use" + i + " = covXY" + i + ";\n";
+    for (unsigned jS = 0; jS < m_shadowSun_count; ++jS)
+    {
+      if (jS == iS) continue;
+      const std::string j = std::to_string(jS);
+      const std::string finer = (jS < iS) ? ("res" + j + " <= res" + i) : ("res" + j + " < res" + i); // tie: the lowest index wins
+      outstring += "  if (covXYZ" + j + " && usunlight.mapInvDimension[" + j + "].w == usunlight.mapInvDimension[" + i + "].w && " + finer + ") use" + i + " = false;\n";
+    }
+  }
+
+  // pass 3: sample the used maps, and combine
+  for (unsigned iS = 0; iS < m_shadowSun_count; ++iS)
+  {
+    const std::string i = std::to_string(iS);
+    const std::string tex = "TexShadowSun" + i;
+    outstring += "  if (use" + i + ")\n"
+                 "  {\n"
+                 "    float dz = 1.5f * res" + i + " * clamp(tanTheta, 1.e-2f, 1.e2f);\n"
+                 "    float bias = usunlight.mapInvDimension[" + i + "].z * dz / (usunlight.mapBoxUVNF[" + i + "].w - usunlight.mapBoxUVNF[" + i + "].z);\n"
+                 "    float texDepth0 = texture(" + tex + ",uvw" + i + ".xy).r;\n"
+                 "    if (texDepth0 != 1.f) // otherwise: no occluder in this map\n"
+                 "    {\n"
+                 "      float islighted_sun_local = 0.f;\n"
+                 "      if (texDepth0 - uvw" + i + ".z > -bias) { islighted_sun_local += 0.4f; }\n"
+                 "      vec4 projInMap;\n"
+                 "      vec3 uvw;\n"
+                 "      vec3 dxP = vec3(dxy" + i + ".x, 0.f, 0.f) - dxy" + i + ".x * rawN.x * rawN;\n"
+                 "      projInMap = usunlight.mPV[" + i + "] * vec4(pixelPosition - dxP,1.f);\n"
+                 "      uvw = 0.5f + 0.5f * projInMap.xyz / projInMap.w;\n"
+                 "      if (texture(" + tex + ",uvw.xy).r - uvw.z > -bias) { islighted_sun_local += 0.15f; }\n"
+                 "      projInMap = usunlight.mPV[" + i + "] * vec4(pixelPosition + dxP,1.f);\n"
+                 "      uvw = 0.5f + 0.5f * projInMap.xyz / projInMap.w;\n"
+                 "      if (texture(" + tex + ",uvw.xy).r - uvw.z > -bias) { islighted_sun_local += 0.15f; }\n"
+                 "      vec3 dyP = vec3(0.f, dxy" + i + ".y, 0.f) - dxy" + i + ".y * rawN.y * rawN;\n"
+                 "      projInMap = usunlight.mPV[" + i + "] * vec4(pixelPosition - dyP,1.f);\n"
+                 "      uvw = 0.5f + 0.5f * projInMap.xyz / projInMap.w;\n"
+                 "      if (texture(" + tex + ",uvw.xy).r - uvw.z > -bias) { islighted_sun_local += 0.15f; }\n"
+                 "      projInMap = usunlight.mPV[" + i + "] * vec4(pixelPosition + dyP,1.f);\n"
+                 "      uvw = 0.5f + 0.5f * projInMap.xyz / projInMap.w;\n"
+                 "      if (texture(" + tex + ",uvw.xy).r - uvw.z > -bias) { islighted_sun_local += 0.15f; }\n"
+                 "      islighted_sun = min(islighted_sun, islighted_sun_local);\n"
+                 "    }\n"
+                 "  }\n";
+  }
+
+  outstring += "  return islighted_sun;\n"
+               "}\n";
 }
 
 // ----------------------------------------------------------------------------

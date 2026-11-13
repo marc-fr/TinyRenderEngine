@@ -75,7 +75,9 @@ public:
   /// @brief Computes the UBO data for the shadow map
   /// @param biasFactor Bias used to avoid self-shadowing
   /// @param nearOffset Offset (in world-units) the near plane of the shadow-map projection (negative to offset towards the light source)
-  void computeUBO_forMap(shader::s_UBOdata_sunLight &uboLight, unsigned shadowIndex, float biasFactor = 1.f, float nearOffset = 0.f);
+  /// @param occluderGroup Maps of the same group hold the same occluders, which are exclusive (the finest map wins - used for cascaded maps).
+  ///                      Maps of different groups hold different occluders, which are combined.
+  void computeUBO_forMap(shader::s_UBOdata_sunLight &uboLight, unsigned shadowIndex, float biasFactor = 1.f, float nearOffset = 0.f, unsigned occluderGroup = 0);
 
   const glm::mat4 &mProj() const { return m_mProj; }
   const glm::mat4 &mView() const { return m_mView; }

@@ -85,7 +85,7 @@ public:
     float     _padding_3;
     glm::mat4 mPV[SHADOW_SUN_MAX];             ///< For each shadow-map, the proj-view matrix
     glm::vec4 mapBoxUVNF[SHADOW_SUN_MAX];      ///< For each shadow-map, the world-dimension of the shadow-map "frustrum" zone (dX, dY, near, far)
-    glm::vec4 mapInvDimension[SHADOW_SUN_MAX]; ///< For each shadow-map, the inverse of the dimension of the texture (1/width, 1/height), and the bias value
+    glm::vec4 mapInvDimension[SHADOW_SUN_MAX]; ///< For each shadow-map, the inverse of the dimension of the texture (1/width, 1/height), the bias value, the occluder-group
     unsigned  nShadow = 0;
     float     _padding_4[3];
   };
