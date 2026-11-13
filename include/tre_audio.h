@@ -234,7 +234,7 @@ public:
   struct s_control
   {
     s_stereoControl m_target;
-    float           m_targetDelay = -1.f;
+    float           m_targetDelay = 0.f;
     unsigned        m_cursor = unsigned(-1);
     bool            m_isPlaying = false;
     bool            m_isRepeating = false;
@@ -256,7 +256,7 @@ public:
   // safe data for the audio-callback. Resync them with 'sync' method.
 protected:
   s_control       ac_control;
-  s_stereoControl ac_mixPrev;
+  s_stereoControl ac_mixPrev = s_stereoControl(0.f, 0.f);
   uint64_t        ac_phase = 0; ///< play position: packed (sample-id 32bits) and (interpolation-cursor 32bits)
 
   struct s_opusState; ///< Opus decoder and decoded block (defined in the cpp)
