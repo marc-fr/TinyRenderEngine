@@ -685,9 +685,13 @@ bool modelImporter::addFromGLTF(modelIndexed &outModel, s_modelHierarchy &outHie
     uint32_t readUInt(std::size_t i) const
     {
       const uint8_t *src = m_data + i * m_stride;
-      if (m_componentType == 5121) return *src;
-      if (m_componentType == 5123) return *reinterpret_cast<const uint16_t*>(src);
-      return *reinterpret_cast<const uint16_t*>(src);
+      switch (m_componentType)
+      {
+        case 5121: return *src;
+        case 5123: { uint16_t v; std::memcpy(&v, src, sizeof(v)); return v; }
+        case 5125: { uint32_t v; std::memcpy(&v, src, sizeof(v)); return v; }
+        default:   return 0; // not an index type (rejected by the caller)
+      }
     }
   };
 
