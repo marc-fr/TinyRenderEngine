@@ -232,8 +232,8 @@ static const std::array<const char*, shader::NCOMUNIFORMVAR> kUniformName =
 
 GLint shader::getUniformLocation(const uniformname utype) const
 {
-  const int itype = (const int)utype;
-  TRE_ASSERT(itype>=0 && itype<NCOMUNIFORMVAR);
+  const std::size_t itype = std::size_t(utype);
+  TRE_ASSERT(itype < std::size_t(NCOMUNIFORMVAR));
 
   GLint * puloc = const_cast<GLint*>(& m_uniformVars[itype]);
 

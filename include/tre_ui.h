@@ -94,7 +94,7 @@ struct s_colorTheme
 
 // Geometry helpers ===========================================================
 
-void fillNull(glm::vec4 * __restrict &buffer, const unsigned count);
+void fillNull(glm::vec4 * __restrict &buffer, const std::size_t count);
 void fillRect(glm::vec4 * __restrict &buffer, const glm::vec4 &AxyBxy, const glm::vec4 &color, const glm::vec4 &AuvBuv = glm::vec4(0.f));
 void fillLine(glm::vec4 * __restrict &buffer, const glm::vec2 &p1, const glm::vec2 &p2, const glm::vec4 &color);
 
@@ -165,11 +165,11 @@ public:
 protected:
   struct s_drawElementCount
   {
-    unsigned m_vcountSolid = 0; ///< Return nbr of vertices needed for solid drawing (triangles)
-    unsigned m_vcountLine = 0;  ///< Return nbr of vertices needed for solid drawing (lines)
-    unsigned m_vcountPict = 0;  ///< Return nbr of vertices needed for textured drawing
-    unsigned m_vcountText = 0;  ///< Return nbr of vertices needed for text drawing
-    unsigned m_textureSlot = -1; ///< Return texture for textured-drawing (a widget cannot use more than 1 texture slot, excluding the font of the text)
+    std::size_t m_vcountSolid = 0;  ///< Return nbr of vertices needed for solid drawing (triangles)
+    std::size_t m_vcountLine = 0;   ///< Return nbr of vertices needed for solid drawing (lines)
+    std::size_t m_vcountPict = 0;   ///< Return nbr of vertices needed for textured drawing
+    std::size_t m_vcountText = 0;   ///< Return nbr of vertices needed for text drawing
+    std::size_t m_textureSlot = -1; ///< Return texture for textured-drawing (a widget cannot use more than 1 texture slot, excluding the font of the text)
 
     s_drawElementCount operator+=(const s_drawElementCount &other)
     {
@@ -225,8 +225,8 @@ protected:
   window *m_parentWindow = nullptr;
   struct s_objAddress
   {
-    unsigned part = 0u;
-    unsigned offset = 0u;
+    std::size_t part = 0;
+    std::size_t offset = 0;
   };
   mutable s_objAddress m_adrPict, m_adrText; ///< Address plage for each specific object.
   /// @}

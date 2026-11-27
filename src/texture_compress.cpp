@@ -354,14 +354,14 @@ static void _rawCompress4x4_ALPHA_EAC(const uint8_t *pixelsIn, uint pxByteSize, 
     }
   }
 
-  compressed[ 0] = (bestEncoded_BigEndian >> 56) & 0xFF;
-  compressed[ 1] = (bestEncoded_BigEndian >> 48) & 0xFF;
-  compressed[ 2] = (bestEncoded_BigEndian >> 40) & 0xFF;
-  compressed[ 3] = (bestEncoded_BigEndian >> 32) & 0xFF;
-  compressed[ 4] = (bestEncoded_BigEndian >> 24) & 0xFF;
-  compressed[ 5] = (bestEncoded_BigEndian >> 16) & 0xFF;
-  compressed[ 6] = (bestEncoded_BigEndian >>  8) & 0xFF;
-  compressed[ 7] = (bestEncoded_BigEndian      ) & 0xFF;
+  compressed[ 0] = uint8_t(bestEncoded_BigEndian >> 56);
+  compressed[ 1] = uint8_t(bestEncoded_BigEndian >> 48);
+  compressed[ 2] = uint8_t(bestEncoded_BigEndian >> 40);
+  compressed[ 3] = uint8_t(bestEncoded_BigEndian >> 32);
+  compressed[ 4] = uint8_t(bestEncoded_BigEndian >> 24);
+  compressed[ 5] = uint8_t(bestEncoded_BigEndian >> 16);
+  compressed[ 6] = uint8_t(bestEncoded_BigEndian >>  8);
+  compressed[ 7] = uint8_t(bestEncoded_BigEndian      );
 }
 
 }

@@ -165,7 +165,7 @@ widget::s_drawElementCount widgetTextTranslatate::get_drawElementCount() const
 {
   s_drawElementCount res = widgetText::get_drawElementCount();
   for (const auto &txt : wtexts)
-    res.m_vcountText = std::max(res.m_vcountText, unsigned(textgenerator::geometry_VertexCount(txt.c_str())));
+    res.m_vcountText = std::max(res.m_vcountText, textgenerator::geometry_VertexCount(txt.c_str()));
   return res;
 }
 glm::vec2 widgetTextTranslatate::get_zoneSizeDefault(const s_drawData &dd) const
@@ -915,7 +915,7 @@ widget::s_drawElementCount widgetSliderInt::get_drawElementCount() const
   if (wwithMarkers)
   {
     const int nMarkers = wvaluemax - wvaluemin + 1;
-    res.m_vcountLine += nMarkers * 2;
+    res.m_vcountLine += int_cast<std::size_t>(nMarkers) * 2;
   }
   return res;
 }
@@ -1194,7 +1194,7 @@ widget::s_drawElementCount widgetLineChoice::get_drawElementCount() const
   s_drawElementCount res;
   res.m_vcountSolid = 6;
   for (const std::string &t : wvalues)
-    res.m_vcountText =  std::max(res.m_vcountText, unsigned(textgenerator::geometry_VertexCount(t.c_str())));
+    res.m_vcountText =  std::max(res.m_vcountText, textgenerator::geometry_VertexCount(t.c_str()));
   return res;
 }
 glm::vec2 widgetLineChoice::get_zoneSizeDefault(const s_drawData &dd) const
@@ -1342,7 +1342,7 @@ widget::s_drawElementCount widgetLineChoiceTranslate::get_drawElementCount() con
   for (const auto &vs : wvaluesTr)
   {
     for (const std::string &txt : vs)
-      res.m_vcountText = std::max(res.m_vcountText, unsigned(textgenerator::geometry_VertexCount(txt.c_str())));
+      res.m_vcountText = std::max(res.m_vcountText, textgenerator::geometry_VertexCount(txt.c_str()));
   }
   return res;
 }

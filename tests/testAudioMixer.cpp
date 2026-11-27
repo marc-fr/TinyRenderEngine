@@ -209,7 +209,7 @@ public:
     const int width = tex->w;
     uint32_t * __restrict pixels = reinterpret_cast<uint32_t*>(tex->pixels);
 
-    const int samples = data.m_nSamples;
+    const int samples = tre::int_cast<int>(data.m_nSamples);
     if (samples == 0) return;
     const int samplesPerPixel = std::max(1, samples / width);
     std::vector<float> buffer;

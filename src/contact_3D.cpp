@@ -53,7 +53,7 @@ void s_contact3D::s_skinKdTree::computeTree()
       const float     bExtendMax = std::max(std::max(bExtend.x, bExtend.y), bExtend.z);
       {
         // select split direction
-        unsigned dir = 0;
+        glm::length_t dir = 0;
         if (bExtendMax == bExtend.y) dir = 1;
         else if (bExtendMax == bExtend.z) dir = 2;
         // select the split point
@@ -80,7 +80,7 @@ void s_contact3D::s_skinKdTree::computeTree()
         // ok, do the split
         tree.push_back(s_node()); treeBox.push_back(bbA);
         tree.push_back(s_node()); treeBox.push_back(bbB);
-        tree[nid].flags = (unsigned(nidA) << 17) | (unsigned(nidB) << 2) | (dir + 1);
+        tree[nid].flags = (unsigned(nidA) << 17) | (unsigned(nidB) << 2) | (unsigned(dir) + 1);
         tree[nid].split = splitPoint;
         nodeStackNew.push_back(nidA);
         nodeStackNew.push_back(nidB);
@@ -141,7 +141,7 @@ bool _skinKdTree_contains(const s_contact3D::s_skinKdTree &skinKdTree, const glm
   while (true)
   {
     const s_contact3D::s_skinKdTree::s_node &cnode = skinKdTree.tree[nodeCurr];
-    const unsigned dir = cnode.getDir();
+    const glm::length_t dir = glm::length_t(cnode.getDir());
     if (dir != 0)
     {
       nodeCurr = (pos[dir-1] <= cnode.split) ? cnode.getLeft() : cnode.getRight();
@@ -187,7 +187,7 @@ bool _skinKdTree_raytrace(const s_contact3D::s_skinKdTree &skinKdTree, const glm
   {
     const s_kdStack                         &cs    = stack[stackId];
     const s_contact3D::s_skinKdTree::s_node &cnode = skinKdTree.tree[cs.nodeId];
-    const unsigned  dir = cnode.getDir();
+    const glm::length_t dir = glm::length_t(cnode.getDir());
 
     if (dir != 0)
     {
@@ -399,13 +399,13 @@ bool s_contact3D::point_box(s_contact3D & cntBox,
                             const s_boundbox & bbox)
 {
   const glm::vec3 vAP = point - bbox.m_min;
-  float vAPmin = vAP.x; unsigned vAPminInd = 0;
+  float vAPmin = vAP.x; glm::length_t vAPminInd = 0;
   if (vAP.y < vAPmin) { vAPmin = vAP.y; vAPminInd = 1; }
   if (vAP.z < vAPmin) { vAPmin = vAP.z; vAPminInd = 2; }
   if (vAPmin < 0.f) return false;
 
   const glm::vec3 vPB = bbox.m_max - point;
-  float vPBmin = vPB.x; unsigned vPBminInd = 0;
+  float vPBmin = vPB.x; glm::length_t vPBminInd = 0;
   if (vPB.y < vPBmin) { vPBmin = vPB.y; vPBminInd = 1; }
   if (vPB.z < vPBmin) { vPBmin = vPB.z; vPBminInd = 2; }
   if (vPBmin < 0.f) return false;
@@ -788,7 +788,7 @@ bool s_contact3D::raytrace_box(s_contact3D & hitInfo,
   const glm::vec3 vOA = box.m_min - origin;
   const glm::vec3 vOB = box.m_max - origin;
 
-  for (unsigned iAxis = 0; iAxis < 3; ++iAxis)
+  for (glm::length_t iAxis = 0; iAxis < 3; ++iAxis)
   {
     const float     dotNormalDir = direction[iAxis]; // glm::dot(planeNormal, direction);
     if (std::abs(dotNormalDir) < 1.e-3f) continue;

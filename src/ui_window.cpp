@@ -303,22 +303,22 @@ void window::compute_adressPlage()
   {
     widget::s_drawElementCount ad;
     ad.m_vcountSolid = 6; // the window's box
-    std::array<unsigned, baseUI::s_textureSlotsCount> offsetVertexPerSlot;
-    offsetVertexPerSlot.fill(0u);
+    std::array<std::size_t, baseUI::s_textureSlotsCount> offsetVertexPerSlot;
+    offsetVertexPerSlot.fill(0);
     for(const auto &cell : wlayout.m_cells)
     {
       if (cell.m_widget == nullptr) continue;
       const auto adc = cell.m_widget->get_drawElementCount();
       if (adc.m_textureSlot < baseUI::s_textureSlotsCount)
       {
-        cell.m_widget->m_adrPict.part   = unsigned(m_adrPict.part) + adc.m_textureSlot;
+        cell.m_widget->m_adrPict.part   = m_adrPict.part + adc.m_textureSlot;
         cell.m_widget->m_adrPict.offset = offsetVertexPerSlot[adc.m_textureSlot];
         offsetVertexPerSlot[adc.m_textureSlot] += adc.m_vcountPict;
       }
       else
       {
         cell.m_widget->m_adrPict.part   = 0; // no pict
-        cell.m_widget->m_adrPict.offset = 0u; // no pict
+        cell.m_widget->m_adrPict.offset = 0; // no pict
       }
       cell.m_widget->m_adrText.part   = unsigned(m_adrText.part);
       cell.m_widget->m_adrText.offset = ad.m_vcountText;

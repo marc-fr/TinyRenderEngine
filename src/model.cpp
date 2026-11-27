@@ -13,16 +13,14 @@ namespace tre {
 bool s_partInfo::read(std::istream &inbuffer)
 {
   uint32_t header[4]; // {namesize, sizeof(uint32_t), m_size, m_offset}
-  inbuffer.read(reinterpret_cast<char*>(&header[0]), sizeof(header));
+  bake::readArray(inbuffer, header, 4);
   TRE_ASSERT(header[1] == sizeof(uint32_t));
   m_size = header[2];
   m_offset = header[3];
   if (header[0] > 0)
   {
-    char *tmpname = new char[header[0]];
-    inbuffer.read(tmpname, sizeof(char) * header[0]);
-    m_name = std::string(tmpname, header[0]);
-    delete[] tmpname;
+    m_name.resize(header[0]);
+    bake::readArray(inbuffer, m_name.data(), m_name.size());
   }
   m_bbox.read(inbuffer);
   return true;
@@ -31,12 +29,12 @@ bool s_partInfo::read(std::istream &inbuffer)
 bool s_partInfo::write(std::ostream &outbuffer) const
 {
   uint32_t header[4]; // {namesize, sizeof(uint32_t), m_size, m_offset}
-  header[0] = uint32_t(m_name.size());
+  header[0] = int_cast<uint32_t>(m_name.size());
   header[1] = sizeof(uint32_t);
-  header[2] = uint32_t(m_size); TRE_ASSERT(m_size <= std::numeric_limits<uint32_t>::max());
-  header[3] = uint32_t(m_offset); TRE_ASSERT(m_offset <= std::numeric_limits<uint32_t>::max());
-  outbuffer.write(reinterpret_cast<const char*>(&header[0]), sizeof(header));
-  if (!m_name.empty()) outbuffer.write(m_name.c_str(), sizeof(char) * m_name.size());
+  header[2] = int_cast<uint32_t>(m_size);
+  header[3] = int_cast<uint32_t>(m_offset);
+  bake::writeArray(outbuffer, header, 4);
+  bake::writeArray(outbuffer, m_name.data(), m_name.size());
   m_bbox.write(outbuffer);
   return true;
 }
@@ -184,7 +182,7 @@ void model::defragmentParts()
       TRE_ASSERT(slotPart > ipart);
       s_partInfo & partToMove = m_partInfo[slotPart];
       // move the part "slotPart" elsewhere
-      int rpart = -1;
+      std::size_t rpart = std::size_t(-1);
       for (std::size_t kpart = ipart; kpart < nparts; ++kpart)
       {
         if (m_partInfo[kpart].m_offset + m_partInfo[kpart].m_size < partOffsetEnd)
@@ -824,10 +822,7 @@ bool model::readBase(std::istream &inbuffer)
 {
   bool result = true;
 
-  uint32_t partInfoSize = 0;
-  inbuffer.read(reinterpret_cast<char*>(&partInfoSize), sizeof(uint32_t));
-
-  m_partInfo.resize(partInfoSize);
+  m_partInfo.resize(bake::readCount(inbuffer));
 
   for (s_partInfo & part : m_partInfo)
     result &= part.read(inbuffer);
@@ -839,8 +834,7 @@ bool model::writeBase(std::ostream &outbuffer) const
 {
   bool result = true;
 
-  const uint32_t partInfoSize = uint32_t(m_partInfo.size());
-  outbuffer.write(reinterpret_cast<const char*>(&partInfoSize), sizeof(uint32_t));
+  bake::writeCount(outbuffer, m_partInfo.size());
 
   for (const s_partInfo & part : m_partInfo)
     result &= part.write(outbuffer);
@@ -907,7 +901,7 @@ std::size_t modelIndexed::copyPart(std::size_t ipart, std::size_t pcount)
   reserveIndex(indexCurrCount + indexAddCount);
 
   TRE_ASSERT(vertexCurrCount > vertexMin);
-  const std::size_t vertexShift = vertexCurrCount - vertexMin;
+  const GLuint vertexShift = int_cast<GLuint>(vertexCurrCount - vertexMin);
   for (std::size_t ind0 = 0; ind0 < indexAddCount; ++ind0)
   {
     const std::size_t indOld = ind0 + indexSrcFirst;
@@ -1026,7 +1020,8 @@ std::size_t modelIndexed::createPartFromIndexes(tre::span<GLuint> indices, const
   resizePart(newPartId, indices.size());
   s_partInfo & newPart = m_partInfo[newPartId];
   // copy and shift index data
-  for (std::size_t i=0; i< indices.size(); ++i) m_IBuffer[newPart.m_offset + i] = Nver0 + indices[i]; //shift !
+  const GLuint indexShift = int_cast<GLuint>(Nver0);
+  for (std::size_t i=0; i< indices.size(); ++i) m_IBuffer[newPart.m_offset + i] = indexShift + indices[i]; //shift !
   // compute size of vertices to append // TODO : gore but works
   std::size_t Nmaxvert = 0;
   for (std::size_t i=0; i< indices.size(); ++i) { if (indices[i] > Nmaxvert) Nmaxvert = indices[i]; }
@@ -1116,7 +1111,7 @@ void modelIndexed::fillDataBox(std::size_t ipart, std::size_t offsetI, std::size
     20,21,22,23,20,22, //face Y+
   };
   for (std::size_t i = 0; i < fillDataBox_ISize(); ++i)
-    m_layout.m_index[offsetI + i] = GLuint(offsetV) + bufferInd[i];
+    m_layout.m_index[offsetI + i] = int_cast<GLuint>(offsetV) + bufferInd[i];
 
   const float halfSize = edgeLength * 0.5f;
 
@@ -1228,7 +1223,7 @@ void modelIndexed::fillDataBoxWireframe(std::size_t ipart, std::size_t offsetI, 
     3, 7, 7, 5, 5, 1, 1, 3, //face Z+
   };
   for (std::size_t i = 0; i < fillDataBoxWireframe_ISize(); ++i)
-    m_layout.m_index[offsetI + i] = GLuint(offsetV) + bufferInd[i];
+    m_layout.m_index[offsetI + i] = int_cast<GLuint>(offsetV) + bufferInd[i];
 
   const float halfSize = edgeLength * 0.5f;
 
@@ -1287,6 +1282,8 @@ void modelIndexed::fillDataCone(std::size_t ipart, std::size_t offsetI, std::siz
   offsetI += partInfo(ipart).m_offset;
   TRE_ASSERT(offsetV + fillDataCone_VSize(subdiv) <= m_layout.m_vertexCount);
 
+  const std::size_t nsub = int_cast<std::size_t>(subdiv);
+
   // vertex ...
 
   const glm::vec3 center = transform[3];
@@ -1294,25 +1291,27 @@ void modelIndexed::fillDataCone(std::size_t ipart, std::size_t offsetI, std::siz
   const glm::vec3 axisT1 = transform[2];
   const glm::vec3 axisT2 = transform[0];
 
-  for (std::size_t u = 0; u < subdiv; ++u)
+  for (std::size_t u = 0; u < nsub; ++u)
   {
     const float angle = u * 2.f * kPi / subdiv;
     m_layout.m_positions.get<glm::vec3>(offsetV + u) = center + axisT1 * (radius * std::cos(angle)) + axisT2 * (radius * std::sin(angle));
   }
-  m_layout.m_positions.get<glm::vec3>(offsetV + subdiv + 0) = center;
-  m_layout.m_positions.get<glm::vec3>(offsetV + subdiv + 1) = center + heigth * axisUp;
+  m_layout.m_positions.get<glm::vec3>(offsetV + nsub + 0) = center;
+  m_layout.m_positions.get<glm::vec3>(offsetV + nsub + 1) = center + heigth * axisUp;
 
   // indice ...
 
   GLuint * indicePtr = m_layout.m_index.getPointer(offsetI);
 
-  const std::size_t indBase = offsetV + subdiv;
-  const std::size_t indTop  = offsetV + subdiv + 1;
+  const GLuint iv0     = int_cast<GLuint>(offsetV);
+  const GLuint isub    = int_cast<GLuint>(subdiv);
+  const GLuint indBase = iv0 + isub;
+  const GLuint indTop  = iv0 + isub + 1;
 
-  for (std::size_t u = 0; u < subdiv; ++u)
+  for (GLuint u = 0; u < isub; ++u)
   {
-    const std::size_t ind0 = offsetV + u;
-    const std::size_t ind1 = (u == subdiv - 1) ? offsetV : ind0 + 1;
+    const GLuint ind0 = iv0 + u;
+    const GLuint ind1 = (u == isub - 1) ? iv0 : ind0 + 1;
 
     *(indicePtr++) = ind0;
     *(indicePtr++) = ind1;
@@ -1356,27 +1355,29 @@ void modelIndexed::fillDataDisk(std::size_t ipart, std::size_t offsetI, std::siz
   offsetI += partInfo(ipart).m_offset;
   TRE_ASSERT(offsetV + fillDataDisk_VSize(radiusIn, subdiv) <= m_layout.m_vertexCount);
 
+  const std::size_t nsub = int_cast<std::size_t>(subdiv);
+
   // vertex ...
 
   const glm::vec3 center = transform[3];
   const glm::vec3 axisT1 = transform[2];
   const glm::vec3 axisT2 = transform[0];
 
-  for (std::size_t u = 0; u < subdiv; ++u)
+  for (std::size_t u = 0; u < nsub; ++u)
   {
     const float angle = u * 2.f * kPi / subdiv;
     m_layout.m_positions.get<glm::vec3>(offsetV + u) = center + axisT1 * (radiusOut * std::cos(angle)) + axisT2 * (radiusOut * std::sin(angle));
   }
   if (radiusIn == 0.f)
   {
-    m_layout.m_positions.get<glm::vec3>(offsetV + subdiv) = center;
+    m_layout.m_positions.get<glm::vec3>(offsetV + nsub) = center;
   }
   else
   {
-    for (std::size_t u = 0; u < subdiv; ++u)
+    for (std::size_t u = 0; u < nsub; ++u)
     {
       const float angle = (u + 0.5f) * 2.f * kPi / subdiv;
-      m_layout.m_positions.get<glm::vec3>(offsetV + subdiv + u) = center + axisT1 * (radiusIn * std::cos(angle)) + axisT2 * (radiusIn * std::sin(angle));
+      m_layout.m_positions.get<glm::vec3>(offsetV + nsub + u) = center + axisT1 * (radiusIn * std::cos(angle)) + axisT2 * (radiusIn * std::sin(angle));
     }
   }
 
@@ -1384,13 +1385,16 @@ void modelIndexed::fillDataDisk(std::size_t ipart, std::size_t offsetI, std::siz
 
   GLuint * indicePtr = m_layout.m_index.getPointer(offsetI);
 
+  const GLuint iv0  = int_cast<GLuint>(offsetV);
+  const GLuint isub = int_cast<GLuint>(subdiv);
+
   if (radiusIn == 0.f)
   {
-    const std::size_t indCenter = offsetV + subdiv;
-    for (std::size_t u = 0; u < subdiv; ++u)
+    const GLuint indCenter = iv0 + isub;
+    for (GLuint u = 0; u < isub; ++u)
     {
-      const std::size_t indA = offsetV + u;
-      const std::size_t indB = (u == subdiv - 1) ? offsetV : indA + 1;
+      const GLuint indA = iv0 + u;
+      const GLuint indB = (u == isub - 1) ? iv0 : indA + 1;
 
       *(indicePtr++) = indCenter;
       *(indicePtr++) = indA;
@@ -1399,13 +1403,13 @@ void modelIndexed::fillDataDisk(std::size_t ipart, std::size_t offsetI, std::siz
   }
   else
   {
-    for (std::size_t u = 0; u < subdiv; ++u)
+    for (GLuint u = 0; u < isub; ++u)
     {
-      const std::size_t indOutA = offsetV + u;
-      const std::size_t indOutB = (u == subdiv - 1) ? offsetV : indOutA + 1;
+      const GLuint indOutA = iv0 + u;
+      const GLuint indOutB = (u == isub - 1) ? iv0 : indOutA + 1;
 
-      const std::size_t indInA = indOutA + subdiv;
-      const std::size_t indInB = indOutB + subdiv;
+      const GLuint indInA = indOutA + isub;
+      const GLuint indInB = indOutB + isub;
 
       *(indicePtr++) = indInA;
       *(indicePtr++) = indOutA;
@@ -1454,6 +1458,9 @@ void modelIndexed::fillDataTorus(std::size_t ipart, std::size_t offsetI, std::si
   offsetI += partInfo(ipart).m_offset;
   TRE_ASSERT(offsetV + fillDataTorus_VSize(subdiv_main, subdiv_in) <= m_layout.m_vertexCount);
 
+  const std::size_t nsubM = int_cast<std::size_t>(subdiv_main);
+  const std::size_t nsubI = int_cast<std::size_t>(subdiv_in);
+
   // vertex ...
 
   const glm::vec3 center = transform[3];
@@ -1461,14 +1468,14 @@ void modelIndexed::fillDataTorus(std::size_t ipart, std::size_t offsetI, std::si
   const glm::vec3 axisT1 = transform[2];
   const glm::vec3 axisT2 = transform[0];
 
-  for (std::size_t uM = 0; uM < subdiv_main; ++uM)
+  for (std::size_t uM = 0; uM < nsubM; ++uM)
   {
     const float angleM = uM * kPi / (subdiv_main - 1.f);
     const glm::vec3 axisM = - std::cos(angleM) * axisT2 + std::sin(angleM) * axisT1;
-    for (std::size_t uI = 0; uI < subdiv_in; ++uI)
+    for (std::size_t uI = 0; uI < nsubI; ++uI)
     {
       const float angleI = uI * 2.f * kPi / subdiv_in;
-      m_layout.m_positions.get<glm::vec3>(offsetV + uM * subdiv_in + uI) =
+      m_layout.m_positions.get<glm::vec3>(offsetV + uM * nsubI + uI) =
         center + (radiusMain + radiusIn * std::cos(angleI)) * axisM + (radiusIn * std::sin(angleI)) * axisUp;
     }
   }
@@ -1477,15 +1484,19 @@ void modelIndexed::fillDataTorus(std::size_t ipart, std::size_t offsetI, std::si
 
   GLuint * indicePtr = m_layout.m_index.getPointer(offsetI);
 
-  for (std::size_t uM = 0; uM < subdiv_main; ++uM)
-  {
-    const std::size_t indMA = offsetV + subdiv_in * uM;
-    const std::size_t indMB = (uM == subdiv_main - 1) ? offsetV + subdiv_in * uM : indMA + subdiv_in;
+  const GLuint iv0   = int_cast<GLuint>(offsetV);
+  const GLuint isubM = int_cast<GLuint>(subdiv_main);
+  const GLuint isubI = int_cast<GLuint>(subdiv_in);
 
-    for (std::size_t uI = 0; uI < subdiv_in; ++uI)
+  for (GLuint uM = 0; uM < isubM; ++uM)
+  {
+    const GLuint indMA = iv0 + isubI * uM;
+    const GLuint indMB = (uM == isubM - 1) ? iv0 + isubI * uM : indMA + isubI;
+
+    for (GLuint uI = 0; uI < isubI; ++uI)
     {
-      const std::size_t uIA = uI;
-      const std::size_t uIB = (uI == subdiv_in - 1) ? 0 : uIA + 1;
+      const GLuint uIA = uI;
+      const GLuint uIB = (uI == isubI - 1) ? 0 : uIA + 1;
 
       *(indicePtr++) = indMA + uIA;
       *(indicePtr++) = indMA + uIB;
@@ -1541,13 +1552,14 @@ void modelIndexed::fillDataSquare(std::size_t ipart, std::size_t offsetI, std::s
   m_layout.m_positions.get<glm::vec3>(offsetV + 2) = squarePt11;
   m_layout.m_positions.get<glm::vec3>(offsetV + 3) = squarePt10;
 
-  m_layout.m_index[offsetI + 0] = offsetV + 0;
-  m_layout.m_index[offsetI + 1] = offsetV + 1;
-  m_layout.m_index[offsetI + 2] = offsetV + 2;
+  const GLuint iv0 = int_cast<GLuint>(offsetV);
+  m_layout.m_index[offsetI + 0] = iv0 + 0;
+  m_layout.m_index[offsetI + 1] = iv0 + 1;
+  m_layout.m_index[offsetI + 2] = iv0 + 2;
 
-  m_layout.m_index[offsetI + 3] = offsetV + 2;
-  m_layout.m_index[offsetI + 4] = offsetV + 3;
-  m_layout.m_index[offsetI + 5] = offsetV + 0;
+  m_layout.m_index[offsetI + 3] = iv0 + 2;
+  m_layout.m_index[offsetI + 4] = iv0 + 3;
+  m_layout.m_index[offsetI + 5] = iv0 + 0;
 
   if (m_layout.m_normals.m_size != 0)
   {
@@ -1625,14 +1637,15 @@ void modelIndexed::fillDataSquareWireframe(std::size_t ipart, std::size_t offset
   m_layout.m_positions.get<glm::vec3>(offsetV + 2) = squarePt11;
   m_layout.m_positions.get<glm::vec3>(offsetV + 3) = squarePt10;
 
-  m_layout.m_index[offsetI + 0] = offsetV + 0;
-  m_layout.m_index[offsetI + 1] = offsetV + 1;
-  m_layout.m_index[offsetI + 2] = offsetV + 1;
-  m_layout.m_index[offsetI + 3] = offsetV + 2;
-  m_layout.m_index[offsetI + 4] = offsetV + 2;
-  m_layout.m_index[offsetI + 5] = offsetV + 3;
-  m_layout.m_index[offsetI + 6] = offsetV + 3;
-  m_layout.m_index[offsetI + 7] = offsetV + 0;
+  const GLuint iv0 = int_cast<GLuint>(offsetV);
+  m_layout.m_index[offsetI + 0] = iv0 + 0;
+  m_layout.m_index[offsetI + 1] = iv0 + 1;
+  m_layout.m_index[offsetI + 2] = iv0 + 1;
+  m_layout.m_index[offsetI + 3] = iv0 + 2;
+  m_layout.m_index[offsetI + 4] = iv0 + 2;
+  m_layout.m_index[offsetI + 5] = iv0 + 3;
+  m_layout.m_index[offsetI + 6] = iv0 + 3;
+  m_layout.m_index[offsetI + 7] = iv0 + 0;
 
   TRE_ASSERT(m_layout.m_tangents.m_size == 0); // we dont handle tangents generation.
   TRE_ASSERT(m_layout.m_uvs.m_size == 0); // we dont handle UVs generation.
@@ -1676,6 +1689,9 @@ void modelIndexed::fillDataTube(std::size_t ipart, std::size_t offsetI, std::siz
   offsetI += partInfo(ipart).m_offset;
   TRE_ASSERT(offsetV + fillDataTube_VSize(closed, subdiv_r, subdiv_h) <= m_layout.m_vertexCount);
 
+  const std::size_t nsubR = int_cast<std::size_t>(subdiv_r);
+  const std::size_t nsubH = int_cast<std::size_t>(subdiv_h);
+
   // vertex
 
   const glm::vec3 center = transform[3];
@@ -1685,18 +1701,18 @@ void modelIndexed::fillDataTube(std::size_t ipart, std::size_t offsetI, std::siz
   const float hStart = - heigth * 0.5f;
   const float hStep  = heigth / subdiv_h;
 
-  for (std::size_t ir = 0; ir < subdiv_r; ++ir)
+  for (std::size_t ir = 0; ir < nsubR; ++ir)
   {
     const float angle = ir * 2.f * kPi / subdiv_r;
     const glm::vec3 axisRd = std::cos(angle) * axisT1 + std::sin(angle) * axisT2;
-    for (std::size_t ih = 0; ih < subdiv_h + 1; ++ih)
+    for (std::size_t ih = 0; ih < nsubH + 1; ++ih)
     {
-      m_layout.m_positions.get<glm::vec3>(offsetV + ir * (subdiv_h + 1) + ih) = center + axisRd * radius + (hStart + ih * hStep) * axisUp;
+      m_layout.m_positions.get<glm::vec3>(offsetV + ir * (nsubH + 1) + ih) = center + axisRd * radius + (hStart + ih * hStep) * axisUp;
     }
   }
   if (closed)
   {
-    const std::size_t vertexBase1 = offsetV + subdiv_r * (subdiv_h + 1);
+    const std::size_t vertexBase1 = offsetV + nsubR * (nsubH + 1);
     m_layout.m_positions.get<glm::vec3>(vertexBase1 + 0) = center + -heigth * 0.5f * axisUp;
     m_layout.m_positions.get<glm::vec3>(vertexBase1 + 1) = center +  heigth * 0.5f * axisUp;
   }
@@ -1705,12 +1721,16 @@ void modelIndexed::fillDataTube(std::size_t ipart, std::size_t offsetI, std::siz
 
   GLuint * indicePtr = m_layout.m_index.getPointer(offsetI);
 
-  for (std::size_t ir = 0; ir < subdiv_r; ++ir)
-  {
-    const std::size_t base0 = offsetV + ir * (subdiv_h + 1);
-    const std::size_t base1 = (ir == subdiv_r - 1) ? offsetV : base0 + subdiv_h + 1;
+  const GLuint iv0   = int_cast<GLuint>(offsetV);
+  const GLuint isubR = int_cast<GLuint>(subdiv_r);
+  const GLuint isubH = int_cast<GLuint>(subdiv_h);
 
-    for (std::size_t ih = 0; ih < subdiv_h; ++ih)
+  for (GLuint ir = 0; ir < isubR; ++ir)
+  {
+    const GLuint base0 = iv0 + ir * (isubH + 1);
+    const GLuint base1 = (ir == isubR - 1) ? iv0 : base0 + isubH + 1;
+
+    for (GLuint ih = 0; ih < isubH; ++ih)
     {
       *(indicePtr++) = base0 + ih;
       *(indicePtr++) = base0 + ih + 1;
@@ -1761,6 +1781,9 @@ void modelIndexed::fillDataUvtrisphere(std::size_t ipart, std::size_t offsetI, s
   offsetI += partInfo(ipart).m_offset;
   TRE_ASSERT(offsetV + fillDataUvtrisphere_VSize(subdiv_u, subdiv_v) <= m_layout.m_vertexCount);
 
+  const std::size_t nsubU = int_cast<std::size_t>(subdiv_u);
+  const std::size_t nsubV = int_cast<std::size_t>(subdiv_v);
+
   // vertex ...
 
   TRE_ASSERT(m_layout.m_normals.m_size == 0 || m_layout.m_normals.m_size == 3);
@@ -1779,7 +1802,7 @@ void modelIndexed::fillDataUvtrisphere(std::size_t ipart, std::size_t offsetI, s
   const glm::vec3 axisT2 = transform[0];
 
   std::size_t vertexCurrent = offsetV;
-  for (std::size_t u = 0; u < subdiv_u / 2 ; ++u)
+  for (std::size_t u = 0; u < nsubU / 2 ; ++u)
   {
     const float cosu0 = std::cos((u * 2    ) * kPi * 2.f / subdiv_u);
     const float sinu0 = std::sin((u * 2    ) * kPi * 2.f / subdiv_u);
@@ -1789,7 +1812,7 @@ void modelIndexed::fillDataUvtrisphere(std::size_t ipart, std::size_t offsetI, s
     const glm::vec3 axisU0 = cosu0 * axisT1 + sinu0 * axisT2;
     const glm::vec3 axisU1 = cosu1 * axisT1 + sinu1 * axisT2;
 
-    for (std::size_t v = 0; v < subdiv_v; ++v)
+    for (std::size_t v = 0; v < nsubV; ++v)
     {
       const float cosv =   std::sin((v + 1) * kPi / (subdiv_v + 2)); // in fact, angle is in range [-pi,pi]
       const float sinv = - std::cos((v + 1) * kPi / (subdiv_v + 2)); // in fact, angle is in range [-pi,pi]
@@ -1797,7 +1820,7 @@ void modelIndexed::fillDataUvtrisphere(std::size_t ipart, std::size_t offsetI, s
       m_layout.m_normals.get<glm::vec3>(vertexCurrent) = outN;
       m_layout.m_positions.get<glm::vec3>(vertexCurrent++) = center + radius * outN;
     }
-    for (std::size_t v = 0; v < subdiv_v + 1; ++v)
+    for (std::size_t v = 0; v < nsubV + 1; ++v)
     {
       const float cosv =   std::sin((v + 0.5f) * kPi / (subdiv_v + 2)); // in fact, angle is in range [-pi,pi]
       const float sinv = - std::cos((v + 0.5f) * kPi / (subdiv_v + 2)); // in fact, angle is in range [-pi,pi]
@@ -1816,14 +1839,18 @@ void modelIndexed::fillDataUvtrisphere(std::size_t ipart, std::size_t offsetI, s
 
   GLuint * indicePtr = m_layout.m_index.getPointer(offsetI);
 
-  const std::size_t baseClose = offsetV + (subdiv_u/2) * (subdiv_v * 2 + 1);
-  for (std::size_t u = 0; u < subdiv_u/2; ++u)
+  const GLuint iv0   = int_cast<GLuint>(offsetV);
+  const GLuint isubU = int_cast<GLuint>(subdiv_u);
+  const GLuint isubV = int_cast<GLuint>(subdiv_v);
+
+  const GLuint baseClose = iv0 + (isubU/2) * (isubV * 2 + 1);
+  for (GLuint u = 0; u < isubU/2; ++u)
   {
-    const std::size_t base0 = offsetV + u * (subdiv_v * 2 + 1);
-    const std::size_t base1 = base0 + subdiv_v;
-    const std::size_t base0Next = (u == subdiv_u/2 - 1) ? offsetV : base1 + subdiv_v + 1;
-    const std::size_t base1Next = base0Next + subdiv_v;
-    for (std::size_t v = 0; v < subdiv_v - 1; ++v)
+    const GLuint base0 = iv0 + u * (isubV * 2 + 1);
+    const GLuint base1 = base0 + isubV;
+    const GLuint base0Next = (u == isubU/2 - 1) ? iv0 : base1 + isubV + 1;
+    const GLuint base1Next = base0Next + isubV;
+    for (GLuint v = 0; v < isubV - 1; ++v)
     {
       *(indicePtr++) = base0 + v;
       *(indicePtr++) = base1 + v + 1;
@@ -1833,7 +1860,7 @@ void modelIndexed::fillDataUvtrisphere(std::size_t ipart, std::size_t offsetI, s
       *(indicePtr++) = base0Next + v;
       *(indicePtr++) = base0Next + v + 1;
     }
-    for (std::size_t v = 0; v < subdiv_v; ++v)
+    for (GLuint v = 0; v < isubV; ++v)
     {
       *(indicePtr++) = base0 + v;
       *(indicePtr++) = base1 + v;
@@ -1848,9 +1875,9 @@ void modelIndexed::fillDataUvtrisphere(std::size_t ipart, std::size_t offsetI, s
       *(indicePtr++) = base1Next;
       *(indicePtr++) = base0Next;
 
-      *(indicePtr++) = base1 + subdiv_v;
-      *(indicePtr++) = base0Next + subdiv_v - 1;
-      *(indicePtr++) = base1Next + subdiv_v;
+      *(indicePtr++) = base1 + isubV;
+      *(indicePtr++) = base0Next + isubV - 1;
+      *(indicePtr++) = base1Next + isubV;
     }
     {
       *(indicePtr++) = baseClose;
@@ -1858,8 +1885,8 @@ void modelIndexed::fillDataUvtrisphere(std::size_t ipart, std::size_t offsetI, s
       *(indicePtr++) = base1;
 
       *(indicePtr++) = baseClose + 1;
-      *(indicePtr++) = base1 + subdiv_v;
-      *(indicePtr++) = base1Next + subdiv_v;
+      *(indicePtr++) = base1 + isubV;
+      *(indicePtr++) = base1Next + isubV;
     }
   }
 
@@ -1902,21 +1929,19 @@ void modelIndexed::resizeIndex(std::size_t count)
 
 bool modelIndexed::read_IndexBuffer(std::istream & inbuffer)
 {
-  uint32_t header[2]; // {indexcount, buffersize}
-  inbuffer.read(reinterpret_cast<char*>(&header[0]), sizeof(header));
-  resizeIndex(header[0]);
-  TRE_ASSERT(m_IBuffer.size() == header[1]);
-  inbuffer.read(reinterpret_cast<char*>(m_IBuffer.data()), m_IBuffer.size() * sizeof(GLuint));
+  const std::size_t indexCount = bake::readCount(inbuffer);
+  const std::size_t bufferSize = bake::readCount(inbuffer);
+  resizeIndex(indexCount);
+  TRE_ASSERT(m_IBuffer.size() == bufferSize);
+  bake::readArray(inbuffer, m_IBuffer.data(), m_IBuffer.size());
   return true;
 }
 
 bool modelIndexed::write_IndexBuffer(std::ostream & outbuffer) const
 {
-  uint32_t header[2]; // {indexcount, buffersize}
-  header[0] = uint32_t(m_layout.m_indexCount); TRE_ASSERT(m_layout.m_indexCount <= std::numeric_limits<uint32_t>::max());
-  header[1] = uint32_t(m_IBuffer.size());
-  outbuffer.write(reinterpret_cast<const char*>(&header[0]), sizeof(header));
-  outbuffer.write(reinterpret_cast<const char*>(m_IBuffer.data()), m_IBuffer.size() * sizeof(GLuint));
+  bake::writeCount(outbuffer, m_layout.m_indexCount);
+  bake::writeCount(outbuffer, m_IBuffer.size());
+  bake::writeArray(outbuffer, m_IBuffer.data(), m_IBuffer.size());
   return true;
 }
 
@@ -2003,6 +2028,12 @@ std::size_t modelIndexed::get_NextAvailable_index() const
 
 // Bind helper ================================================================
 
+static const void *_bufferOffset(const float *data, const float *bufferOrigin, std::size_t shift = 0)
+{
+  TRE_ASSERT(data >= bufferOrigin);
+  return reinterpret_cast<const void*>((std::size_t(data - bufferOrigin) + shift) * sizeof(GLfloat));
+}
+
 static void _bind_vertexAttribPointer_float(const s_modelDataLayout::s_vertexData &vertexData, GLuint argShader, const float *bufferOrigin)
 {
   TRE_ASSERT(vertexData.m_size <= 4);
@@ -2010,7 +2041,7 @@ static void _bind_vertexAttribPointer_float(const s_modelDataLayout::s_vertexDat
   {
     TRE_ASSERT(vertexData.m_data != nullptr);
     glEnableVertexAttribArray(argShader);
-    glVertexAttribPointer(argShader, vertexData.m_size, GL_FLOAT, GL_FALSE, vertexData.m_stride * sizeof(GLfloat), reinterpret_cast<void*>((vertexData.m_data - bufferOrigin) * sizeof(GLfloat)));
+    glVertexAttribPointer(argShader, int_cast<GLint>(vertexData.m_size), GL_FLOAT, GL_FALSE, int_cast<GLsizei>(vertexData.m_stride * sizeof(GLfloat)), _bufferOffset(vertexData.m_data, bufferOrigin));
     glVertexAttribDivisor(argShader, 0);
   }
   else
@@ -2025,16 +2056,16 @@ static void _bind_instancedAttribPointer_float(const s_modelDataLayout::s_instan
   {
     TRE_ASSERT(instancedData.m_data != nullptr);
     glEnableVertexAttribArray(argShader);
-    glVertexAttribPointer(argShader, 4, GL_FLOAT, GL_FALSE, instancedData.m_stride * sizeof(GLfloat), reinterpret_cast<void*>((instancedData.m_data - bufferOrigin + 0) * sizeof(GLfloat)));
-    glVertexAttribDivisor(argShader, GLuint(instancedData.m_divisor));
+    glVertexAttribPointer(argShader, 4, GL_FLOAT, GL_FALSE, int_cast<GLsizei>(instancedData.m_stride * sizeof(GLfloat)), _bufferOffset(instancedData.m_data, bufferOrigin, 0));
+    glVertexAttribDivisor(argShader, int_cast<GLuint>(instancedData.m_divisor));
     ++argShader;
     glEnableVertexAttribArray(argShader);
-    glVertexAttribPointer(argShader, 4, GL_FLOAT, GL_FALSE, instancedData.m_stride * sizeof(GLfloat), reinterpret_cast<void*>((instancedData.m_data - bufferOrigin + 4) * sizeof(GLfloat)));
-    glVertexAttribDivisor(argShader, GLuint(instancedData.m_divisor));
+    glVertexAttribPointer(argShader, 4, GL_FLOAT, GL_FALSE, int_cast<GLsizei>(instancedData.m_stride * sizeof(GLfloat)), _bufferOffset(instancedData.m_data, bufferOrigin, 4));
+    glVertexAttribDivisor(argShader, int_cast<GLuint>(instancedData.m_divisor));
     ++argShader;
     glEnableVertexAttribArray(argShader);
-    glVertexAttribPointer(argShader, 4, GL_FLOAT, GL_FALSE, instancedData.m_stride * sizeof(GLfloat), reinterpret_cast<void*>((instancedData.m_data - bufferOrigin + 8) * sizeof(GLfloat)));
-    glVertexAttribDivisor(argShader, GLuint(instancedData.m_divisor));
+    glVertexAttribPointer(argShader, 4, GL_FLOAT, GL_FALSE, int_cast<GLsizei>(instancedData.m_stride * sizeof(GLfloat)), _bufferOffset(instancedData.m_data, bufferOrigin, 8));
+    glVertexAttribDivisor(argShader, int_cast<GLuint>(instancedData.m_divisor));
 
   }
   else if (instancedData.m_size > 0)
@@ -2042,8 +2073,8 @@ static void _bind_instancedAttribPointer_float(const s_modelDataLayout::s_instan
     TRE_ASSERT(instancedData.m_size <= 4);
     TRE_ASSERT(instancedData.m_data != nullptr);
     glEnableVertexAttribArray(argShader);
-    glVertexAttribPointer(argShader, instancedData.m_size, GL_FLOAT, GL_FALSE, instancedData.m_stride * sizeof(GLfloat), reinterpret_cast<void*>((instancedData.m_data - bufferOrigin) * sizeof(GLfloat)));
-    glVertexAttribDivisor(argShader, GLuint(instancedData.m_divisor));
+    glVertexAttribPointer(argShader, int_cast<GLint>(instancedData.m_size), GL_FLOAT, GL_FALSE, int_cast<GLsizei>(instancedData.m_stride * sizeof(GLfloat)), _bufferOffset(instancedData.m_data, bufferOrigin));
+    glVertexAttribDivisor(argShader, int_cast<GLuint>(instancedData.m_divisor));
   }
   else
   {
@@ -2164,11 +2195,11 @@ bool modelRaw2D::read(std::istream &inbuffer)
 {
   if (!readBase(inbuffer)) return false;
 
-  uint32_t header[2]; // { vertexCount, bufferSize }
-  inbuffer.read(reinterpret_cast<char*>(&header[0]), sizeof(header));
-  resizeVertex(header[0]);
-  TRE_ASSERT(header[1] == m_VBuffer.size());
-  inbuffer.read(reinterpret_cast<char*>(m_VBuffer.data()), m_VBuffer.size() * sizeof(GLfloat));
+  const std::size_t vertexCount = bake::readCount(inbuffer);
+  const std::size_t bufferSize = bake::readCount(inbuffer);
+  resizeVertex(vertexCount);
+  TRE_ASSERT(bufferSize == m_VBuffer.size());
+  bake::readArray(inbuffer, m_VBuffer.data(), m_VBuffer.size());
 
   return true;
 }
@@ -2179,11 +2210,9 @@ bool modelRaw2D::write(std::ostream &outbuffer) const
 
   result &= writeBase(outbuffer);
 
-  uint32_t header[2]; // { vertexCount, bufferSize }
-  header[0] = uint32_t(m_layout.m_vertexCount); TRE_ASSERT(m_layout.m_vertexCount <= std::numeric_limits<uint32_t>::max());
-  header[1] = uint32_t(m_VBuffer.size());
-  outbuffer.write(reinterpret_cast<const char*>(&header[0]), sizeof(header));
-  outbuffer.write(reinterpret_cast<const char*>(m_VBuffer.data()), m_VBuffer.size() * sizeof(GLfloat));
+  bake::writeCount(outbuffer, m_layout.m_vertexCount);
+  bake::writeCount(outbuffer, m_VBuffer.size());
+  bake::writeArray(outbuffer, m_VBuffer.data(), m_VBuffer.size());
 
   return result;
 }
@@ -2242,7 +2271,7 @@ void modelRaw2D::drawcall(std::size_t partfirst, std::size_t partcount, const bo
   {
     if (m_partInfo[ipart].m_size > 0)
     {
-      glDrawArrays(mode, m_partInfo[ipart].m_offset, m_partInfo[ipart].m_size);
+      glDrawArrays(mode, int_cast<GLint>(m_partInfo[ipart].m_offset), int_cast<GLsizei>(m_partInfo[ipart].m_size));
     }
   }
 #else
@@ -2297,11 +2326,11 @@ void modelRaw2D::loadIntoGPU_VertexBuffer(const bool clearCPUbuffer)
 
 static void _memcpy_safe(float *dst, const float *src, std::size_t nfloats)
 {
-  const long distSigned = long(dst - src);
+  const std::ptrdiff_t distSigned = dst - src;
 
   if (distSigned > 0)
   {
-    const std::size_t dist = distSigned;
+    const std::size_t dist = std::size_t(distSigned);
     std::size_t offset = 0;
     dst += nfloats;
     src += nfloats;
@@ -2316,7 +2345,7 @@ static void _memcpy_safe(float *dst, const float *src, std::size_t nfloats)
   }
   else if (distSigned < 0)
   {
-    const std::size_t dist = -distSigned;
+    const std::size_t dist = std::size_t(-distSigned);
     std::size_t offset = 0;
     while (offset < nfloats)
     {
@@ -2421,17 +2450,17 @@ bool modelStaticIndexed3D::read(std::istream & inbuffer)
   readBase(inbuffer);
 
   // read flags
-  inbuffer.read(reinterpret_cast<char*>(&m_flags), sizeof(int));
+  { int32_t flags = 0; bake::read(inbuffer, flags); m_flags = flags; }
 
   // read index buffer
   read_IndexBuffer(inbuffer);
 
   // read vertex buffer
-  uint32_t header[2]; // { vertexCount, bufferSize }
-  inbuffer.read(reinterpret_cast<char*>(&header[0]), sizeof(header));
-  resizeVertex(header[0]);
-  TRE_ASSERT(header[1] == m_VBuffer.size());
-  inbuffer.read(reinterpret_cast<char*>(m_VBuffer.data()), m_VBuffer.size() * sizeof(GLfloat));
+  const std::size_t vertexCount = bake::readCount(inbuffer);
+  const std::size_t bufferSize = bake::readCount(inbuffer);
+  resizeVertex(vertexCount);
+  TRE_ASSERT(bufferSize == m_VBuffer.size());
+  bake::readArray(inbuffer, m_VBuffer.data(), m_VBuffer.size());
 
   return true;
 }
@@ -2441,17 +2470,15 @@ bool modelStaticIndexed3D::write(std::ostream & outbuffer) const
   writeBase(outbuffer);
 
   // write flags
-  outbuffer.write(reinterpret_cast<const char*>(&m_flags), sizeof(int));
+  bake::write(outbuffer, int32_t(m_flags));
 
   // write index buffer
   write_IndexBuffer(outbuffer);
 
   // write vertex buffer
-  uint32_t header[2]; // { vertexCount, bufferSize }
-  header[0] = uint32_t(m_layout.m_vertexCount); TRE_ASSERT(m_layout.m_vertexCount <= std::numeric_limits<uint32_t>::max());
-  header[1] = uint32_t(m_VBuffer.size());
-  outbuffer.write(reinterpret_cast<const char*>(&header[0]), sizeof(header));
-  outbuffer.write(reinterpret_cast<const char*>(m_VBuffer.data()), m_VBuffer.size() * sizeof(GLfloat));
+  bake::writeCount(outbuffer, m_layout.m_vertexCount);
+  bake::writeCount(outbuffer, m_VBuffer.size());
+  bake::writeArray(outbuffer, m_VBuffer.data(), m_VBuffer.size());
 
   return true;
 }
@@ -2509,7 +2536,7 @@ void modelStaticIndexed3D::drawcall(std::size_t partfirst, std::size_t partcount
   {
     if (m_partInfo[ipart].m_size > 0)
     {
-      glDrawElements(mode, m_partInfo[ipart].m_size, GL_UNSIGNED_INT, reinterpret_cast<GLvoid*>(m_partInfo[ipart].m_offset * sizeof(GLfloat)));
+      glDrawElements(mode, int_cast<GLsizei>(m_partInfo[ipart].m_size), GL_UNSIGNED_INT, reinterpret_cast<const void*>(m_partInfo[ipart].m_offset * sizeof(GLuint)));
     }
   }
 #else
@@ -2617,7 +2644,7 @@ bool modelSemiDynamic3D::read(std::istream &inbuffer)
 {
   bool result = true;
 
-  inbuffer.read(reinterpret_cast<char*>(&m_flagsDynamic), sizeof(int));
+  { int32_t flags = 0; bake::read(inbuffer, flags); m_flagsDynamic = flags; }
 
   result &= modelStaticIndexed3D::read(inbuffer);
 
@@ -2630,7 +2657,7 @@ bool modelSemiDynamic3D::write(std::ostream &outbuffer) const
 {
   bool result = true;
 
-  outbuffer.write(reinterpret_cast<const char*>(&m_flagsDynamic), sizeof(int));
+  bake::write(outbuffer, int32_t(m_flagsDynamic));
 
   result &= modelStaticIndexed3D::write(outbuffer);
 
@@ -2793,7 +2820,7 @@ bool modelInstanced::read(std::istream &inbuffer)
 {
   bool result = true;
 
-  inbuffer.read(reinterpret_cast<char*>(&m_flagsInstanced), sizeof(int));
+  { int32_t flags = 0; bake::read(inbuffer, flags); m_flagsInstanced = flags; }
 
   // dont read the instanced buffer
 
@@ -2804,7 +2831,7 @@ bool modelInstanced::write(std::ostream &outbuffer) const
 {
   bool result = true;
 
-  outbuffer.write(reinterpret_cast<const char*>(&m_flagsInstanced), sizeof(int));
+  bake::write(outbuffer, int32_t(m_flagsInstanced));
 
   // dont write the instanced buffer
 
@@ -2956,9 +2983,9 @@ void modelInstancedBillboard::drawInstanced(std::size_t ipart, std::size_t insta
     localInst.m_data = localInst.m_data + localInst.m_stride * instancedOffset;
     _bind_instancedAttribPointer_float(localInst, 11, m_InstBuffer.data());
   }
-  glDrawArraysInstanced(mode, m_partInfo[ipart].m_offset, m_partInfo[ipart].m_size, instancedCount);
+  glDrawArraysInstanced(mode, int_cast<GLint>(m_partInfo[ipart].m_offset), int_cast<GLsizei>(m_partInfo[ipart].m_size), int_cast<GLsizei>(instancedCount));
 #else
-  glDrawArraysInstancedBaseInstance(mode, m_partInfo[ipart].m_offset, m_partInfo[ipart].m_size, instancedCount, instancedOffset);
+  glDrawArraysInstancedBaseInstance(mode, int_cast<GLint>(m_partInfo[ipart].m_offset), int_cast<GLsizei>(m_partInfo[ipart].m_size), int_cast<GLsizei>(instancedCount), int_cast<GLuint>(instancedOffset));
 #endif
 
   IsOpenGLok("modelInstancedBillboard::drawInstanced");
@@ -3021,9 +3048,9 @@ void modelInstancedMesh::drawInstanced(std::size_t ipart, std::size_t instancedO
     _bind_instancedAttribPointer_float(localInst, 11, m_InstBuffer.data());
   }
 
-  glDrawElementsInstanced(mode, m_partInfo[ipart].m_size, GL_UNSIGNED_INT, reinterpret_cast<void*>(m_partInfo[ipart].m_offset * sizeof(GLfloat)), GLsizei(instancedCount));
+  glDrawElementsInstanced(mode, int_cast<GLsizei>(m_partInfo[ipart].m_size), GL_UNSIGNED_INT, reinterpret_cast<const void*>(m_partInfo[ipart].m_offset * sizeof(GLuint)), int_cast<GLsizei>(instancedCount));
 #else
-  glDrawElementsInstancedBaseInstance(mode, m_partInfo[ipart].m_size, GL_UNSIGNED_INT, reinterpret_cast<void*>(m_partInfo[ipart].m_offset * sizeof(GLfloat)), GLsizei(instancedCount), GLuint(instancedOffset));
+  glDrawElementsInstancedBaseInstance(mode, int_cast<GLsizei>(m_partInfo[ipart].m_size), GL_UNSIGNED_INT, reinterpret_cast<const void*>(m_partInfo[ipart].m_offset * sizeof(GLuint)), int_cast<GLsizei>(instancedCount), int_cast<GLuint>(instancedOffset));
 #endif
 
   IsOpenGLok("modelInstancedBillboard::drawcall");

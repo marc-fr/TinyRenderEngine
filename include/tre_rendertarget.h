@@ -226,7 +226,7 @@ public:
   bool resize(const int pwidth, const int pheigth) { return m_renderAOraw.resize(pwidth, pheigth) && m_renderAOfinal.resize(pwidth / 2, pheigth / 2); }
   void clear();
 
-  void process(GLuint depthTextureHandle, unsigned depthTextureWidth, unsigned depthTextureHeight, const glm::mat4 &matProj);
+  void process(GLuint depthTextureHandle, int depthTextureWidth, int depthTextureHeight, const glm::mat4 &matProj);
   void process(const renderTarget &depthRt, const glm::mat4 &matProj) { process(depthRt.depthHandle(), depthRt.w(), depthRt.h(), matProj); }
   void bypass();
   GLuint get_aoTextureUnit() const { return m_renderAOfinal.colorHandle(); }

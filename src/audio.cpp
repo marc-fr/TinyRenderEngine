@@ -145,8 +145,8 @@ bool soundData::s_RawSDL::loadFromSDLAudio(int freq, SDL_AudioFormat format, boo
   {
     SDL_AudioCVT wavConvertor;
     const int wanConvertorStatus = SDL_BuildAudioCVT(&wavConvertor,
-                                                     format, nchans, freq,
-                                                     AUDIO_S16, nchans, freq);
+                                                     format, int_cast<Uint8>(nchans), freq,
+                                                     AUDIO_S16, int_cast<Uint8>(nchans), freq);
     if (wanConvertorStatus <= 0)
     {
       TRE_LOG("fail to create the audio convertor: " << SDL_GetError());
@@ -183,11 +183,11 @@ bool soundData::s_RawSDL::write(std::ostream &stream) const
   header[2] = m_stereo ? 2 : 1;
   header[3] = 0; // RawSDL
   header[5] = uint32_t(m_freq);
-  header[7] = uint32_t(m_rawData.size());
-  stream.write(reinterpret_cast<const char*>(&header), sizeof(header));
+  header[7] = int_cast<uint32_t>(m_rawData.size());
+  bake::writeArray(stream, header, 8);
 
   // data
-  stream.write(reinterpret_cast<const char*>(m_rawData.data()), m_rawData.size() * sizeof(int16_t));
+  bake::writeArray(stream, m_rawData.data(), m_rawData.size());
 
   return true;
 }
@@ -198,7 +198,7 @@ bool soundData::s_RawSDL::read(std::istream &stream)
 {
   // header
   uint32_t header[8];
-  stream.read(reinterpret_cast<char*>(&header), sizeof(header));
+  bake::readArray(stream, header, 8);
   TRE_ASSERT(header[0] == SOUND_BIN_VERSION);
   if (header[3] != 0)
   {
@@ -211,7 +211,7 @@ bool soundData::s_RawSDL::read(std::istream &stream)
   m_freq      = int(header[5]);
 
   m_rawData.resize(header[7]);
-  stream.read(reinterpret_cast<char*>(m_rawData.data()), m_rawData.size() * sizeof(int16_t));
+  bake::readArray(stream, m_rawData.data(), m_rawData.size());
 
   return true;
 }
@@ -226,8 +226,8 @@ bool soundData::s_RawSDL::convertTo(int freq)
 
   SDL_AudioCVT wavConvertor;
   const int wanConvertorStatus = SDL_BuildAudioCVT(&wavConvertor,
-                                                   AUDIO_S16, nchans, m_freq,
-                                                   AUDIO_S16, nchans, freq);
+                                                   AUDIO_S16, int_cast<Uint8>(nchans), m_freq,
+                                                   AUDIO_S16, int_cast<Uint8>(nchans), freq);
   if (wanConvertorStatus <= 0)
   {
     TRE_LOG("fail to create the audio convertor: " << SDL_GetError());
@@ -271,21 +271,21 @@ struct s_oggPage
   {
     uint32_t ogg_magicNnbr = 0u;
     uint8_t  ogg_version = 0u;
-    ins.read(reinterpret_cast<char*>(&ogg_magicNnbr) , sizeof(ogg_magicNnbr));  // "OggS"
-    ins.read(reinterpret_cast<char*>(&ogg_version)   , sizeof(ogg_version));    // 0
+    bake::read(ins, ogg_magicNnbr);  // "OggS"
+    bake::read(ins, ogg_version);    // 0
     if (ogg_magicNnbr != 0x5367674f || ogg_version != 0) return false;
     uint32_t ogg_serialNbr;
     uint32_t ogg_CRCsum;
-    ins.read(reinterpret_cast<char*>(&ogg_headerType), sizeof(ogg_headerType)); // 0x1: append from previous page, 0x2: first page(bos), 0x4: last page (eos)
-    ins.read(reinterpret_cast<char*>(&ogg_granPos)   , sizeof(ogg_granPos));    // global pos
-    ins.read(reinterpret_cast<char*>(&ogg_serialNbr) , sizeof(ogg_serialNbr));
-    ins.read(reinterpret_cast<char*>(&ogg_pageId)    , sizeof(ogg_pageId));     // page id
-    ins.read(reinterpret_cast<char*>(&ogg_CRCsum)    , sizeof(ogg_CRCsum));
-    ins.read(reinterpret_cast<char*>(&ogg_segmentNbr), sizeof(ogg_segmentNbr)); // nbr of segment in this page
+    bake::read(ins, ogg_headerType); // 0x1: append from previous page, 0x2: first page(bos), 0x4: last page (eos)
+    bake::read(ins, ogg_granPos);    // global pos
+    bake::read(ins, ogg_serialNbr);
+    bake::read(ins, ogg_pageId);     // page id
+    bake::read(ins, ogg_CRCsum);
+    bake::read(ins, ogg_segmentNbr); // nbr of segment in this page
     if (ogg_segmentNbr != 0)
     {
       ogg_segmentTable.resize(ogg_segmentNbr);
-      ins.read(reinterpret_cast<char*>(ogg_segmentTable.data()), ogg_segmentNbr);
+      bake::readArray(ins, ogg_segmentTable.data(), ogg_segmentTable.size());
     }
     else
     {
@@ -325,13 +325,13 @@ bool soundData::s_Opus::loadFromOPUS(const std::string &filename)
   uint16_t opusH_preSkip = 0u;
   uint32_t opusH_freq = 0u;
   {
-    uint64_t opusH_magicNbr;  readerOpus.read(reinterpret_cast<char*>(&opusH_magicNbr) , sizeof(opusH_magicNbr));  // "OpusHead"
-    uint8_t  opusH_version;   readerOpus.read(reinterpret_cast<char*>(&opusH_version)  , sizeof(opusH_version));   // 1, but can be in [0,15] range
-                              readerOpus.read(reinterpret_cast<char*>(&opusH_chanCount), sizeof(opusH_chanCount));
-                              readerOpus.read(reinterpret_cast<char*>(&opusH_preSkip)  , sizeof(opusH_preSkip));
-                              readerOpus.read(reinterpret_cast<char*>(&opusH_freq)     , sizeof(opusH_freq));      // sampling rate (Hz) before encoding
-    int16_t  opusH_gainBd;    readerOpus.read(reinterpret_cast<char*>(&opusH_gainBd)   , sizeof(opusH_gainBd));    // value * 10^(gain/(20*256))
-    uint8_t  opusH_mapFamily; readerOpus.read(reinterpret_cast<char*>(&opusH_mapFamily), sizeof(opusH_mapFamily));
+    uint64_t opusH_magicNbr;  bake::read(readerOpus, opusH_magicNbr);  // "OpusHead"
+    uint8_t  opusH_version;   bake::read(readerOpus, opusH_version);   // 1, but can be in [0,15] range
+                              bake::read(readerOpus, opusH_chanCount);
+                              bake::read(readerOpus, opusH_preSkip);
+                              bake::read(readerOpus, opusH_freq);      // sampling rate (Hz) before encoding
+    int16_t  opusH_gainBd;    bake::read(readerOpus, opusH_gainBd);    // value * 10^(gain/(20*256))
+    uint8_t  opusH_mapFamily; bake::read(readerOpus, opusH_mapFamily);
     if (opusH_magicNbr != 0x646165487375704F)
     {
       TRE_LOG("loadFromOPUS: invalid opus header (magic number must be 'OpusHead')");
@@ -350,7 +350,7 @@ bool soundData::s_Opus::loadFromOPUS(const std::string &filename)
     return false;
   }
   {
-    uint64_t opusT_magicNbr;   readerOpus.read(reinterpret_cast<char*>(&opusT_magicNbr)  , sizeof(opusT_magicNbr));    // "OpusTags"
+    uint64_t opusT_magicNbr;   bake::read(readerOpus, opusT_magicNbr);    // "OpusTags"
     if (opusT_magicNbr != 0x736761547375704F)
     {
       TRE_LOG("loadFromOPUS: invalid opus header (magic number must be 'OpusHead')");
@@ -390,7 +390,7 @@ bool soundData::s_Opus::loadFromOPUS(const std::string &filename)
       {
         const std::size_t oldSize = currentBlock.m_data.size();
         currentBlock.m_data.resize(oldSize + bufSize);
-        readerOpus.read(reinterpret_cast<char *>(&currentBlock.m_data[oldSize]), bufSize);
+        bake::readArray(readerOpus, &currentBlock.m_data[oldSize], bufSize);
       }
       if (bufSize == 255)
       {
@@ -456,8 +456,8 @@ bool soundData::s_Opus::loadFromRaw(soundData::s_RawSDL &rawData, unsigned bitra
   }
 
   // encode
-  const int blockSampleCount = 2880; // 60ms of sound at 48 kHz.
-  const int bufferEncodeByteSize = blockSampleCount * sizeof(int16_t) * nchans;
+  const unsigned blockSampleCount = 2880; // 60ms of sound at 48 kHz.
+  const int      bufferEncodeByteSize = blockSampleCount * sizeof(int16_t) * nchans;
 
   std::vector<uint8_t> bufferEncode;
   bufferEncode.resize(bufferEncodeByteSize);
@@ -517,17 +517,16 @@ bool soundData::s_Opus::write(std::ostream &stream) const
   header[2] = m_stereo ? 2 : 1;
   header[3] = 1; // Opus
   header[5] = m_freq; //freq
-  header[7] = uint32_t(m_blocks.size());
-  stream.write(reinterpret_cast<const char*>(&header), sizeof(header));
+  header[7] = int_cast<uint32_t>(m_blocks.size());
+  bake::writeArray(stream, header, 8);
 
   // data
   for (const s_block &b : m_blocks)
   {
-    stream.write(reinterpret_cast<const char*>(&b.m_sampleStart), sizeof(int));
-    const uint32_t dsize = uint32_t(b.m_data.size());
-    TRE_ASSERT(dsize != 0);
-    stream.write(reinterpret_cast<const char*>(&dsize), sizeof(uint32_t));
-    stream.write(reinterpret_cast<const char*>(b.m_data.data()), dsize);
+    bake::write(stream, int32_t(b.m_sampleStart));
+    TRE_ASSERT(!b.m_data.empty());
+    bake::writeCount(stream, b.m_data.size());
+    bake::writeArray(stream, b.m_data.data(), b.m_data.size());
   }
 
   return true;
@@ -539,7 +538,7 @@ bool soundData::s_Opus::read(std::istream &stream)
 {
   // header
   uint32_t header[8];
-  stream.read(reinterpret_cast<char*>(&header), sizeof(header));
+  bake::readArray(stream, header, 8);
   TRE_ASSERT(header[0] == SOUND_BIN_VERSION);
   if (header[3] != 1)
   {
@@ -560,12 +559,13 @@ bool soundData::s_Opus::read(std::istream &stream)
   // data
   for (s_block &b : m_blocks)
   {
-    stream.read(reinterpret_cast<char*>(&b.m_sampleStart), sizeof(int));
-    uint32_t dsize = 0;
-    stream.read(reinterpret_cast<char*>(&dsize), sizeof(uint32_t));
+    int32_t sampleStart = 0;
+    bake::read(stream, sampleStart);
+    b.m_sampleStart = sampleStart;
+    const std::size_t dsize = bake::readCount(stream);
     TRE_ASSERT(dsize != 0);
     b.m_data.resize(dsize);
-    stream.read(reinterpret_cast<char*>(b.m_data.data()), dsize);
+    bake::readArray(stream, b.m_data.data(), dsize);
   }
 
 #ifndef TRE_WITH_OPUS

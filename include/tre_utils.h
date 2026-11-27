@@ -55,6 +55,38 @@ namespace tre {
 
 namespace tre {
 
+// integer conversions ========================================================
+/// @name integer conversions
+/// @{
+
+template<class _To, class _From>
+inline _To int_cast(_From v)
+{
+  static_assert(std::is_integral<_To>::value && std::is_integral<_From>::value, "int_cast is for integer types only");
+  const _To r = static_cast<_To>(v);
+  TRE_ASSERT(static_cast<_From>(r) == v);
+  return r;
+}
+
+/// @}
+// serialization ==============================================================
+/// @name serialization
+/// @{
+
+namespace bake {
+
+template<class _T> inline void write(std::ostream &os, const _T &v) { os.write(reinterpret_cast<const char*>(&v), sizeof(_T)); }
+template<class _T> inline void read(std::istream &is, _T &v) { is.read(reinterpret_cast<char*>(&v), sizeof(_T)); }
+
+template<class _T> inline void writeArray(std::ostream &os, const _T *p, std::size_t n) { os.write(reinterpret_cast<const char*>(p), n * sizeof(_T)); }
+template<class _T> inline void readArray(std::istream &is, _T *p, std::size_t n) { is.read(reinterpret_cast<char*>(p), n * sizeof(_T)); }
+
+inline void        writeCount(std::ostream &os, std::size_t n) { write(os, int_cast<uint32_t>(n)); }
+inline std::size_t readCount(std::istream &is) { uint32_t n = 0; read(is, n); return n; }
+
+} // namespace bake
+
+/// @}
 // containers =================================================================
 /// @name containers
 /// @{

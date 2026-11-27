@@ -249,8 +249,8 @@ public:
     return pid;
   }
 
-  static constexpr std::size_t fillDataCone_ISize(int subdiv) { return subdiv * 6; }
-  static constexpr std::size_t fillDataCone_VSize(int subdiv) { return 2 + subdiv; }
+  static constexpr std::size_t fillDataCone_ISize(int subdiv) { return std::size_t(subdiv * 6); }
+  static constexpr std::size_t fillDataCone_VSize(int subdiv) { return std::size_t(2 + subdiv); }
   void fillDataCone(std::size_t ipart, std::size_t offsetI, std::size_t offsetV, const glm::mat4 &transform, float radius, float heigth, int subdiv, const glm::vec4 & color);
   std::size_t createPartFromPrimitive_cone(const glm::mat4 &transform, float radius, float heigth, int subdiv, const glm::vec4 & color = glm::vec4(1.f))
   {
@@ -260,8 +260,8 @@ public:
     return pid;
   }
 
-  static constexpr std::size_t fillDataDisk_ISize(float radiusIn, int subdiv) { return radiusIn == 0.f ? subdiv * 3 : subdiv * 6;   }
-  static constexpr std::size_t fillDataDisk_VSize(float radiusIn, int subdiv) { return radiusIn == 0.f ? 1 + subdiv : 2 * subdiv; }
+  static constexpr std::size_t fillDataDisk_ISize(float radiusIn, int subdiv) { return std::size_t(radiusIn == 0.f ? subdiv * 3 : subdiv * 6);   }
+  static constexpr std::size_t fillDataDisk_VSize(float radiusIn, int subdiv) { return std::size_t(radiusIn == 0.f ? 1 + subdiv : 2 * subdiv); }
   void fillDataDisk(std::size_t ipart, std::size_t offsetI, std::size_t offsetV, const glm::mat4 &transform, float radiusOut, float radiusIn, int subdiv, const glm::vec4 & color);
   std::size_t createPartFromPrimitive_disk(const glm::mat4 &transform, float radiusOut, float radiusIn, int subdiv, const glm::vec4 & color = glm::vec4(1.f))
   {
@@ -271,8 +271,8 @@ public:
     return pid;
   }
 
-  static constexpr std::size_t fillDataTorus_ISize(int subdiv_main, int subdiv_in) { return subdiv_main * subdiv_in * 6; }
-  static constexpr std::size_t fillDataTorus_VSize(int subdiv_main, int subdiv_in) { return subdiv_main * subdiv_in;     }
+  static constexpr std::size_t fillDataTorus_ISize(int subdiv_main, int subdiv_in) { return std::size_t(subdiv_main * subdiv_in * 6); }
+  static constexpr std::size_t fillDataTorus_VSize(int subdiv_main, int subdiv_in) { return std::size_t(subdiv_main * subdiv_in);     }
   void fillDataTorus(std::size_t ipart, std::size_t offsetI, std::size_t offsetV, const glm::mat4 &transform, float radiusMain, float radiusIn, int subdiv_main, int subdiv_in, const glm::vec4 & color);
   std::size_t createPartFromPrimitive_halftorus(const glm::mat4 &transform, float radiusMain, float radiusIn, int subdiv_main, int subdiv_in, const glm::vec4 & color = glm::vec4(1.f))
   {
@@ -308,8 +308,8 @@ public:
     return pid;
   }
 
-  static constexpr std::size_t fillDataTube_ISize(bool       , int subdiv_r, int subdiv_h) { return subdiv_r * subdiv_h * 6;                       }
-  static constexpr std::size_t fillDataTube_VSize(bool closed, int subdiv_r, int subdiv_h) { return subdiv_r * (subdiv_h + 1) + (closed ? 2 : 0);  }
+  static constexpr std::size_t fillDataTube_ISize(bool       , int subdiv_r, int subdiv_h) { return std::size_t(subdiv_r * subdiv_h * 6);                       }
+  static constexpr std::size_t fillDataTube_VSize(bool closed, int subdiv_r, int subdiv_h) { return std::size_t(subdiv_r * (subdiv_h + 1) + (closed ? 2 : 0));  }
   void fillDataTube(std::size_t ipart, std::size_t offsetI, std::size_t offsetV, const glm::mat4 &transform, float radius, float heigth, bool closed, int subdiv_r, int subdiv_h, const glm::vec4 & color);
   std::size_t createPartFromPrimitive_tube(const glm::mat4 &transform, float radius, float heigth, bool closed, int subdiv_u, int subdiv_v, const glm::vec4 & color = glm::vec4(1.f))
   {
@@ -319,8 +319,8 @@ public:
     return pid;
   }
 
-  static constexpr std::size_t fillDataUvtrisphere_ISize(int subdiv_u, int subdiv_v) { return (subdiv_u & ~0x1) * ((subdiv_v * 2 - 1) * 3 + 3 + 3); }
-  static constexpr std::size_t fillDataUvtrisphere_VSize(int subdiv_u, int subdiv_v) { return 2 + (subdiv_v * 2 + 1) * (subdiv_u / 2);              }
+  static constexpr std::size_t fillDataUvtrisphere_ISize(int subdiv_u, int subdiv_v) { return std::size_t((subdiv_u & ~0x1) * ((subdiv_v * 2 - 1) * 3 + 3 + 3)); }
+  static constexpr std::size_t fillDataUvtrisphere_VSize(int subdiv_u, int subdiv_v) { return std::size_t(2 + (subdiv_v * 2 + 1) * (subdiv_u / 2));              }
   void fillDataUvtrisphere(std::size_t ipart, std::size_t offsetI, std::size_t offsetV, const glm::mat4 &transform, float radius, int subdiv_u, int subdiv_v, const glm::vec4 & color);
   std::size_t createPartFromPrimitive_uvtrisphere(const glm::mat4 &transform, float radius, int subdiv_u, int subdiv_v, const glm::vec4 & color = glm::vec4(1.f))
   {
@@ -514,7 +514,8 @@ public:
   void        resizeInstance(std::size_t newsize);
   void        reserveInstance(std::size_t newsize) { if (sizeInstance() < newsize) resizeInstance(newsize); }
 
-  float    *bufferInstanced() { return m_InstBuffer.data(); } ///< Fill directly the buffer, without any checks.
+  GLuint      instancedBufferHandle() const { return m_InstBufferHandle; }
+  float       *bufferInstanced() { return m_InstBuffer.data(); } ///< Fill directly the buffer, without any checks.
 
 public:
   virtual bool read(std::istream & inbuffer);

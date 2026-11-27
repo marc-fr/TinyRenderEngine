@@ -121,7 +121,7 @@ glm::vec4 ui::blendColor(const glm::vec4 &frontColor, const glm::vec4 &backColor
 
 // Geometry helpers ===========================================================
 
-void ui::fillNull(glm::vec4 * __restrict &buffer, const unsigned count)
+void ui::fillNull(glm::vec4 * __restrict &buffer, const std::size_t count)
 {
   std::memset(buffer, 0, count * sizeof(glm::vec4) * 2);
   buffer += 2 * count;

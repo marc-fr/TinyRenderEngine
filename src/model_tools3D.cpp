@@ -47,7 +47,7 @@ struct s_starCollapser
   std::vector<s_pt> edges;
   std::vector<s_pt> belt;
 
-  void init(const s_modelDataLayout &layout, const int indCenter, const std::size_t triangleCount)
+  void init(const s_modelDataLayout &layout, const unsigned indCenter, const std::size_t triangleCount)
   {
     center = s_pt(layout.m_positions.get<glm::vec3>(indCenter), indCenter);
     ntri = triangleCount;
@@ -56,11 +56,11 @@ struct s_starCollapser
     belt.clear();
   }
 
-  bool addTri(const s_modelDataLayout &layout, unsigned ai, unsigned bi, unsigned ci)
+  bool addTri(const s_modelDataLayout &layout, std::size_t aIndex, std::size_t bIndex, std::size_t cIndex)
   {
-    ai = layout.m_index[ai];
-    bi = layout.m_index[bi];
-    ci = layout.m_index[ci];
+    const unsigned ai = layout.m_index[aIndex];
+    const unsigned bi = layout.m_index[bIndex];
+    const unsigned ci = layout.m_index[cIndex];
     if ((ai == bi) || (ai == ci) || (bi == ci)) return false;
     const bool ax = (ai == center.ind);
     const bool bx = (bi == center.ind);
@@ -780,7 +780,7 @@ std::size_t decimateVoxel(modelIndexed &model, const std::size_t ipartIn, const 
     const unsigned ind = layout.m_index[i];
     const glm::vec3  pos = layout.m_positions.get<glm::vec3>(ind);
     const glm::ivec3 posI =  glm::ivec3((pos - gridMin) / gridResolution);
-    const int        g = (posI.z * gridDim.y + posI.y) * gridDim.x + posI.x;
+    const std::size_t g = (posI.z * gridDim.y + posI.y) * gridDim.x + posI.x;
     TRE_ASSERT(posI.x >= 0 && posI.x < gridDim.x);
     TRE_ASSERT(posI.y >= 0 && posI.y < gridDim.y);
     TRE_ASSERT(posI.z >= 0 && posI.z < gridDim.z);
@@ -929,7 +929,7 @@ std::size_t decimateVoxel(modelIndexed &model, const std::size_t ipartIn, const 
         {
           if (!duplicated) layout.copyVertex(ind, 1, vertexAddOffset);
           duplicated = true;
-          ind = vertexAddOffset;
+          ind = int_cast<unsigned>(vertexAddOffset);
         }
       }
       TRE_ASSERT(duplicated);
@@ -1661,7 +1661,7 @@ bool tetrahedralize(modelIndexed &model, const std::size_t ipartIn, std::size_t 
     const bool onSurfABD = std::abs(s_surface(tRoot.ptA, tRoot.ptB, tRoot.ptD, nullptr, *tRoot.ptC).volumeSignedWithPoint(*pt)) <= tetraMinVolume;
     const bool onSurfACD = std::abs(s_surface(tRoot.ptA, tRoot.ptC, tRoot.ptD, nullptr, *tRoot.ptB).volumeSignedWithPoint(*pt)) <= tetraMinVolume;
     const bool onSurfBCD = std::abs(s_surface(tRoot.ptB, tRoot.ptC, tRoot.ptD, nullptr, *tRoot.ptA).volumeSignedWithPoint(*pt)) <= tetraMinVolume;
-    const unsigned onSurfCount = onSurfABC + onSurfABD + onSurfACD + onSurfBCD;
+    const unsigned onSurfCount = unsigned(onSurfABC) + unsigned(onSurfABD) + unsigned(onSurfACD) + unsigned(onSurfBCD);
     if (onSurfCount >= 3) // pt on vertex
     {
       const unsigned ipt = _indP(pt);
@@ -1917,7 +1917,7 @@ bool tetrahedralize(modelIndexed &model, const std::size_t ipartIn, std::size_t 
     {
       s_tetrahedron &t = listTetra[iT];
       TRE_ASSERT(t.valid());
-      const unsigned key = t.hasPoint(tri.ptF) + t.hasPoint(tri.ptG) + t.hasPoint(tri.ptH);
+      const unsigned key = unsigned(t.hasPoint(tri.ptF)) + unsigned(t.hasPoint(tri.ptG)) + unsigned(t.hasPoint(tri.ptH));
       if (key > keyBest)
       {
         tri.tetraNearby = &t;
@@ -2102,10 +2102,10 @@ bool tetrahedralize(modelIndexed &model, const std::size_t ipartIn, std::size_t 
               else if (tbis == tadjACD) tadjACD = nullptr;
               else if (tbis == tadjBCD) tadjBCD = nullptr;
             }
-            const unsigned keyABC = (tadjABC != nullptr) ? tadjABC->hasPoint(tri.ptF) + tadjABC->hasPoint(tri.ptG) + tadjABC->hasPoint(tri.ptH) : 0;
-            const unsigned keyABD = (tadjABD != nullptr) ? tadjABD->hasPoint(tri.ptF) + tadjABD->hasPoint(tri.ptG) + tadjABD->hasPoint(tri.ptH) : 0;
-            const unsigned keyACD = (tadjACD != nullptr) ? tadjACD->hasPoint(tri.ptF) + tadjACD->hasPoint(tri.ptG) + tadjACD->hasPoint(tri.ptH) : 0;
-            const unsigned keyBCD = (tadjBCD != nullptr) ? tadjBCD->hasPoint(tri.ptF) + tadjBCD->hasPoint(tri.ptG) + tadjBCD->hasPoint(tri.ptH) : 0;
+            const unsigned keyABC = (tadjABC != nullptr) ? unsigned(tadjABC->hasPoint(tri.ptF)) + unsigned(tadjABC->hasPoint(tri.ptG)) + unsigned(tadjABC->hasPoint(tri.ptH)) : 0;
+            const unsigned keyABD = (tadjABD != nullptr) ? unsigned(tadjABD->hasPoint(tri.ptF)) + unsigned(tadjABD->hasPoint(tri.ptG)) + unsigned(tadjABD->hasPoint(tri.ptH)) : 0;
+            const unsigned keyACD = (tadjACD != nullptr) ? unsigned(tadjACD->hasPoint(tri.ptF)) + unsigned(tadjACD->hasPoint(tri.ptG)) + unsigned(tadjACD->hasPoint(tri.ptH)) : 0;
+            const unsigned keyBCD = (tadjBCD != nullptr) ? unsigned(tadjBCD->hasPoint(tri.ptF)) + unsigned(tadjBCD->hasPoint(tri.ptG)) + unsigned(tadjBCD->hasPoint(tri.ptH)) : 0;
             if (keyABC != 0) listTetraToProcess.push_back(tadjABC);
             if (keyABD != 0) listTetraToProcess.push_back(tadjABD);
             if (keyACD != 0) listTetraToProcess.push_back(tadjACD);

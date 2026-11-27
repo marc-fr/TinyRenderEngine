@@ -220,7 +220,7 @@ tre::modelSemiDynamic3D   mesh;
 
 float  mModelScale = 1.f;
 
-int   showPartId = 0;
+std::size_t showPartId = 0;
 bool  showContour = true;
 bool  showBox = true;
 bool  showWireframe = false;
@@ -252,8 +252,8 @@ tre::ui::window *wUI_property = nullptr;
 tre::ui::window *wUI_layout = nullptr;
 tre::ui::window *wUI_result = nullptr;
 
-int uiPartIdHovered = -1;
-int uiPartIdSelected = -1;
+std::size_t uiPartIdHovered = -1;
+std::size_t uiPartIdSelected = -1;
 
 // ---------------------------------------------------------
 
@@ -435,9 +435,9 @@ static int app_init(int argc, char **argv)
       std::snprintf(txt, 512, "- part %zd:\nName: %s\nIndex range: [%zd - %zd]", ip, pInfo.m_name.c_str(), pInfo.m_offset, pInfo.m_offset + pInfo.m_size);
       tre::ui::widgetText *wt = wUI_property->create_widgetText(2 + unsigned(ip), 0)->set_text(txt);
       wt->set_isactive(true);
-      wt->wcb_gain_focus = [ip](tre::ui::widget *) { uiPartIdHovered = int(ip); };
+      wt->wcb_gain_focus = [ip](tre::ui::widget *) { uiPartIdHovered = ip; };
       wt->wcb_loss_focus = [ip](tre::ui::widget *) { if (uiPartIdHovered == ip) uiPartIdHovered = -1; };
-      wt->wcb_clicked_left = [ip](tre::ui::widget *) { uiPartIdSelected = (uiPartIdSelected != ip) ? int(ip) : -1; };
+      wt->wcb_clicked_left = [ip](tre::ui::widget *) { uiPartIdSelected = (uiPartIdSelected != ip) ? ip : -1; };
 
       wt->wcb_animate = [ip](tre::ui::widget *self, float)
       {

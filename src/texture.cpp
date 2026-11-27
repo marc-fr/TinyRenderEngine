@@ -329,7 +329,7 @@ bool texture::loadCube(const std::array<SDL_Surface *, 6> &cubeFaces, int modema
   glGenTextures(1,&m_handle);
   glBindTexture(GL_TEXTURE_CUBE_MAP,m_handle);
 
-  for (int iface = 0; iface < 6; ++iface)
+  for (GLenum iface = 0; iface < 6; ++iface)
   {
     SDL_Surface *surface = cubeFaces[iface];
     if (m_w != surface->w || m_h != surface->h)
@@ -802,7 +802,7 @@ bool texture::write(std::ostream &outbuffer, SDL_Surface *surface, int modemask,
   tinfo[6] = components;
   tinfo[7] = TEXTURE_BIN_VERSION;
 
-  outbuffer.write(reinterpret_cast<const char*>(&tinfo), sizeof(tinfo));
+  bake::writeArray(outbuffer, tinfo, 8);
 
   if (surface == nullptr) return false;
 
@@ -837,7 +837,7 @@ bool texture::write(std::ostream &outbuffer, SDL_Surface *surface, int modemask,
     sourceformat = (sourceformat == GL_BGR) ? GL_RGB : GL_RGBA;
   }
 
-  unsigned pixelData_ByteSize = components * surface->w * surface->h;
+  uint32_t pixelData_ByteSize = int_cast<uint32_t>(components * surface->w * surface->h);
 
   if ((modemask & MMASK_COMPRESS) != 0)
   {
@@ -847,8 +847,8 @@ bool texture::write(std::ostream &outbuffer, SDL_Surface *surface, int modemask,
 
   // final write
 
-  outbuffer.write(reinterpret_cast<const char*>(&pixelData_ByteSize), sizeof(pixelData_ByteSize));
-  outbuffer.write(reinterpret_cast<const char*>(surfLocal.pixels), pixelData_ByteSize);
+  bake::write(outbuffer, pixelData_ByteSize);
+  bake::writeArray(outbuffer, surfLocal.pixels, pixelData_ByteSize);
 
   if (freeSurface) SDL_FreeSurface(surface);
 
@@ -892,7 +892,7 @@ bool texture::writeArray(std::ostream& outbuffer, const span<SDL_Surface*> &surf
   tinfo[6] = components;
   tinfo[7] = TEXTURE_BIN_VERSION;
 
-  outbuffer.write(reinterpret_cast<const char*>(&tinfo), sizeof(tinfo));
+  bake::writeArray(outbuffer, tinfo, 8);
 
   if (!isValid)
   {
@@ -905,14 +905,14 @@ bool texture::writeArray(std::ostream& outbuffer, const span<SDL_Surface*> &surf
 
   GLenum sourceformat = getTexFormatSource(surfaces[0]);
 
-  unsigned pixelData_ByteSize = components * w * h;
+  uint32_t pixelData_ByteSize = int_cast<uint32_t>(components * w * h);
 
   if ((modemask & MMASK_COMPRESS) != 0)
   {
     // pixelData_ByteSize = ? (TODO: the compression gives the same size given the texture's dimension and components)
     return false; // not implemented
   }
-  outbuffer.write(reinterpret_cast<const char*>(&pixelData_ByteSize), sizeof(pixelData_ByteSize));
+  bake::write(outbuffer, pixelData_ByteSize);
 
   for (std::size_t d = 0; d < surfaces.size(); ++d)
   {
@@ -951,7 +951,7 @@ bool texture::writeArray(std::ostream& outbuffer, const span<SDL_Surface*> &surf
       pixelData_ByteSize = _rawCompress(surfLocal, getTexInternalFormat(components, true, (modemask & MMASK_SRBG_SPACE) != 0));
     }
 
-    outbuffer.write(reinterpret_cast<const char*>(surfLocal.pixels), pixelData_ByteSize);
+    bake::writeArray(outbuffer, surfLocal.pixels, pixelData_ByteSize);
   }
 
   if (freeSurface)
@@ -985,7 +985,7 @@ bool texture::writeCube(std::ostream &outbuffer, const std::array<SDL_Surface *,
   tinfo[6] = components;
   tinfo[7] = TEXTURE_BIN_VERSION;
 
-  outbuffer.write(reinterpret_cast<const char*>(&tinfo), sizeof(tinfo));
+  bake::writeArray(outbuffer, tinfo, 8);
 
   if (!isValid)
   {
@@ -996,7 +996,7 @@ bool texture::writeCube(std::ostream &outbuffer, const std::array<SDL_Surface *,
     return false;
   }
 
-  unsigned pixelData_ByteSize = components * cubeFaces[0]->w * cubeFaces[0]->h;
+  uint32_t pixelData_ByteSize = int_cast<uint32_t>(components * cubeFaces[0]->w * cubeFaces[0]->h);
   // TODO: the compression gives the same size given the texture's dimension and components
 
   if ((modemask & MMASK_COMPRESS) != 0)
@@ -1011,13 +1011,13 @@ bool texture::writeCube(std::ostream &outbuffer, const std::array<SDL_Surface *,
     const unsigned pxbt5   = _rawCompress(cubeFaces[5], internalformat); TRE_ASSERT(pixelData_ByteSize == pxbt5); (void)pxbt5;
   }
 
-  outbuffer.write(reinterpret_cast<const char*>(&pixelData_ByteSize), sizeof(pixelData_ByteSize));
-  outbuffer.write(reinterpret_cast<const char*>(cubeFaces[0]->pixels), pixelData_ByteSize);
-  outbuffer.write(reinterpret_cast<const char*>(cubeFaces[1]->pixels), pixelData_ByteSize);
-  outbuffer.write(reinterpret_cast<const char*>(cubeFaces[2]->pixels), pixelData_ByteSize);
-  outbuffer.write(reinterpret_cast<const char*>(cubeFaces[3]->pixels), pixelData_ByteSize);
-  outbuffer.write(reinterpret_cast<const char*>(cubeFaces[4]->pixels), pixelData_ByteSize);
-  outbuffer.write(reinterpret_cast<const char*>(cubeFaces[5]->pixels), pixelData_ByteSize);
+  bake::write(outbuffer, pixelData_ByteSize);
+  bake::writeArray(outbuffer, static_cast<const char*>(cubeFaces[0]->pixels), pixelData_ByteSize);
+  bake::writeArray(outbuffer, static_cast<const char*>(cubeFaces[1]->pixels), pixelData_ByteSize);
+  bake::writeArray(outbuffer, static_cast<const char*>(cubeFaces[2]->pixels), pixelData_ByteSize);
+  bake::writeArray(outbuffer, static_cast<const char*>(cubeFaces[3]->pixels), pixelData_ByteSize);
+  bake::writeArray(outbuffer, static_cast<const char*>(cubeFaces[4]->pixels), pixelData_ByteSize);
+  bake::writeArray(outbuffer, static_cast<const char*>(cubeFaces[5]->pixels), pixelData_ByteSize);
 
   if (freeSurface)
   {
@@ -1048,15 +1048,15 @@ bool texture::write3D(std::ostream &outbuffer, const uint8_t *data, int w, int h
   tinfo[6] = components;
   tinfo[7] = TEXTURE_BIN_VERSION;
 
-  outbuffer.write(reinterpret_cast<const char*>(&tinfo), sizeof(tinfo));
+  bake::writeArray(outbuffer, tinfo, 8);
 
   if (!isValid) return false;
 
-  unsigned pixelData_ByteSize = components * w * h * d; // 1 byte per component
+  const uint32_t pixelData_ByteSize = int_cast<uint32_t>(components * w * h * d); // 1 byte per component
 
-  outbuffer.write(reinterpret_cast<const char*>(&pixelData_ByteSize), sizeof(pixelData_ByteSize));
+  bake::write(outbuffer, pixelData_ByteSize);
 
-  outbuffer.write(reinterpret_cast<const char*>(&data), pixelData_ByteSize);
+  bake::writeArray(outbuffer, data, pixelData_ByteSize);
 
   return true;
 }
@@ -1067,7 +1067,7 @@ bool texture::read(std::istream &inbuffer)
 {
   // header
   int32_t tinfo[8];
-  inbuffer.read(reinterpret_cast<char*>(&tinfo), sizeof(tinfo) );
+  bake::readArray(inbuffer, tinfo, 8);
 
   if      (tinfo[0] == TI_2D     ) m_type = TI_2D;
   else if (tinfo[0] == TI_2DARRAY) m_type = TI_2DARRAY;
@@ -1138,16 +1138,16 @@ bool texture::read(std::istream &inbuffer)
 #endif
 
   std::vector<char> readBuffer;
-  unsigned dataSize = 0;
-  inbuffer.read(reinterpret_cast<char*>(&dataSize), sizeof(unsigned));
-  TRE_ASSERT(int(dataSize) > 0);
+  uint32_t dataSize = 0;
+  bake::read(inbuffer, dataSize);
+  TRE_ASSERT(dataSize > 0);
 
   glGenTextures(1,&m_handle);
   if (m_type == TI_2D)
   {
     readBuffer.resize(dataSize);
     TRE_ASSERT(readBuffer.size() == dataSize);
-    inbuffer.read(readBuffer.data(), int(dataSize));
+    bake::readArray(inbuffer, readBuffer.data(), readBuffer.size());
     if (doConvertAtoRGBA) _rawUnpack_A8_to_RGBA8(readBuffer);
     glBindTexture(GL_TEXTURE_2D,m_handle);
     if (useCompress()) glCompressedTexImage2D(GL_TEXTURE_2D,0,internalformat,m_w,m_h,0, dataSize,readBuffer.data());
@@ -1161,7 +1161,7 @@ bool texture::read(std::istream &inbuffer)
   {
     readBuffer.resize(dataSize);
     TRE_ASSERT(readBuffer.size() == dataSize);
-    inbuffer.read(readBuffer.data(), int(dataSize));
+    bake::readArray(inbuffer, readBuffer.data(), readBuffer.size());
     if (doConvertAtoRGBA) _rawUnpack_A8_to_RGBA8(readBuffer);
     glBindTexture(GL_TEXTURE_2D_ARRAY, m_handle);
     if (useCompress()) glCompressedTexImage3D(GL_TEXTURE_2D_ARRAY, 0, internalformat, m_w, m_h, m_d, 0, dataSize, readBuffer.data());
@@ -1174,11 +1174,11 @@ bool texture::read(std::istream &inbuffer)
   else if (m_type == TI_CUBEMAP)
   {
     glBindTexture(GL_TEXTURE_CUBE_MAP,m_handle);
-    for (int iface = 0; iface < 6; ++iface)
+    for (GLenum iface = 0; iface < 6; ++iface)
     {
       readBuffer.resize(dataSize);
       TRE_ASSERT(readBuffer.size() == dataSize);
-      inbuffer.read(readBuffer.data(), int(dataSize));
+      bake::readArray(inbuffer, readBuffer.data(), readBuffer.size());
       if (doConvertAtoRGBA) _rawUnpack_A8_to_RGBA8(readBuffer);
       if (useCompress()) glCompressedTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X+iface,0,internalformat,m_w,m_h,0, dataSize,readBuffer.data());
       else               glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X+iface,0,internalformat,m_w,m_h,0,format,GL_UNSIGNED_BYTE,readBuffer.data());
@@ -1192,7 +1192,7 @@ bool texture::read(std::istream &inbuffer)
   {
     readBuffer.resize(dataSize);
     TRE_ASSERT(readBuffer.size() == dataSize);
-    inbuffer.read(readBuffer.data(), int(dataSize));
+    bake::readArray(inbuffer, readBuffer.data(), readBuffer.size());
     success &= update3D(reinterpret_cast<const uint8_t*>(readBuffer.data()), m_w, m_h, m_d, m_components, false);
     set_parameters();
     success &= tre::IsOpenGLok("texture::read (TI_3D) complete texture");

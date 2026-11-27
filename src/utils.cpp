@@ -159,7 +159,7 @@ void s_boundbox::read(std::istream & inbuffer)
 void s_boundbox::write(std::ostream & outbuffer) const
 {
   const float buf[6] = { m_min.x, m_max.x, m_min.y, m_max.y, m_min.z, m_max.z };
-  outbuffer.write(reinterpret_cast<const char*>(&buf), sizeof(buf));
+  bake::writeArray(outbuffer, buf, 6);
 }
 
 // ============================================================================

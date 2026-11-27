@@ -70,7 +70,8 @@ static bool _readFile(const std::string &filename, _Container &out)
   if (size < 0) return false;
   out.resize(std::size_t(size));
   ins.seekg(0);
-  return bool(ins.read(reinterpret_cast<char*>(out.data()), std::streamsize(size)));
+  bake::readArray(ins, out.data(), out.size());
+  return bool(ins);
 }
 
 // == OBJ =====================================================================

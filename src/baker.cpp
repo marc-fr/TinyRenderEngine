@@ -17,7 +17,7 @@ static const char k_footer[4] = { 'E', 'O', 'F', 0x00 };
 
 // ============================================================================
 
-bool baker::openBakedFile_forWrite(const std::string & filename, unsigned fileversion)
+bool baker::openBakedFile_forWrite(const std::string & filename, uint32_t fileversion)
 {
   m_fileOutDescriptor = new std::ofstream(filename.c_str(), std::ofstream::binary);
 
@@ -41,7 +41,7 @@ bool baker::openBakedFile_forWrite(const std::string & filename, unsigned fileve
   memset(&header, 0, sizeof(s_header));
   memcpy(header.m_signature, k_signature, 4);
 
-  myFile.write(reinterpret_cast<const char*>(& header), sizeof(s_header));
+  bake::write(myFile, header);
 
   TRE_LOG("Bake-file opened for write " << filename << " (Version=" << fileversion << ")");
 
@@ -50,7 +50,7 @@ bool baker::openBakedFile_forWrite(const std::string & filename, unsigned fileve
 
 // ============================================================================
 
-bool baker::openBakedFile_forRead(const std::string &filename, unsigned &fileversion)
+bool baker::openBakedFile_forRead(const std::string &filename, uint32_t &fileversion)
 {
   m_fileInDescriptor = new std::ifstream(filename.c_str(), std::ifstream::binary);
 
@@ -68,19 +68,17 @@ bool baker::openBakedFile_forRead(const std::string &filename, unsigned &filever
   std::ifstream &myFile = *m_fileInDescriptor;
 
   s_header header;
-  myFile.read(reinterpret_cast<char*>(& header), sizeof(s_header));
+  bake::read(myFile, header);
 
   fileversion = header.m_version;
 
   // read block
 
-  myFile.seekg(std::ifstream::pos_type(header.m_blockTableAdress));
+  myFile.seekg(int_cast<std::streamoff>(header.m_blockTableAdress));
 
-  uint32_t nblocks = 0;
-  myFile.read(reinterpret_cast<char*>(& nblocks), sizeof(uint32_t));
+  const std::size_t nblocks = bake::readCount(myFile);
   m_blocksAdress.resize(nblocks);
-  for (uint64_t &bAd : m_blocksAdress)
-    myFile.read(reinterpret_cast<char*>(& bAd), sizeof(uint64_t));
+  bake::readArray(myFile, m_blocksAdress.data(), nblocks);
 
   // footer
 
@@ -118,7 +116,7 @@ std::istream &baker::getBlockReadAndAdvance()
 
   if (m_blocksAdress.empty()) return *m_fileInDescriptor; // no entry left, already at the end-of-file. TODO: Invalidate the istream ?
 
-  m_fileInDescriptor->seekg(std::ifstream::pos_type(m_blocksAdress.back()));
+  m_fileInDescriptor->seekg(int_cast<std::streamoff>(m_blocksAdress.back()));
 
   char bh[4];
   m_fileInDescriptor->read(bh, sizeof(bh));
@@ -142,16 +140,16 @@ void baker::flushAndCloseFile()
     header.m_blockTableAdress = uint64_t(m_fileOutDescriptor->tellp());
     TRE_ASSERT(header.m_blockTableAdress != uint64_t(-1));
     // write table
-    const uint32_t nBlocks = uint32_t(m_blocksAdress.size());
-    m_fileOutDescriptor->write(reinterpret_cast<const char*>(& nBlocks), sizeof(uint32_t));
-    for (uint32_t iB = nBlocks; iB-- > 0; )
-      m_fileOutDescriptor->write(reinterpret_cast<const char*>(& m_blocksAdress[iB]), sizeof(uint64_t));
+    const std::size_t nBlocks = m_blocksAdress.size();
+    bake::writeCount(*m_fileOutDescriptor, nBlocks);
+    for (std::size_t iB = nBlocks; iB-- > 0; )
+      bake::write(*m_fileOutDescriptor, m_blocksAdress[iB]);
     // write EOF-stamp.
     header.m_footerAdress = uint64_t(m_fileOutDescriptor->tellp());
     m_fileOutDescriptor->write(k_footer, sizeof(k_footer));
     // write header
     m_fileOutDescriptor->seekp(0);
-    m_fileOutDescriptor->write(reinterpret_cast<const char*>(& header), sizeof(s_header));
+    bake::write(*m_fileOutDescriptor, header);
     // close
     TRE_LOG("baker::flush blocks=" << m_blocksAdress.size() << " with total-size=" << int(float(header.m_footerAdress) / 1024.f / 1024.f * 10) / 10.f << " MB");
     m_blocksAdress.clear();

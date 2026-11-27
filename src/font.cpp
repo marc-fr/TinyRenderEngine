@@ -13,18 +13,20 @@ namespace tre {
 
 void font::s_fontMap::read(std::istream &inbuffer)
 {
-  inbuffer.read(reinterpret_cast<char*>(&m_fsize), sizeof(unsigned));
-  inbuffer.read(reinterpret_cast<char*>(&m_hline), sizeof(float));
-  inbuffer.read(reinterpret_cast<char*>(&m_charMap[0]), sizeof(s_charInfo) * m_charMap.size());
+  uint32_t fsize = 0;
+  bake::read(inbuffer, fsize);
+  m_fsize = fsize;
+  bake::read(inbuffer, m_hline);
+  bake::readArray(inbuffer, m_charMap.data(), m_charMap.size());
 }
 
 // ----------------------------------------------------------------------------
 
 void font::s_fontMap::write(std::ostream &outbuffer) const
 {
-  outbuffer.write(reinterpret_cast<const char*>(&m_fsize) , sizeof(unsigned));
-  outbuffer.write(reinterpret_cast<const char*>(&m_hline) , sizeof(float));
-  outbuffer.write(reinterpret_cast<const char*>(&m_charMap[0]) , sizeof(s_charInfo) * m_charMap.size());
+  bake::write(outbuffer, uint32_t(m_fsize));
+  bake::write(outbuffer, m_hline);
+  bake::writeArray(outbuffer, m_charMap.data(), m_charMap.size());
 }
 
 // ============================================================================
@@ -432,9 +434,9 @@ bool font::write(std::ostream &outbuffer, const std::vector<s_fontCache> &fonts,
   TRE_ASSERT(!fonts.empty());
 
   // header
-  unsigned header[4];
+  uint32_t header[4];
   header[0] = FONT_BIN_VERSION;
-  header[1] = unsigned(fonts.size());
+  header[1] = int_cast<uint32_t>(fonts.size());
   header[2] = 0; // unused
   header[3] = 0; // unused
 
@@ -445,12 +447,12 @@ bool font::write(std::ostream &outbuffer, const std::vector<s_fontCache> &fonts,
     {
       TRE_LOG("font::write: failed because at least one of the font-variants is invalid.");
       header[1] = 0;
-      outbuffer.write(reinterpret_cast<const char*>(&header) , sizeof(header));
+      bake::writeArray(outbuffer, header, 4);
       return false;
     }
   }
 
-  outbuffer.write(reinterpret_cast<const char*>(&header) , sizeof(header));
+  bake::writeArray(outbuffer, header, 4);
 
   // merge textures
 
@@ -501,8 +503,8 @@ bool font::write(std::ostream &outbuffer, const std::vector<s_fontCache> &fonts,
 
 bool font::read(std::istream &inbuffer)
 {
-  unsigned header[4];
-  inbuffer.read(reinterpret_cast<char*>(&header), sizeof(header));
+  uint32_t header[4];
+  bake::readArray(inbuffer, header, 4);
 
   if (header[0] != FONT_BIN_VERSION)
   {
@@ -510,7 +512,7 @@ bool font::read(std::istream &inbuffer)
     return false;
   }
 
-  const unsigned mapSize = header[1];
+  const std::size_t mapSize = header[1];
 
   if (mapSize == 0) return false;
 
@@ -623,7 +625,7 @@ void font::_packTextures(const std::vector<s_fontCache> &caches, SDL_Surface *&p
 
     coords[it] = glm::ivec4(posBlock, sizetexture);
 
-    const unsigned extendedWidth = (sizetexture.x & ~0x000F) + 0x0010;
+    const int extendedWidth = (sizetexture.x & ~0x000F) + 0x0010;
     const glm::ivec2 sizeBlock = glm::ivec2(extendedWidth, sizetexture.y);
 
     if (coordMax.x < posBlock.x + sizetexture.x) coordMax.x = posBlock.x + sizeBlock.x;

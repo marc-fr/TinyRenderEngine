@@ -937,7 +937,7 @@ void postFX_AmbiantOcclusion::clear()
   clearQuadModel();
 }
 
-void postFX_AmbiantOcclusion::process(GLuint depthTextureHandle, unsigned depthTextureWidth, unsigned depthTextureHeight, const glm::mat4 &matProj)
+void postFX_AmbiantOcclusion::process(GLuint depthTextureHandle, int depthTextureWidth, int depthTextureHeight, const glm::mat4 &matProj)
 {
   TRE_ASSERT(depthTextureWidth == m_renderAOraw.w());
   TRE_ASSERT(depthTextureHeight == m_renderAOraw.h());

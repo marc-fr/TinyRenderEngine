@@ -119,7 +119,7 @@ struct s_sampler<s_RBGA8, SDL_Surface>
       break;
     case 3:
       TRE_ASSERT(SDL_BYTEORDER == SDL_LIL_ENDIAN);
-      pixelcolor = (p[0]) | (p[1] << 8) | (p[2] << 16);
+      pixelcolor = uint32_t(p[0]) | (uint32_t(p[1]) << 8) | (uint32_t(p[2]) << 16);
       break;
     case 4:
       pixelcolor = *reinterpret_cast<uint32_t*>(p);
@@ -805,7 +805,7 @@ void resample_toCubeMap_imp(_Sout *outTexture, const uint out_un, const uint out
     }
     else
     {
-      const uint iv = (ivRaw < 0) ? uint(-ivRaw) : uint(in_vn * 2 - 1 - ivRaw);
+      const uint iv = (ivRaw < 0) ? uint(-ivRaw) : in_vn * 2 - 1 - uint(ivRaw);
       for (uint iuCache = 0; iuCache < global_nm.x; ++iuCache)
       {
         const uint iu = (3 * in_un - iuCache - uint(global_nnmm.x)) % in_un; // latitude-repeat
