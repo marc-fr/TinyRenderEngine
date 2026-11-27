@@ -1,5 +1,4 @@
-#ifndef MODEL_TOOLS_H
-#define MODEL_TOOLS_H
+#pragma once
 
 #include "tre_utils.h"
 
@@ -73,5 +72,3 @@ bool tetrahedralize(modelIndexed &model, const std::size_t ipartIn, std::size_t 
 } // namespace
 
 } // namespace
-
-#endif // MODEL_TOOLS_H

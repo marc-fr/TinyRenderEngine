@@ -1,5 +1,4 @@
-#ifndef MODEL_IMPORTER_H
-#define MODEL_IMPORTER_H
+#pragma once
 
 #include "tre_utils.h"
 #include "tre_model.h"
@@ -66,5 +65,3 @@ inline bool addFromGLTF(modelIndexed &outModel, const std::string &gltffile, con
 } // namespace modelImporter
 
 } // namespace tre
-
-#endif // MODEL_IMPORTER_H

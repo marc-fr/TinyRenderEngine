@@ -1,5 +1,4 @@
-#ifndef GIZMO_H
-#define GIZMO_H
+#pragma once
 
 #include "tre_model.h"
 
@@ -164,8 +163,4 @@ private:
 
 };
 
-//----------------------------------------------------------------------------
-
-}
-
-#endif
+} // namespace

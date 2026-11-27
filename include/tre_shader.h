@@ -1,5 +1,4 @@
-#ifndef SHADER_H
-#define SHADER_H
+#pragma once
 
 #include "tre_utils.h"
 #include "tre_shadergenerator.h"
@@ -127,5 +126,3 @@ private:
 };
 
 } // namespace
-
-#endif // SHADER_H

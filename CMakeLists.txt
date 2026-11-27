@@ -16,6 +16,7 @@ set(SRC_LIST_LIB
   src/contact_3D.cpp
   src/font.cpp
   src/gizmo.cpp
+  src/gpusim.cpp
   src/model.cpp
   src/model_importer.cpp
   src/model_tools2D.cpp

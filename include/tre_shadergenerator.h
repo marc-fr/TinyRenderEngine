@@ -1,5 +1,4 @@
-#ifndef SHADERGENERATOR_H
-#define SHADERGENERATOR_H
+#pragma once
 
 #include <vector>
 #include <string>
@@ -148,5 +147,3 @@ protected:
 };
 
 } // namespace
-
-#endif // SHADERGENERATOR_H

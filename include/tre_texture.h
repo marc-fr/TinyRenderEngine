@@ -1,5 +1,4 @@
-#ifndef TEXTURE_H
-#define TEXTURE_H
+#pragma once
 
 #include "tre_utils.h"
 
@@ -117,5 +116,3 @@ private:
 };
 
 } // namespace
-
-#endif // TEXTURE_H

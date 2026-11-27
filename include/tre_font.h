@@ -1,5 +1,4 @@
-#ifndef FONT_H
-#define FONT_H
+#pragma once
 
 #include "tre_utils.h"
 #include "tre_texture.h"
@@ -77,5 +76,3 @@ protected:
 };
 
 } // namespace
-
-#endif // FONT_H

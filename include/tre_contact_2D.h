@@ -1,5 +1,4 @@
-#ifndef CONTACT_2D_H
-#define CONTACT_2D_H
+#pragma once
 
 #include "glm/glm.hpp"
 
@@ -199,5 +198,3 @@ public:
 // ============================================================================
 
 } // namespace
-
-#endif // CONTACT_2D_H

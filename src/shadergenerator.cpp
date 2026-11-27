@@ -498,12 +498,12 @@ void shaderGenerator::createShaderSource_Layout(std::string &sourceVertex, std::
 #ifdef TRE_OPENGL_ES
   static const char *esHeader =
     "#version 300 es\n"
-    "precision mediump float;\n"
-    "precision mediump int;\n"
-    "precision mediump sampler2D;\n"
-    "precision mediump sampler2DArray;\n"
-    "precision mediump samplerCube;\n"
-    "precision mediump sampler3D;\n";
+    "precision highp float;\n"
+    "precision highp int;\n"
+    "precision highp sampler2D;\n"
+    "precision highp sampler2DArray;\n"
+    "precision highp samplerCube;\n"
+    "precision highp sampler3D;\n";
   sourceVertex += esHeader;
   sourceFragment += esHeader;
 #else
@@ -840,7 +840,7 @@ void shaderGenerator::createShaderSource_GeomWireframe(std::string & sourceGeom)
   // header
 #ifdef TRE_OPENGL_ES
   TRE_FATAL("Geometry shaders are not supported with OpenGL-ES 3.0");
-  sourceGeom += "#version 300 es\nprecision mediump float;\n";
+  sourceGeom += "#version 300 es\n//precision ...\n";
 #else
   sourceGeom += "#version 330 core\n";
 #endif

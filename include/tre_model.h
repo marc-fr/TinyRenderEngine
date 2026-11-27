@@ -1,5 +1,4 @@
-#ifndef MODEL_H
-#define MODEL_H
+#pragma once
 
 #include "tre_utils.h"
 
@@ -583,5 +582,3 @@ protected:
 };
 
 } // namespace
-
-#endif // MODEL_H

@@ -1,5 +1,4 @@
-#ifndef TEXTGENERATOR_H
-#define TEXTGENERATOR_H
+#pragma once
 
 #include "tre_openglinclude.h"
 
@@ -73,5 +72,3 @@ namespace textgenerator
 };
 
 } // namespace
-
-#endif // TEXTGENERATOR_H

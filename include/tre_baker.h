@@ -1,5 +1,4 @@
-#ifndef BAKER_H
-#define BAKER_H
+#pragma once
 
 #include "tre_utils.h"
 
@@ -77,5 +76,3 @@ protected:
 };
 
 } // namespace
-
-#endif // BAKER_H

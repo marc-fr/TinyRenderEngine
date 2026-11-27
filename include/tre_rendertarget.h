@@ -1,5 +1,4 @@
-#ifndef RENDERTARGET_H
-#define RENDERTARGET_H
+#pragma once
 
 #include "tre_utils.h"
 #include "tre_shader.h"
@@ -292,5 +291,3 @@ protected:
 // ============================================================================
 
 } // namespace
-
-#endif // RENDERTARGET_H

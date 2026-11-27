@@ -1,5 +1,4 @@
-#ifndef UI_H
-#define UI_H
+#pragma once
 
 #include "tre_utils.h"
 #include "tre_model.h"
@@ -866,5 +865,3 @@ public:
 };
 
 } // namespace tre
-
-#endif // UI_H
